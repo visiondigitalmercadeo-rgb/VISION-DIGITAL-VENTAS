@@ -357,6 +357,9 @@ def create_cotizacion(prospecto_id, vendedor_id, fecha_contacto, fecha_cotizacio
 def update_cotizacion(cotizacion_id, **kwargs):
     if kwargs:
         get_client().collection("cotizaciones").document(cotizacion_id).update(kwargs)
+      
+def delete_cotizacion(cotizacion_id):
+    get_client().collection("cotizaciones").document(cotizacion_id).delete()
 
 
 # ---------------------------------------------------------------------------
@@ -448,6 +451,9 @@ def create_reclamo(cliente, nit, numero_orden, fecha_reclamo, estatus, descripci
 def update_reclamo(reclamo_id, **kwargs):
     if kwargs:
         get_client().collection("reclamos").document(reclamo_id).update(kwargs)
+
+def delete_reclamo(reclamo_id):
+    get_client().collection("reclamos").document(reclamo_id).delete()
 
 
 # ---------------------------------------------------------------------------
