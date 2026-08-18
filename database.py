@@ -52,8 +52,8 @@ def _cargar_credenciales():
         import streamlit as st
         if "firebase" in st.secrets:
             return credentials.Certificate(dict(st.secrets["firebase"]))
-    except Exception:
-       import traceback
+    except Exception as e:
+        import traceback
         print("ERROR AL CARGAR CREDENCIALES DE FIREBASE:", e)
         traceback.print_exc()
 
