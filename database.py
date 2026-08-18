@@ -53,7 +53,9 @@ def _cargar_credenciales():
         if "firebase" in st.secrets:
             return credentials.Certificate(dict(st.secrets["firebase"]))
     except Exception:
-        pass
+       import traceback
+        print("ERROR AL CARGAR CREDENCIALES DE FIREBASE:", e)
+        traceback.print_exc()
 
     if os.path.exists(SERVICE_ACCOUNT_PATH):
         return credentials.Certificate(SERVICE_ACCOUNT_PATH)
