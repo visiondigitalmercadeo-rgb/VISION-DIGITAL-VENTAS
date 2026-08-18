@@ -51,9 +51,16 @@ with tab_lista:
                                                index=ESTADOS_COTIZACION.index(cot["estado"]))
                         monto = st.number_input("Monto (Q)", value=float(cot["monto"] or 0), min_value=0.0, step=100.0)
                         notas = st.text_area("Notas", value=cot["notas"] or "")
-                        if st.form_submit_button("Guardar", use_container_width=True):
+                        colf1, colf2 = st.columns(2)
+                        guardar = colf1.form_submit_button("Guardar", use_container_width=True)
+                        eliminar = colf2.form_submit_button("Eliminar cotización", use_container_width=True)
+                        if guardar:
                             db.update_cotizacion(cid, estado=estado, monto=monto, notas=notas)
                             st.success("Cotización actualizada.")
+                            st.rerun()
+                        if eliminar:
+                            db.delete_cotizacion(cid)
+                            st.success("Cotización eliminada.")
                             st.rerun()
         else:
             st.caption("Tu rol es de solo vista: puedes consultar pero no editar cotizaciones.")
