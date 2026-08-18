@@ -56,13 +56,20 @@ with tab_lista:
                             disabled=not tiene_solucion,
                         )
                         descripcion = st.text_area("Descripción / notas", value=rec["descripcion"] or "")
-                        if st.form_submit_button("Guardar", use_container_width=True):
+                        colf1, colf2 = st.columns(2)
+                        guardar = colf1.form_submit_button("Guardar", use_container_width=True)
+                        eliminar = colf2.form_submit_button("Eliminar reclamo", use_container_width=True)
+                        if guardar:
                             db.update_reclamo(
                                 rid, estatus=estatus,
                                 fecha_solucion=str(fecha_solucion) if tiene_solucion else None,
                                 descripcion=descripcion,
                             )
                             st.success("Reclamo actualizado.")
+                            st.rerun()
+                        if eliminar:
+                            db.delete_reclamo(rid)
+                            st.success("Reclamo eliminado.")
                             st.rerun()
         else:
             st.caption("Tu rol es de solo vista: puedes consultar pero no editar reclamos.")
