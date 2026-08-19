@@ -47,18 +47,63 @@ with tab_lista:
         st.dataframe(por_planta.apply(money).rename("Total"), use_container_width=True)
 
         if auth.is_admin() or auth.is_vendedor():
-            st.markdown("#### 🗑️ Eliminar un registro (corrección de captura)")
+            st.markdown("#### ✏️ Editar o eliminar un registro (corrección de captura)")
             opciones = {f"{r['fecha']} — {r['planta']} — {money(r['monto'])} — {r['linea_venta']}": r["id"] for r in rows}
-            elegido = st.selectbox("Selecciona", ["—"] + list(opciones.keys()), key="vta_eliminar")
+            elegido = st.selectbox("Selecciona", ["—"] + list(opciones.keys()), key="vta_editar")
             if elegido != "—":
                 vid = opciones[elegido]
                 venta = next(r for r in rows if r["id"] == vid)
                 if user["rol"] == "vendedor" and venta["vendedor_id"] != user["id"]:
                     st.warning("Esta venta pertenece a otro vendedor.")
-                elif st.button("Eliminar registro seleccionado"):
-                    db.delete_venta(vid)
-                    st.success("Registro eliminado.")
-                    st.rerun()
+                else:
+                    with st.form(f"editar_venta_{vid}"):
+                        if user["rol"] == "admin":
+                            opciones_v = {v["nombre"]: v["id"] for v in vendedores}
+                            nombre_actual = db.nombre_vendedor(venta["vendedor_id"], vendedores)
+                            nombres_v = list(opciones_v.keys())
+                            vendedor_nombre_ed = st.selectbox(
+                                "Vendedor", nombres_v,
+                                index=nombres_v.index(nombre_actual) if nombre_actual in nombres_v else 0,
+                            )
+                            vendedor_id_ed = opciones_v[vendedor_nombre_ed]
+                        else:
+                            vendedor_id_ed = venta["vendedor_id"]
+                            st.caption(f"Vendedor: **{db.nombre_vendedor(venta['vendedor_id'], vendedores)}**")
+
+                        ce1, ce2 = st.columns(2)
+                        fecha_ed = ce1.date_input(
+                            "Fecha de la venta",
+                            value=date.fromisoformat(venta["fecha"]) if venta["fecha"] else date.today(),
+                        )
+                        planta_ed = ce2.selectbox(
+                            "Planta", PLANTAS,
+                            index=PLANTAS.index(venta["planta"]) if venta["planta"] in PLANTAS else 0,
+                        )
+                        linea_venta_ed = st.text_input("Línea de venta (producto/servicio)",
+                                                        value=venta["linea_venta"] or "")
+                        monto_ed = st.number_input("Monto de la venta (Q)", value=float(venta["monto"] or 0),
+                                                    min_value=0.0, step=50.0)
+                        notas_ed = st.text_area("Notas (opcional)", value=venta["notas"] or "")
+
+                        colf1, colf2 = st.columns(2)
+                        guardar = colf1.form_submit_button("Guardar", use_container_width=True)
+                        eliminar = colf2.form_submit_button("Eliminar registro", use_container_width=True)
+                        if guardar:
+                            if monto_ed <= 0:
+                                st.error("El monto debe ser mayor a 0.")
+                            elif not linea_venta_ed.strip():
+                                st.error("Ingresa la línea de venta.")
+                            else:
+                                db.update_venta(
+                                    vid, vendedor_id=vendedor_id_ed, fecha=str(fecha_ed), planta=planta_ed,
+                                    linea_venta=linea_venta_ed.strip(), monto=monto_ed, notas=notas_ed,
+                                )
+                                st.success("Venta actualizada.")
+                                st.rerun()
+                        if eliminar:
+                            db.delete_venta(vid)
+                            st.success("Registro eliminado.")
+                            st.rerun()
 
 with tab_nueva:
     if not auth.can_edit():
