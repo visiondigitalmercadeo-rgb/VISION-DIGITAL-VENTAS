@@ -477,7 +477,10 @@ def create_venta(vendedor_id, fecha, planta, linea_venta, monto, notas):
         "vendedor_id": vendedor_id, "fecha": str(fecha), "planta": planta,
         "linea_venta": linea_venta, "monto": monto, "notas": notas,
     })
-
+  
+def update_venta(venta_id, **kwargs):
+    if kwargs:
+        get_client().collection("ventas").document(venta_id).update(kwargs)
 
 def delete_venta(venta_id):
     get_client().collection("ventas").document(venta_id).delete()
