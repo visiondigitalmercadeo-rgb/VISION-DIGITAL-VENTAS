@@ -357,7 +357,8 @@ def create_cotizacion(prospecto_id, vendedor_id, fecha_contacto, fecha_cotizacio
 def update_cotizacion(cotizacion_id, **kwargs):
     if kwargs:
         get_client().collection("cotizaciones").document(cotizacion_id).update(kwargs)
-      
+
+
 def delete_cotizacion(cotizacion_id):
     get_client().collection("cotizaciones").document(cotizacion_id).delete()
 
@@ -424,6 +425,9 @@ def update_visita_mercadeo(visita_id, **kwargs):
         get_client().collection("visitas_mercadeo").document(visita_id).update(kwargs)
 
 
+def delete_visita_mercadeo(visita_id):
+    get_client().collection("visitas_mercadeo").document(visita_id).delete()
+
 
 # ---------------------------------------------------------------------------
 # Pendientes de mercadeo
@@ -454,7 +458,6 @@ def delete_pendiente_mercadeo(pendiente_id):
     get_client().collection("pendientes_mercadeo").document(pendiente_id).delete()
 
 
-
 # ---------------------------------------------------------------------------
 # Reclamos
 # ---------------------------------------------------------------------------
@@ -478,6 +481,7 @@ def create_reclamo(cliente, nit, numero_orden, fecha_reclamo, estatus, descripci
 def update_reclamo(reclamo_id, **kwargs):
     if kwargs:
         get_client().collection("reclamos").document(reclamo_id).update(kwargs)
+
 
 def delete_reclamo(reclamo_id):
     get_client().collection("reclamos").document(reclamo_id).delete()
@@ -504,10 +508,12 @@ def create_venta(vendedor_id, fecha, planta, linea_venta, monto, notas):
         "vendedor_id": vendedor_id, "fecha": str(fecha), "planta": planta,
         "linea_venta": linea_venta, "monto": monto, "notas": notas,
     })
-  
+
+
 def update_venta(venta_id, **kwargs):
     if kwargs:
         get_client().collection("ventas").document(venta_id).update(kwargs)
+
 
 def delete_venta(venta_id):
     get_client().collection("ventas").document(venta_id).delete()
