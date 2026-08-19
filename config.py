@@ -58,3 +58,5 @@ CHECKLIST_DEFAULT = [
 ]
 
 ESTADOS_RECLAMO = ["Abierto", "En proceso", "Resuelto", "Cerrado"]
+
+ESTADOS_PENDIENTE_MERCADEO = ["Pendiente", "En proceso", "Resuelto"]
