@@ -424,8 +424,35 @@ def update_visita_mercadeo(visita_id, **kwargs):
         get_client().collection("visitas_mercadeo").document(visita_id).update(kwargs)
 
 
-def delete_visita_mercadeo(visita_id):
-    get_client().collection("visitas_mercadeo").document(visita_id).delete()
+
+# ---------------------------------------------------------------------------
+# Pendientes de mercadeo
+# ---------------------------------------------------------------------------
+def list_pendientes_mercadeo(vendedor_id=None):
+    client = get_client()
+    coll = client.collection("pendientes_mercadeo")
+    query = coll.where("vendedor_id", "==", vendedor_id) if vendedor_id else coll
+    rows = [_doc_to_dict(s) for s in query.stream()]
+    rows.sort(key=lambda r: r["fecha_reportada"] or "", reverse=True)
+    return rows
+
+
+def create_pendiente_mercadeo(vendedor_id, tienda, fecha_reportada, pendiente, estado):
+    get_client().collection("pendientes_mercadeo").document().set({
+        "vendedor_id": vendedor_id, "tienda": tienda,
+        "fecha_reportada": str(fecha_reportada) if fecha_reportada else None,
+        "pendiente": pendiente, "fecha_finalizacion": None, "estado": estado,
+    })
+
+
+def update_pendiente_mercadeo(pendiente_id, **kwargs):
+    if kwargs:
+        get_client().collection("pendientes_mercadeo").document(pendiente_id).update(kwargs)
+
+
+def delete_pendiente_mercadeo(pendiente_id):
+    get_client().collection("pendientes_mercadeo").document(pendiente_id).delete()
+
 
 
 # ---------------------------------------------------------------------------
