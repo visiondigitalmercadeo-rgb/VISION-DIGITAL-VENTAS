@@ -597,7 +597,6 @@ def create_diseno(
         "archivos": archivos or [],
         "cambios_necesarios": cambios_necesarios, "detenido_emergencia": False,
     })
-    })
 
 
 def update_diseno(diseno_id, **kwargs):
