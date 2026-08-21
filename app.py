@@ -44,6 +44,7 @@ rol = user["rol"]
 
 inicio = st.Page("app_pages/1_Inicio.py", title="Inicio", icon="🏠", default=True)
 prospectos = st.Page("app_pages/2_Prospectos_CRM.py", title="Prospección (CRM)", icon="🧾")
+llamadas = st.Page("app_pages/11_Llamadas.py", title="Llamadas", icon="📞")
 citas = st.Page("app_pages/3_Citas_Vendedores.py", title="Citas y visitas de vendedores", icon="📅")
 mercadeo = st.Page("app_pages/4_Visitas_Mercadeo.py", title="Visitas de mercadeo", icon="🏪")
 cotizaciones = st.Page("app_pages/5_Cotizaciones.py", title="Cotizaciones", icon="💰")
@@ -61,7 +62,7 @@ elif rol == "jefe_planta":
     # (allí puede cambiar el estado de cada reclamo).
     pages = [reclamos]
 else:
-    pages = [inicio, prospectos, citas, mercadeo, cotizaciones, reclamos, ventas, generales, kpis]
+    pages = [inicio, prospectos, llamadas, citas, mercadeo, cotizaciones, reclamos, ventas, generales, kpis]
     if rol == "admin":
         pages.append(admin)
 
