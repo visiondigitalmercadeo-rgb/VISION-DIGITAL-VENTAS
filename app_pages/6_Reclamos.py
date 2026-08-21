@@ -6,7 +6,7 @@ import streamlit as st
 import auth
 import database as db
 from config import ESTADOS_RECLAMO
-from utils import sidebar_user_box, vendedor_filter_selector
+from utils import download_excel_button, sidebar_user_box, vendedor_filter_selector
 
 user = auth.current_user()
 sidebar_user_box()
@@ -36,6 +36,7 @@ with tab_lista:
             "Vendedor": db.nombre_vendedor(r["vendedor_id"], vendedores),
         } for r in rows])
         st.dataframe(df, use_container_width=True, hide_index=True)
+        download_excel_button(df, "reclamos.xlsx", key="rec_descargar_excel")
 
         puede_editar_completo = auth.can_edit()
         puede_cambiar_estado = puede_editar_completo or user["rol"] == "jefe_planta"
