@@ -47,6 +47,8 @@ PLANTAS = ["Offset", "Digital", "Valloy", "Colorado"]
 
 ESTADOS_PROSPECTO = ["Prospecto", "En negociación", "Cliente (Ganado)", "Perdido"]
 
+TIPOS_LLAMADA = ["Llamada inicial", "Llamada de seguimiento"]
+
 TIPOS_CITA = ["Cita", "Visita", "Llamada"]
 ESTADOS_CITA = ["Programada", "Realizada", "Cancelada", "No asistió"]
 
