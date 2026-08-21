@@ -585,6 +585,7 @@ def get_diseno(diseno_id):
 
 
 def create_diseno(
+  def create_diseno(
     vendedor_id, cliente, producto, material, acabado, medida, fecha_necesaria, estado,
     archivo_nombre=None, archivo_tipo=None, archivo_b64=None, cambios_necesarios=None,
 ):
