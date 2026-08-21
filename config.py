@@ -58,7 +58,8 @@ ESTADOS_DISENO = ["Lista de tareas", "Emergencias", "En proceso", "Cambios", "En
 ESTADOS_DISENO_INICIALES = ["Lista de tareas", "Emergencias"]
 # Columnas que solo el diseñador (o el administrador) puede asignar después.
 ESTADOS_DISENO_DISENADOR = ["Lista de tareas", "Emergencias", "En proceso", "Cambios", "Entregado"]
-DISENO_ARCHIVO_MAX_BYTES = 900_000  # ~900 KB — límite práctico por documento en Firestore
+DISENO_ARCHIVO_MAX_BYTES = 900_000  # ~900 KB — límite práctico por archivo en Firestore
+DISENO_ARCHIVOS_MAX = 3  # máximo de archivos adjuntos por solicitud
 
 TIPOS_CITA = ["Cita", "Visita", "Llamada"]
 ESTADOS_CITA = ["Programada", "Realizada", "Cancelada", "No asistió"]
