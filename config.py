@@ -32,31 +32,3 @@ GRIDLINE = "#e1e0d9"
 SURFACE = "#fcfcfb"
 
 # ---------------------------------------------------------------------------
-# Catálogos de negocio
-# ---------------------------------------------------------------------------
-ROLES = ["admin", "vendedor", "vista"]
-ROLES_LABEL = {"admin": "Administrador", "vendedor": "Vendedor", "vista": "Solo vista"}
-
-PLANTAS = ["Offset", "Digital", "Valloy", "Colorado"]
-
-ESTADOS_PROSPECTO = ["Prospecto", "En negociación", "Cliente (Ganado)", "Perdido"]
-
-TIPOS_CITA = ["Cita", "Visita", "Llamada"]
-ESTADOS_CITA = ["Programada", "Realizada", "Cancelada", "No asistió"]
-
-ESTADOS_COTIZACION = ["Enviada", "Pendiente", "En negociación", "Aprobada", "Rechazada"]
-
-ESTADOS_VISITA_MERCADEO = ["Pendiente", "Realizada"]
-CHECKLIST_DEFAULT = [
-    "Exhibición correcta del producto",
-    "Material POP colocado",
-    "Precios visibles y correctos",
-    "Stock disponible",
-    "Limpieza y orden del punto de venta",
-    "Presencia de competencia relevante",
-    "Punto de venta satisfecho con el servicio",
-]
-
-ESTADOS_RECLAMO = ["Abierto", "En proceso", "Resuelto", "Cerrado"]
-
-ESTADOS_PENDIENTE_MERCADEO = ["Pendiente", "En proceso", "Resuelto"]
