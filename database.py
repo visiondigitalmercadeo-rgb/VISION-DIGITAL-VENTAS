@@ -475,6 +475,7 @@ def create_reclamo(cliente, nit, numero_orden, fecha_reclamo, estatus, descripci
         "cliente": cliente, "nit": nit, "numero_orden": numero_orden,
         "fecha_reclamo": str(fecha_reclamo), "fecha_solucion": None,
         "estatus": estatus, "descripcion": descripcion, "vendedor_id": vendedor_id,
+        "comentarios_jefe_planta": None,
     })
 
 
