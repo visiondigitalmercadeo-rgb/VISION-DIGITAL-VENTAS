@@ -49,6 +49,7 @@ citas = st.Page("app_pages/3_Citas_Vendedores.py", title="Citas y visitas de ven
 mercadeo = st.Page("app_pages/4_Visitas_Mercadeo.py", title="Visitas de mercadeo", icon="🏪")
 cotizaciones = st.Page("app_pages/5_Cotizaciones.py", title="Cotizaciones", icon="💰")
 reclamos = st.Page("app_pages/6_Reclamos.py", title="Reclamos", icon="⚠️")
+diseno = st.Page("app_pages/12_Diseno_Grafico.py", title="Diseño Gráfico - Nicolás", icon="🎨")
 ventas = st.Page("app_pages/7_Ventas_Diarias.py", title="Venta del día", icon="🧮")
 generales = st.Page("app_pages/8_Prospectos_Generales.py", title="Prospectos generales (todos)", icon="🌐")
 kpis = st.Page("app_pages/9_KPIs.py", title="KPIs", icon="📊")
@@ -61,8 +62,11 @@ elif rol == "jefe_planta":
     # El rol 'jefe_planta' solo tiene acceso a la pestaña de Reclamos
     # (allí puede cambiar el estado de cada reclamo).
     pages = [reclamos]
+elif rol == "disenador":
+    # El rol 'disenador' solo tiene acceso al tablero de Diseño Gráfico.
+    pages = [diseno]
 else:
-    pages = [inicio, prospectos, llamadas, citas, mercadeo, cotizaciones, reclamos, ventas, generales, kpis]
+    pages = [inicio, prospectos, llamadas, citas, mercadeo, cotizaciones, reclamos, diseno, ventas, generales, kpis]
     if rol == "admin":
         pages.append(admin)
 
