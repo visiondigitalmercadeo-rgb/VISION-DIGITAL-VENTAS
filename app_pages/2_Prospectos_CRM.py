@@ -6,7 +6,7 @@ import streamlit as st
 import auth
 import database as db
 from config import ESTADOS_PROSPECTO
-from utils import scope_vendedor_id, sidebar_user_box, vendedor_filter_selector
+from utils import download_excel_button, scope_vendedor_id, sidebar_user_box, vendedor_filter_selector
 
 user = auth.current_user()
 sidebar_user_box()
@@ -43,6 +43,7 @@ with tab_lista:
             "Recordatorio": r["recordatorio"],
         } for r in rows])
         st.dataframe(df, use_container_width=True, hide_index=True)
+        download_excel_button(df, "prospectos.xlsx", key="crm_descargar_excel")
 
         if auth.can_edit():
             st.markdown("#### ✏️ Editar / dar seguimiento")
