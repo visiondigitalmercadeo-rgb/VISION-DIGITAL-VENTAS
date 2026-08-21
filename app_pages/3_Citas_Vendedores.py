@@ -7,7 +7,7 @@ from streamlit_calendar import calendar as st_calendar
 import auth
 import database as db
 from config import ESTADOS_CITA, STATUS, TIPOS_CITA
-from utils import download_excel_button, sidebar_user_box, vendedor_filter_selector
+from utils import download_excel_button, hora_24_a_12, selector_hora, sidebar_user_box, vendedor_filter_selector
 
 user = auth.current_user()
 sidebar_user_box()
@@ -117,20 +117,20 @@ with tab_lista:
                 else:
                     with st.form(f"editar_cita_{cid}"):
                         cliente_nombre_ed = st.text_input("Nombre del cliente", value=cita["cliente_nombre"] or "")
-                        ce1, ce2, ce3 = st.columns(3)
+                        ce1, ce2 = st.columns(2)
                         tipo_ed = ce1.selectbox(
                             "Tipo", TIPOS_CITA,
                             index=TIPOS_CITA.index(cita["tipo"]) if cita["tipo"] in TIPOS_CITA else 0,
                         )
-                        try:
-                            hora_valor = datetime.strptime(cita["hora"], "%H:%M").time() if cita["hora"] else datetime.now().time()
-                        except ValueError:
-                            hora_valor = datetime.now().time()
                         fecha_ed = ce2.date_input(
                             "Fecha",
                             value=date.fromisoformat(cita["fecha"]) if cita["fecha"] else date.today(),
                         )
-                        hora_ed = ce3.time_input("Hora", value=hora_valor)
+                        hora12_ed, minuto_ed, ampm_ed = hora_24_a_12(cita["hora"] or "09:00")
+                        hora_texto_ed = selector_hora(
+                            "Hora", f"editar_cita_{cid}",
+                            hora12=hora12_ed, minuto=minuto_ed, ampm=ampm_ed,
+                        )
                         lugar_ed = st.text_input("Lugar", value=cita["lugar"] or "")
                         nuevo_estado = st.selectbox("Estado", ESTADOS_CITA, index=ESTADOS_CITA.index(cita["estado"]))
                         notas = st.text_area("Notas", value=cita["notas"] or "")
@@ -143,7 +143,7 @@ with tab_lista:
                             else:
                                 db.update_cita(
                                     cid, cliente_nombre=cliente_nombre_ed.strip(), tipo=tipo_ed,
-                                    fecha=str(fecha_ed), hora=hora_ed.strftime("%H:%M"),
+                                    fecha=str(fecha_ed), hora=hora_texto_ed,
                                     lugar=lugar_ed, estado=nuevo_estado, notas=notas,
                                 )
                                 st.success("Actualizado.")
@@ -180,10 +180,14 @@ with tab_nueva:
                 value=prospecto_sel.split(" (NIT")[0] if prospecto_id else "",
             )
 
-            c1, c2, c3 = st.columns(3)
+            c1, c2 = st.columns(2)
             tipo = c1.selectbox("Tipo", TIPOS_CITA)
             fecha = c2.date_input("Fecha", value=date.today())
-            hora = c3.time_input("Hora", value=datetime.now().replace(second=0, microsecond=0).time())
+            hora12_now, minuto_now, ampm_now = hora_24_a_12(datetime.now().strftime("%H:%M"))
+            hora_texto = selector_hora(
+                "Hora", "nueva_cita",
+                hora12=hora12_now, minuto=minuto_now, ampm=ampm_now,
+            )
             lugar = st.text_input("Lugar")
             notas = st.text_area("Notas")
 
@@ -192,6 +196,6 @@ with tab_nueva:
                     st.error("Ingresa el nombre del cliente.")
                 else:
                     db.create_cita(vendedor_id, prospecto_id, cliente_nombre.strip(), tipo,
-                                    fecha, hora.strftime("%H:%M"), lugar, "Programada", notas)
+                                    fecha, hora_texto, lugar, "Programada", notas)
                     st.success("Cita agendada.")
                     st.rerun()
