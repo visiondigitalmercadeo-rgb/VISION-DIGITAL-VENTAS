@@ -6,7 +6,10 @@ import streamlit as st
 import auth
 import database as db
 from config import LINEAS_VENTA, PLANTAS
-from utils import download_excel_button, money, sidebar_user_box, vendedor_filter_selector
+from utils import (
+    as_lineas_venta, download_excel_button, lineas_venta_display, money, sidebar_user_box,
+    vendedor_filter_selector,
+)
 
 user = auth.current_user()
 sidebar_user_box()
@@ -29,7 +32,8 @@ with tab_lista:
         vendedores = db.list_usuarios()
         df = pd.DataFrame([{
             "ID": r["id"], "Fecha": r["fecha"], "Vendedor": db.nombre_vendedor(r["vendedor_id"], vendedores),
-            "Planta": r["planta"], "Línea de venta": r["linea_venta"], "Cliente": r.get("cliente") or "—",
+            "Planta": r["planta"], "Línea de venta": lineas_venta_display(r["linea_venta"]),
+            "Cliente": r.get("cliente") or "—",
             "Nº de órdenes": r.get("numero_ordenes") or 0, "Monto": r["monto"], "Notas": r["notas"],
         } for r in rows])
 
@@ -68,7 +72,10 @@ with tab_lista:
 
         if auth.is_admin() or auth.is_vendedor():
             st.markdown("#### ✏️ Editar o eliminar un registro (corrección de captura)")
-            opciones = {f"{r['fecha']} — {r['planta']} — {money(r['monto'])} — {r['linea_venta']}": r["id"] for r in rows}
+            opciones = {
+                f"{r['fecha']} — {r['planta']} — {money(r['monto'])} — {lineas_venta_display(r['linea_venta'])}": r["id"]
+                for r in rows
+            }
             elegido = st.selectbox("Selecciona", ["—"] + list(opciones.keys()), key="vta_editar")
             if elegido != "—":
                 vid = opciones[elegido]
@@ -99,9 +106,9 @@ with tab_lista:
                             "Planta", PLANTAS,
                             index=PLANTAS.index(venta["planta"]) if venta["planta"] in PLANTAS else 0,
                         )
-                        linea_venta_ed = st.selectbox(
-                            "Línea de venta (producto)", LINEAS_VENTA,
-                            index=LINEAS_VENTA.index(venta["linea_venta"]) if venta["linea_venta"] in LINEAS_VENTA else 0,
+                        lineas_venta_ed = st.multiselect(
+                            "Línea de venta (producto) — puedes elegir varios", LINEAS_VENTA,
+                            default=[v for v in as_lineas_venta(venta["linea_venta"]) if v in LINEAS_VENTA],
                         )
                         ce3, ce4 = st.columns(2)
                         cliente_ed = ce3.text_input("Cliente", value=venta.get("cliente") or "")
@@ -118,12 +125,12 @@ with tab_lista:
                         if guardar:
                             if monto_ed <= 0:
                                 st.error("El monto debe ser mayor a 0.")
-                            elif not linea_venta_ed.strip():
-                                st.error("Ingresa la línea de venta.")
+                            elif not lineas_venta_ed:
+                                st.error("Selecciona al menos una línea de venta.")
                             else:
                                 db.update_venta(
                                     vid, vendedor_id=vendedor_id_ed, fecha=str(fecha_ed), planta=planta_ed,
-                                    linea_venta=linea_venta_ed, monto=monto_ed, notas=notas_ed,
+                                    linea_venta=lineas_venta_ed, monto=monto_ed, notas=notas_ed,
                                     cliente=cliente_ed.strip(), numero_ordenes=int(numero_ordenes_ed),
                                 )
                                 st.success("Venta actualizada.")
@@ -150,7 +157,7 @@ with tab_nueva:
             c1, c2 = st.columns(2)
             fecha = c1.date_input("Fecha de la venta", value=date.today())
             planta = c2.selectbox("Planta", PLANTAS)
-            linea_venta = st.selectbox("Línea de venta (producto)", LINEAS_VENTA)
+            linea_venta = st.multiselect("Línea de venta (producto) — puedes elegir varios", LINEAS_VENTA)
             c3, c4 = st.columns(2)
             cliente = c3.text_input("Cliente")
             numero_ordenes = c4.number_input("Nº de órdenes", min_value=0, step=1, value=1)
@@ -160,6 +167,8 @@ with tab_nueva:
             if st.form_submit_button("Registrar venta", use_container_width=True):
                 if monto <= 0:
                     st.error("El monto debe ser mayor a 0.")
+                elif not linea_venta:
+                    st.error("Selecciona al menos una línea de venta.")
                 else:
                     db.create_venta(
                         vendedor_id, fecha, planta, linea_venta, monto, notas,
