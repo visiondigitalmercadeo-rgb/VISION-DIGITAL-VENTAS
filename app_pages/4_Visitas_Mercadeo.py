@@ -8,7 +8,7 @@ from streamlit_calendar import calendar as st_calendar
 import auth
 import database as db
 from config import CHECKLIST_DEFAULT, ESTADOS_PENDIENTE_MERCADEO, ESTADOS_VISITA_MERCADEO, STATUS
-from utils import base_layout, sidebar_user_box, vendedor_filter_selector
+from utils import base_layout, download_excel_button, sidebar_user_box, vendedor_filter_selector
 
 user = auth.current_user()
 sidebar_user_box()
@@ -99,6 +99,7 @@ with tab_lista:
             "Vendedor": db.nombre_vendedor(v["vendedor_id"], vendedores),
         } for v in visitas])
         st.dataframe(resumen, use_container_width=True, hide_index=True)
+        download_excel_button(resumen, "visitas_mercadeo.xlsx", key="mkt_descargar_excel")
 
         st.markdown("#### ✅ Completar / actualizar checklist de una visita")
         opciones = {f"{v['fecha']} — {v['punto_venta']}": v["id"] for v in visitas}
@@ -256,6 +257,7 @@ with tab_pendientes:
                 "Estado": p["estado"], "Vendedor": db.nombre_vendedor(p["vendedor_id"], vendedores_p),
             } for p in pendientes_rows])
             st.dataframe(df_p, use_container_width=True, hide_index=True)
+            download_excel_button(df_p, "pendientes_mercadeo.xlsx", key="mkt_pend_descargar_excel")
 
             if auth.can_edit():
                 st.markdown("#### ✏️ Actualizar pendiente")
