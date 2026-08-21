@@ -22,6 +22,9 @@ COLUMN_EMOJI = {
     "Lista de tareas": "📋", "Emergencias": "🚨", "En proceso": "🔧",
     "Cambios": "✏️", "Entregado": "✅",
 }
+# El semáforo (🟢/🔴) solo se muestra en estas columnas — no aplica a
+# "Lista de tareas" ni "Emergencias", que todavía no están en producción.
+COLUMNAS_CON_SEMAFORO = {"En proceso", "Cambios", "Entregado"}
 
 puede_crear = user["rol"] in ("admin", "vendedor")
 puede_mover = user["rol"] in ("admin", "disenador")
@@ -50,6 +53,10 @@ with tab_tablero:
                 "Material": r.get("material"), "Acabado": r.get("acabado"), "Medida": r.get("medida"),
                 "Fecha necesaria": r.get("fecha_necesaria"), "Estado": r.get("estado"),
                 "Cambios necesarios": r.get("cambios_necesarios"),
+                "Semáforo": (
+                    ("Parado por emergencia" if r.get("detenido_emergencia") else "Sigue en proceso")
+                    if r.get("estado") in COLUMNAS_CON_SEMAFORO else "—"
+                ),
                 "Creado": r.get("creado_en"),
                 "Vendedor": db.nombre_vendedor(r["vendedor_id"], db.list_usuarios()),
             } for r in rows]),
@@ -66,7 +73,11 @@ with tab_tablero:
                 st.caption("Sin solicitudes.")
             for r in items:
                 with st.container(border=True):
-                    st.markdown(f"**{r.get('cliente') or 'Sin cliente'}**")
+                    if estado in COLUMNAS_CON_SEMAFORO:
+                        semaforo = "🔴" if r.get("detenido_emergencia") else "🟢"
+                        st.markdown(f"{semaforo} **{r.get('cliente') or 'Sin cliente'}**")
+                    else:
+                        st.markdown(f"**{r.get('cliente') or 'Sin cliente'}**")
                     st.caption(r.get("producto") or "—")
                     st.caption(f"Vendedor: {db.nombre_vendedor(r['vendedor_id'], vendedores)}")
                     if r.get("fecha_necesaria"):
@@ -156,9 +167,21 @@ with tab_tablero:
                             "Estado (columna del tablero)", ESTADOS_DISENO,
                             index=ESTADOS_DISENO.index(d["estado"]) if d.get("estado") in ESTADOS_DISENO else 0,
                         )
+                        opciones_semaforo = ["🟢 Sigue en proceso", "🔴 Parado por trabajo de emergencia"]
+                        semaforo_ed = st.radio(
+                            "Semáforo (se muestra en las columnas En proceso, Cambios y Entregado)",
+                            opciones_semaforo,
+                            index=1 if d.get("detenido_emergencia") else 0,
+                            horizontal=True,
+                        )
                     else:
                         estado_ed = d.get("estado")
                         st.caption(f"Estado actual: **{estado_ed}** — solo el diseñador o el administrador lo pueden mover.")
+                        if d.get("estado") in COLUMNAS_CON_SEMAFORO:
+                            st.caption(
+                                "🔴 Parado por trabajo de emergencia" if d.get("detenido_emergencia")
+                                else "🟢 Sigue en proceso"
+                            )
 
                     if puede_editar_esta:
                         colf1, colf2 = st.columns(2)
@@ -171,6 +194,8 @@ with tab_tablero:
                     if guardar:
                         error_msg = None
                         update_kwargs = {"estado": estado_ed}
+                        if puede_mover:
+                            update_kwargs["detenido_emergencia"] = semaforo_ed.startswith("🔴")
                         if puede_editar_esta:
                             if not cliente_ed.strip():
                                 error_msg = "El nombre del cliente es obligatorio."
