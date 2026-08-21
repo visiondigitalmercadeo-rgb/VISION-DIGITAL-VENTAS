@@ -25,11 +25,18 @@ ventas_hoy = db.list_ventas(vendedor_id, desde=hoy, hasta=hoy)
 total_ventas_hoy = sum(v["monto"] or 0 for v in ventas_hoy)
 reclamos_abiertos = [r for r in db.list_reclamos(vendedor_id) if r["estatus"] in ("Abierto", "En proceso")]
 
-c1, c2, c3, c4 = st.columns(4)
+inicio_mes = hoy.replace(day=1)
+ventas_mes = db.list_ventas(vendedor_id, desde=inicio_mes, hasta=hoy)
+total_ventas_mes = sum(v["monto"] or 0 for v in ventas_mes)
+ordenes_mes = sum(v.get("numero_ordenes") or 0 for v in ventas_mes)
+
+c1, c2, c3, c4, c5 = st.columns(5)
 c1.metric("Citas/visitas de hoy", len(citas_hoy))
 c2.metric("Seguimientos próximos (3 días)", len(seguimientos))
 c3.metric("Venta registrada hoy", money(total_ventas_hoy))
 c4.metric("Reclamos abiertos", len(reclamos_abiertos))
+c5.metric(f"Venta del mes en curso ({hoy.strftime('%B')})", money(total_ventas_mes),
+          help=f"{ordenes_mes} órdenes registradas en {hoy.strftime('%B')}.")
 
 st.divider()
 
