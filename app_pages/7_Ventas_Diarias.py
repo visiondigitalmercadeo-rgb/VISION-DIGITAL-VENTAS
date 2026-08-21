@@ -29,14 +29,17 @@ with tab_lista:
         vendedores = db.list_usuarios()
         df = pd.DataFrame([{
             "ID": r["id"], "Fecha": r["fecha"], "Vendedor": db.nombre_vendedor(r["vendedor_id"], vendedores),
-            "Planta": r["planta"], "Línea de venta": r["linea_venta"], "Monto": r["monto"], "Notas": r["notas"],
+            "Planta": r["planta"], "Línea de venta": r["linea_venta"], "Cliente": r.get("cliente") or "—",
+            "Nº de órdenes": r.get("numero_ordenes") or 0, "Monto": r["monto"], "Notas": r["notas"],
         } for r in rows])
 
         total = df["Monto"].sum()
-        c1, c2, c3 = st.columns(3)
+        total_ordenes = int(df["Nº de órdenes"].sum())
+        c1, c2, c3, c4 = st.columns(4)
         c1.metric("Total del periodo", money(total))
         c2.metric("Nº de ventas", len(df))
         c3.metric("Promedio por venta", money(total / len(df) if len(df) else 0))
+        c4.metric("Nº de órdenes del periodo", total_ordenes)
 
         df_display = df.copy()
         df_display["Monto"] = df_display["Monto"].apply(money)
@@ -44,8 +47,24 @@ with tab_lista:
         download_excel_button(df, "ventas.xlsx", key="vta_descargar_excel")
 
         st.markdown("##### Por planta")
-        por_planta = df.groupby("Planta")["Monto"].sum().reindex(PLANTAS).fillna(0)
-        st.dataframe(por_planta.apply(money).rename("Total"), use_container_width=True)
+        por_planta = df.groupby("Planta").agg(
+            Total=("Monto", "sum"), **{"Nº de órdenes": ("Nº de órdenes", "sum")}
+        ).reindex(PLANTAS).fillna(0)
+        por_planta_display = por_planta.copy()
+        por_planta_display["Total"] = por_planta_display["Total"].apply(money)
+        por_planta_display["Nº de órdenes"] = por_planta_display["Nº de órdenes"].astype(int)
+        st.dataframe(por_planta_display, use_container_width=True)
+
+        st.markdown("##### Órdenes por día")
+        df["FechaDT"] = pd.to_datetime(df["Fecha"])
+        ordenes_dia = df.groupby("FechaDT")["Nº de órdenes"].sum().sort_index()
+        ordenes_dia.index = ordenes_dia.index.strftime("%Y-%m-%d")
+        st.dataframe(ordenes_dia.rename("Nº de órdenes").astype(int), use_container_width=True)
+
+        st.markdown("##### Órdenes por mes")
+        df["Mes"] = df["FechaDT"].dt.strftime("%Y-%m")
+        ordenes_mes = df.groupby("Mes")["Nº de órdenes"].sum().sort_index()
+        st.dataframe(ordenes_mes.rename("Nº de órdenes").astype(int), use_container_width=True)
 
         if auth.is_admin() or auth.is_vendedor():
             st.markdown("#### ✏️ Editar o eliminar un registro (corrección de captura)")
@@ -84,6 +103,11 @@ with tab_lista:
                             "Línea de venta (producto)", LINEAS_VENTA,
                             index=LINEAS_VENTA.index(venta["linea_venta"]) if venta["linea_venta"] in LINEAS_VENTA else 0,
                         )
+                        ce3, ce4 = st.columns(2)
+                        cliente_ed = ce3.text_input("Cliente", value=venta.get("cliente") or "")
+                        numero_ordenes_ed = ce4.number_input(
+                            "Nº de órdenes", value=int(venta.get("numero_ordenes") or 0), min_value=0, step=1,
+                        )
                         monto_ed = st.number_input("Monto de la venta (Q)", value=float(venta["monto"] or 0),
                                                     min_value=0.0, step=50.0)
                         notas_ed = st.text_area("Notas (opcional)", value=venta["notas"] or "")
@@ -100,6 +124,7 @@ with tab_lista:
                                 db.update_venta(
                                     vid, vendedor_id=vendedor_id_ed, fecha=str(fecha_ed), planta=planta_ed,
                                     linea_venta=linea_venta_ed, monto=monto_ed, notas=notas_ed,
+                                    cliente=cliente_ed.strip(), numero_ordenes=int(numero_ordenes_ed),
                                 )
                                 st.success("Venta actualizada.")
                                 st.rerun()
@@ -126,6 +151,9 @@ with tab_nueva:
             fecha = c1.date_input("Fecha de la venta", value=date.today())
             planta = c2.selectbox("Planta", PLANTAS)
             linea_venta = st.selectbox("Línea de venta (producto)", LINEAS_VENTA)
+            c3, c4 = st.columns(2)
+            cliente = c3.text_input("Cliente")
+            numero_ordenes = c4.number_input("Nº de órdenes", min_value=0, step=1, value=1)
             monto = st.number_input("Monto de la venta (Q)", min_value=0.0, step=50.0)
             notas = st.text_area("Notas (opcional)")
 
@@ -133,6 +161,9 @@ with tab_nueva:
                 if monto <= 0:
                     st.error("El monto debe ser mayor a 0.")
                 else:
-                    db.create_venta(vendedor_id, fecha, planta, linea_venta, monto, notas)
+                    db.create_venta(
+                        vendedor_id, fecha, planta, linea_venta, monto, notas,
+                        cliente=cliente.strip(), numero_ordenes=int(numero_ordenes),
+                    )
                     st.success(f"Venta de {money(monto)} registrada en planta {planta}.")
                     st.rerun()
