@@ -105,3 +105,47 @@ def download_excel_button(df: pd.DataFrame, filename: str, key: str,
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         use_container_width=True, key=key,
     )
+def hora_24_a_12(hhmm):
+    """Convierte 'HH:MM' (24h) a (hora_1_12, minuto, 'AM'/'PM')."""
+    from datetime import datetime as _dt
+    try:
+        t = _dt.strptime(hhmm, "%H:%M")
+    except (ValueError, TypeError):
+        t = _dt.now()
+    hora12 = t.hour % 12
+    hora12 = 12 if hora12 == 0 else hora12
+    ampm = "PM" if t.hour >= 12 else "AM"
+    return hora12, t.minute, ampm
+
+
+def hora_12_a_24(hora12, minuto, ampm):
+    """Convierte (hora_1_12, minuto, 'AM'/'PM') a texto 'HH:MM' (24h)."""
+    h = hora12 % 12
+    if ampm == "PM":
+        h += 12
+    return f"{h:02d}:{minuto:02d}"
+
+
+def selector_hora(label_prefix, key_prefix, hora12=12, minuto=0, ampm="AM"):
+    """Muestra 3 selectores (Hora 1-12 / Minutos / AM-PM) y retorna
+    el texto 'HH:MM' en formato 24 horas, listo para guardar."""
+    c1, c2, c3 = st.columns(3)
+    horas_op = list(range(1, 13))
+    hora_sel = c1.selectbox(
+        f"{label_prefix} (hora)", horas_op,
+        index=horas_op.index(hora12),
+        key=f"{key_prefix}_hora",
+    )
+    minutos_op = list(range(0, 60))
+    minuto_sel = c2.selectbox(
+        f"{label_prefix} (minutos)", minutos_op,
+        index=minutos_op.index(minuto),
+        format_func=lambda m: f"{m:02d}",
+        key=f"{key_prefix}_minuto",
+    )
+    ampm_sel = c3.selectbox(
+        f"{label_prefix} (AM/PM)", ["AM", "PM"],
+        index=["AM", "PM"].index(ampm),
+        key=f"{key_prefix}_ampm",
+    )
+    return hora_12_a_24(hora_sel, minuto_sel, ampm_sel)
