@@ -53,9 +53,17 @@ generales = st.Page("app_pages/8_Prospectos_Generales.py", title="Prospectos gen
 kpis = st.Page("app_pages/9_KPIs.py", title="KPIs", icon="📊")
 admin = st.Page("app_pages/10_Administracion.py", title="Administración de usuarios", icon="👥")
 
-pages = [inicio, prospectos, citas, mercadeo, cotizaciones, reclamos, ventas, generales, kpis]
-if rol == "admin":
-    pages.append(admin)
+if rol == "mercadeo":
+    # El rol 'mercadeo' solo tiene acceso a la pestaña de Visitas de mercadeo.
+    pages = [mercadeo]
+elif rol == "jefe_planta":
+    # El rol 'jefe_planta' solo tiene acceso a la pestaña de Reclamos
+    # (allí puede cambiar el estado de cada reclamo).
+    pages = [reclamos]
+else:
+    pages = [inicio, prospectos, citas, mercadeo, cotizaciones, reclamos, ventas, generales, kpis]
+    if rol == "admin":
+        pages.append(admin)
 
 nav = st.navigation(pages)
 nav.run()
