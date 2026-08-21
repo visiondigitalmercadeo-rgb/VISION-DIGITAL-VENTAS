@@ -87,6 +87,11 @@ def is_jefe_planta():
     return u is not None and u["rol"] == "jefe_planta"
 
 
+def is_disenador():
+    u = current_user()
+    return u is not None and u["rol"] == "disenador"
+
+
 def can_edit():
     """Admin, vendedor y mercadeo pueden crear/editar (el rol 'mercadeo' solo
     tiene acceso a la pestaña de Visitas de mercadeo, restringido en app.py);
