@@ -151,3 +151,37 @@ if not df_v.empty:
         st.plotly_chart(base_layout(fig5, title="Venta por vendedor"), use_container_width=True)
 else:
     st.info("No hay ventas registradas en este rango.")
+
+st.divider()
+
+# ===========================================================================
+# 5. Productos más vendidos (línea de venta)
+# ===========================================================================
+st.header("5 · Productos más vendidos")
+st.caption("Basado en la 'Línea de venta' (producto) registrada en cada venta del periodo seleccionado.")
+
+if df_v.empty:
+    st.info("No hay ventas registradas en este rango para calcular productos más vendidos.")
+else:
+    por_producto = df_v.groupby("linea_venta").agg(
+        Transacciones=("monto", "count"), Monto=("monto", "sum"),
+    ).sort_values("Monto", ascending=False)
+
+    m1, m2 = st.columns(2)
+    m1.metric("Producto con más ingresos (Q)", por_producto.index[0])
+    top_cantidad = por_producto.sort_values("Transacciones", ascending=False).index[0]
+    m2.metric("Producto más vendido (Nº de ventas)", top_cantidad)
+
+    top10 = por_producto.head(10).sort_values("Monto", ascending=True)
+    fig6 = go.Figure(go.Bar(x=top10["Monto"], y=top10.index, orientation="h", marker_color=CATEGORICAL[2]))
+    st.plotly_chart(
+        base_layout(fig6, title="Top 10 productos por monto vendido (Q)", height=max(320, 32 * len(top10) + 120)),
+        use_container_width=True,
+    )
+
+    tabla_productos = por_producto.copy()
+    tabla_productos["Monto"] = tabla_productos["Monto"].apply(money)
+    st.dataframe(
+        tabla_productos.rename_axis("Producto").reset_index(),
+        use_container_width=True, hide_index=True,
+    )
