@@ -12,7 +12,10 @@ user = auth.current_user()
 sidebar_user_box()
 
 st.title("⚠️ Reclamos")
-st.caption("Cliente, número de orden, fecha de reclamo, fecha de solución y estatus.")
+st.caption(
+    "Cliente, status, fecha de reclamo, descripción, comentarios del jefe de planta, "
+    "fecha en que la planta cumplirá el reclamo y fecha de cierre de caso."
+)
 
 tab_lista, tab_nueva = st.tabs(["📋 Reclamos", "➕ Nuevo reclamo"])
 
@@ -31,8 +34,11 @@ with tab_lista:
         df = pd.DataFrame([{
             "ID": r["id"], "Cliente": r["cliente"], "NIT": r["nit"] or "—",
             "Nº orden": r["numero_orden"], "Fecha reclamo": r["fecha_reclamo"],
-            "Fecha solución": r["fecha_solucion"] or "—", "Estatus": r["estatus"],
+            "Estatus": r["estatus"],
+            "Descripción": r["descripcion"] or "—",
             "Comentarios jefe planta": r.get("comentarios_jefe_planta") or "—",
+            "Fecha compromiso planta": r["fecha_solucion"] or "—",
+            "Fecha de cierre": r.get("fecha_cierre") or "—",
             "Vendedor": db.nombre_vendedor(r["vendedor_id"], vendedores),
         } for r in rows])
         st.dataframe(df, use_container_width=True, hide_index=True)
@@ -40,6 +46,7 @@ with tab_lista:
 
         puede_editar_completo = auth.can_edit()
         puede_cambiar_estado = puede_editar_completo or user["rol"] == "jefe_planta"
+        puede_cerrar_caso = user["rol"] in ("admin", "vendedor")
 
         if puede_cambiar_estado:
             st.markdown("#### ✏️ Actualizar estatus / fecha de solución")
@@ -52,40 +59,63 @@ with tab_lista:
                     st.warning("Este reclamo pertenece a otro vendedor.")
                 else:
                     with st.form(f"editar_rec_{rid}"):
-                        estatus = st.selectbox("Estatus", ESTADOS_RECLAMO,
+                        st.caption(f"Cliente: **{rec['cliente']}** — Fecha de reclamo: {rec['fecha_reclamo']}")
+                        estatus = st.selectbox("Status", ESTADOS_RECLAMO,
                                                 index=ESTADOS_RECLAMO.index(rec["estatus"]))
-                        tiene_solucion = estatus in ("Resuelto", "Cerrado")
-                        fecha_solucion = st.date_input(
-                            "Fecha de solución",
-                            value=date.fromisoformat(rec["fecha_solucion"]) if rec["fecha_solucion"] else date.today(),
-                            disabled=not tiene_solucion,
-                        )
+
                         if puede_editar_completo:
-                            descripcion = st.text_area("Descripción / notas", value=rec["descripcion"] or "")
+                            descripcion = st.text_area("Descripción del reclamo", value=rec["descripcion"] or "")
                         else:
                             descripcion = rec["descripcion"]
-                            st.caption(f"Descripción / notas: {descripcion or '—'}")
+                            st.caption(f"Descripción del reclamo: {descripcion or '—'}")
 
                         comentarios_jp = st.text_area(
-                            "Comentarios jefe planta (solución dada)",
+                            "Comentarios jefe de planta",
                             value=rec.get("comentarios_jefe_planta") or "",
                         )
+
+                        fecha_solucion = st.date_input(
+                            "Fecha que la planta va a cumplir el reclamo",
+                            value=date.fromisoformat(rec["fecha_solucion"]) if rec["fecha_solucion"] else date.today(),
+                        )
+
+                        st.markdown("##### Cierre de caso")
+                        if puede_cerrar_caso:
+                            cerrado_actual = bool(rec.get("fecha_cierre"))
+                            marcar_cerrado = st.checkbox("Marcar caso como cerrado", value=cerrado_actual)
+                            fecha_cierre_valor = (
+                                date.fromisoformat(rec["fecha_cierre"]) if rec.get("fecha_cierre") else date.today()
+                            )
+                            fecha_cierre = st.date_input(
+                                "Fecha de cierre de caso", value=fecha_cierre_valor, disabled=not marcar_cerrado,
+                            )
+                            st.caption("Solo el vendedor dueño del caso (o un administrador) puede cerrarlo.")
+                        else:
+                            marcar_cerrado = bool(rec.get("fecha_cierre"))
+                            fecha_cierre = rec.get("fecha_cierre")
+                            if rec.get("fecha_cierre"):
+                                st.caption(f"✅ Caso cerrado el {rec['fecha_cierre']}.")
+                            else:
+                                st.caption("Caso aún no cerrado. Solo el vendedor dueño del caso (o un administrador) puede cerrarlo.")
 
                         if puede_editar_completo:
                             colf1, colf2 = st.columns(2)
                             guardar = colf1.form_submit_button("Guardar", use_container_width=True)
                             eliminar = colf2.form_submit_button("Eliminar reclamo", use_container_width=True)
                         else:
-                            guardar = st.form_submit_button("Guardar estado", use_container_width=True)
+                            guardar = st.form_submit_button("Guardar", use_container_width=True)
                             eliminar = False
 
                         if guardar:
-                            db.update_reclamo(
-                                rid, estatus=estatus,
-                                fecha_solucion=str(fecha_solucion) if tiene_solucion else None,
+                            update_kwargs = dict(
+                                estatus=estatus,
+                                fecha_solucion=str(fecha_solucion),
                                 descripcion=descripcion,
                                 comentarios_jefe_planta=comentarios_jp,
                             )
+                            if puede_cerrar_caso:
+                                update_kwargs["fecha_cierre"] = str(fecha_cierre) if marcar_cerrado else None
+                            db.update_reclamo(rid, **update_kwargs)
                             st.success("Reclamo actualizado.")
                             st.rerun()
                         if eliminar:
@@ -113,7 +143,7 @@ with tab_nueva:
             nit = st.text_input("NIT (opcional)")
             numero_orden = st.text_input("Número de orden")
             fecha_reclamo = st.date_input("Fecha del reclamo", value=date.today())
-            estatus = st.selectbox("Estatus", ESTADOS_RECLAMO)
+            estatus = st.selectbox("Status", ESTADOS_RECLAMO)
             descripcion = st.text_area("Descripción del reclamo")
 
             if st.form_submit_button("Registrar reclamo", use_container_width=True):
