@@ -36,7 +36,10 @@ with tab_lista:
         } for r in rows])
         st.dataframe(df, use_container_width=True, hide_index=True)
 
-        if auth.can_edit():
+        puede_editar_completo = auth.can_edit()
+        puede_cambiar_estado = puede_editar_completo or user["rol"] == "jefe_planta"
+
+        if puede_cambiar_estado:
             st.markdown("#### ✏️ Actualizar estatus / fecha de solución")
             opciones = {f"{r['numero_orden'] or r['id']} — {r['cliente']}": r["id"] for r in rows}
             elegido = st.selectbox("Selecciona un reclamo", ["—"] + list(opciones.keys()))
@@ -55,10 +58,20 @@ with tab_lista:
                             value=date.fromisoformat(rec["fecha_solucion"]) if rec["fecha_solucion"] else date.today(),
                             disabled=not tiene_solucion,
                         )
-                        descripcion = st.text_area("Descripción / notas", value=rec["descripcion"] or "")
-                        colf1, colf2 = st.columns(2)
-                        guardar = colf1.form_submit_button("Guardar", use_container_width=True)
-                        eliminar = colf2.form_submit_button("Eliminar reclamo", use_container_width=True)
+                        if puede_editar_completo:
+                            descripcion = st.text_area("Descripción / notas", value=rec["descripcion"] or "")
+                        else:
+                            descripcion = rec["descripcion"]
+                            st.caption(f"Descripción / notas: {descripcion or '—'}")
+
+                        if puede_editar_completo:
+                            colf1, colf2 = st.columns(2)
+                            guardar = colf1.form_submit_button("Guardar", use_container_width=True)
+                            eliminar = colf2.form_submit_button("Eliminar reclamo", use_container_width=True)
+                        else:
+                            guardar = st.form_submit_button("Guardar estado", use_container_width=True)
+                            eliminar = False
+
                         if guardar:
                             db.update_reclamo(
                                 rid, estatus=estatus,
