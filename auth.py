@@ -77,7 +77,20 @@ def is_vista():
     return u is not None and u["rol"] == "vista"
 
 
-def can_edit():
-    """Admin y vendedor pueden crear/editar; el rol 'vista' es solo lectura."""
+def is_mercadeo():
     u = current_user()
-    return u is not None and u["rol"] in ("admin", "vendedor")
+    return u is not None and u["rol"] == "mercadeo"
+
+
+def is_jefe_planta():
+    u = current_user()
+    return u is not None and u["rol"] == "jefe_planta"
+
+
+def can_edit():
+    """Admin, vendedor y mercadeo pueden crear/editar (el rol 'mercadeo' solo
+    tiene acceso a la pestaña de Visitas de mercadeo, restringido en app.py);
+    el rol 'vista' es solo lectura. El rol 'jefe_planta' tiene un permiso
+    aparte, más limitado, definido directamente en la página de Reclamos."""
+    u = current_user()
+    return u is not None and u["rol"] in ("admin", "vendedor", "mercadeo")
