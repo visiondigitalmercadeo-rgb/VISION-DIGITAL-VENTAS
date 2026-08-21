@@ -72,7 +72,20 @@ def df_or_empty(rows, columns=None):
 
 def today_str():
     return str(date.today())
+    
+def as_lineas_venta(value):
+    """Normaliza el campo 'linea_venta': acepta datos viejos (texto único) o
+    nuevos (lista de productos seleccionados) y siempre retorna una lista."""
+    if isinstance(value, list):
+        return [v for v in value if v]
+    if value:
+        return [value]
+    return []
 
+
+def lineas_venta_display(value):
+    """Texto legible (separado por comas) para mostrar en tablas/reportes."""
+    return ", ".join(as_lineas_venta(value)) or "—"
 
 def to_excel_bytes(df: pd.DataFrame, sheet_name: str = "Datos") -> bytes:
     """Convierte un DataFrame a los bytes de un archivo .xlsx en memoria."""
