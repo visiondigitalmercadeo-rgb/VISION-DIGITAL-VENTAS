@@ -201,7 +201,8 @@ def diseno_pdf_bytes(d: dict, vendedor_nombre: str) -> bytes:
         ("Medida", d.get("medida") or "-"),
         ("Fecha en que se necesita", d.get("fecha_necesaria") or "-"),
         ("Fecha de solicitud", (d.get("creado_en") or "-")[:10]),
-        ("Estado actual", d.get("estado") or "-"),
+                ("Estado actual", d.get("estado") or "-"),
+        ("Cambios necesarios", d.get("cambios_necesarios") or "-"),
         ("Archivo adjunto", d.get("archivo_nombre") or "Sin archivo adjunto"),
     ]
     for etiqueta, valor in campos:
