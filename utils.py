@@ -1,3 +1,4 @@
+import io
 from datetime import date
 
 import pandas as pd
@@ -71,3 +72,23 @@ def df_or_empty(rows, columns=None):
 
 def today_str():
     return str(date.today())
+
+
+def to_excel_bytes(df: pd.DataFrame, sheet_name: str = "Datos") -> bytes:
+    """Convierte un DataFrame a los bytes de un archivo .xlsx en memoria."""
+    buffer = io.BytesIO()
+    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+        df.to_excel(writer, index=False, sheet_name=sheet_name[:31])
+    return buffer.getvalue()
+
+
+def download_excel_button(df: pd.DataFrame, filename: str, key: str,
+                           label: str = "⬇️ Descargar Excel", sheet_name: str = "Datos"):
+    """Botón para descargar un DataFrame como archivo Excel (.xlsx). Disponible
+    para cualquier rol que pueda ver la tabla correspondiente (vendedor, mercadeo,
+    administrador, etc.) — solo exporta lo que ya está filtrado en pantalla."""
+    st.download_button(
+        label, data=to_excel_bytes(df, sheet_name=sheet_name), file_name=filename,
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        use_container_width=True, key=key,
+    )
