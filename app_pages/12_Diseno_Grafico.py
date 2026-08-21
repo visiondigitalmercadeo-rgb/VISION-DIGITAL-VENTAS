@@ -49,6 +49,7 @@ with tab_tablero:
                 "ID": r["id"], "Cliente": r.get("cliente"), "Producto": r.get("producto"),
                 "Material": r.get("material"), "Acabado": r.get("acabado"), "Medida": r.get("medida"),
                 "Fecha necesaria": r.get("fecha_necesaria"), "Estado": r.get("estado"),
+                "Cambios necesarios": r.get("cambios_necesarios"),
                 "Creado": r.get("creado_en"),
                 "Vendedor": db.nombre_vendedor(r["vendedor_id"], db.list_usuarios()),
             } for r in rows]),
@@ -70,6 +71,8 @@ with tab_tablero:
                     st.caption(f"Vendedor: {db.nombre_vendedor(r['vendedor_id'], vendedores)}")
                     if r.get("fecha_necesaria"):
                         st.caption(f"📅 Necesita: {r['fecha_necesaria']}")
+                    if r.get("cambios_necesarios"):
+                        st.caption(f"🔁 Cambios necesarios: {r['cambios_necesarios']}")
                     st.caption(f"🕒 {(r.get('creado_en') or '')[:16].replace('T', ' ')}")
 
                     pdf_bytes = diseno_pdf_bytes(r, db.nombre_vendedor(r["vendedor_id"], vendedores))
@@ -127,6 +130,11 @@ with tab_tablero:
                             "Fecha en que se necesita",
                             value=date.fromisoformat(d["fecha_necesaria"]) if d.get("fecha_necesaria") else date.today(),
                         )
+                        cambios_necesarios_ed = st.text_area(
+                            "Cambios necesarios",
+                            value=d.get("cambios_necesarios") or "",
+                            help="Qué hay que ajustar en el diseño (por ejemplo, después de la revisión del cliente).",
+                        )
                         nuevo_archivo = st.file_uploader(
                             "Reemplazar archivo adjunto (opcional)", type=["pdf", "png", "jpg", "jpeg"],
                             key=f"dis_archivo_ed_{did}",
@@ -141,6 +149,7 @@ with tab_tablero:
                         st.caption(
                             f"Medida: {d.get('medida') or '—'} · Necesita para: {d.get('fecha_necesaria') or '—'}"
                         )
+                        st.caption(f"Cambios necesarios: {d.get('cambios_necesarios') or '—'}")
 
                     if puede_mover:
                         estado_ed = st.selectbox(
@@ -170,6 +179,7 @@ with tab_tablero:
                                     cliente=cliente_ed.strip(), producto=producto_ed,
                                     material=material_ed.strip(), acabado=acabado_ed.strip(),
                                     medida=medida_ed.strip(), fecha_necesaria=str(fecha_necesaria_ed),
+                                    cambios_necesarios=cambios_necesarios_ed.strip() or None,
                                 )
                                 if nuevo_archivo is not None:
                                     try:
@@ -221,6 +231,10 @@ with tab_nueva:
             acabado = c3.text_input("¿Qué acabado lleva?")
             medida = c4.text_input("Medida del material (ej. 21x29.7 cm)")
             fecha_necesaria = st.date_input("Fecha en que se necesita", value=date.today())
+            cambios_necesarios = st.text_area(
+                "Cambios necesarios (opcional)",
+                help="Déjalo en blanco si es una solicitud nueva; úsalo si ya hay una versión previa que ajustar.",
+            )
             archivo = st.file_uploader(
                 "Adjuntar archivo de referencia (opcional) — PDF, PNG o JPEG",
                 type=["pdf", "png", "jpg", "jpeg"],
@@ -240,6 +254,7 @@ with tab_nueva:
                             vendedor_id, cliente.strip(), producto, material.strip(), acabado.strip(),
                             medida.strip(), fecha_necesaria, tipo_solicitud,
                             archivo_nombre=archivo_nombre, archivo_tipo=archivo_tipo, archivo_b64=archivo_b64,
+                            cambios_necesarios=cambios_necesarios.strip() or None,
                         )
                         st.success(f"Solicitud enviada a la columna '{tipo_solicitud}'.")
                         st.rerun()
