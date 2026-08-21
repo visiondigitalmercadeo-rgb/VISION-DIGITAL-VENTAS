@@ -1,5 +1,5 @@
 import base64
-from datetime import date
+from datetime import date, timedelta
 
 import pandas as pd
 import streamlit as st
@@ -36,9 +36,43 @@ tab_tablero, tab_nueva = st.tabs(["🗂️ Tablero", "➕ Nueva solicitud"])
 # --------------------------------------------------------------------------
 with tab_tablero:
     filtro_vendedor = vendedor_filter_selector(key="dis_filtro_vendedor")
-    busqueda = st.text_input("🔎 Buscar por cliente o producto (opcional)", key="dis_busqueda")
 
     rows = db.list_disenos(filtro_vendedor)  # ya vienen ordenadas: más nueva primero
+
+    # ------------------------------------------------------------------
+    # KPI: solicitudes por entregar hoy y mañana (para dar seguimiento
+    # rápido al diseñador). No cuenta las que ya están en "Entregado".
+    # ------------------------------------------------------------------
+    hoy = date.today()
+    manana = hoy + timedelta(days=1)
+    pendientes_entrega = [
+        r for r in rows
+        if r.get("estado") != "Entregado" and r.get("fecha_necesaria") in (str(hoy), str(manana))
+    ]
+    entregar_hoy = [r for r in pendientes_entrega if r.get("fecha_necesaria") == str(hoy)]
+    entregar_manana = [r for r in pendientes_entrega if r.get("fecha_necesaria") == str(manana)]
+
+    kc1, kc2 = st.columns(2)
+    kc1.metric("📦 Por entregar hoy", len(entregar_hoy))
+    kc2.metric("📦 Por entregar mañana", len(entregar_manana))
+
+    if pendientes_entrega:
+        with st.expander(f"Ver detalle de las {len(pendientes_entrega)} solicitudes por entregar (hoy y mañana)"):
+            vendedores_kpi = db.list_usuarios()
+            st.dataframe(
+                pd.DataFrame([{
+                    "Cliente": r.get("cliente") or "—",
+                    "Producto": r.get("producto") or "—",
+                    "Fecha necesaria": r.get("fecha_necesaria"),
+                    "Estado": r.get("estado"),
+                    "Vendedor": db.nombre_vendedor(r["vendedor_id"], vendedores_kpi),
+                } for r in sorted(pendientes_entrega, key=lambda x: x.get("fecha_necesaria") or "")]),
+                use_container_width=True, hide_index=True,
+            )
+
+    st.divider()
+
+    busqueda = st.text_input("🔎 Buscar por cliente o producto (opcional)", key="dis_busqueda")
     if busqueda.strip():
         q = busqueda.strip().lower()
         rows = [
