@@ -78,6 +78,41 @@ with col_b:
         st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
 st.divider()
+
+# --------------------------------------------------------------------------
+# Diseño Gráfico — entregas próximas (para dar seguimiento rápido al
+# diseñador). Cada vendedor ve solo lo suyo; admin y vista ven todo.
+# --------------------------------------------------------------------------
+st.subheader("🎨 Diseño Gráfico — entregas próximas")
+manana = hoy + timedelta(days=1)
+disenos_scope = db.list_disenos(vendedor_id)
+disenos_pendientes = [
+    d for d in disenos_scope
+    if d.get("estado") != "Entregado" and d.get("fecha_necesaria") in (str(hoy), str(manana))
+]
+entregar_hoy = [d for d in disenos_pendientes if d.get("fecha_necesaria") == str(hoy)]
+entregar_manana = [d for d in disenos_pendientes if d.get("fecha_necesaria") == str(manana)]
+
+cd1, cd2 = st.columns(2)
+cd1.metric("📦 Por entregar hoy", len(entregar_hoy))
+cd2.metric("📦 Por entregar mañana", len(entregar_manana))
+
+if not disenos_pendientes:
+    st.info("No hay diseños por entregar hoy ni mañana.")
+else:
+    vendedores_d = db.list_usuarios()
+    filas_d = []
+    for d in sorted(disenos_pendientes, key=lambda x: x.get("fecha_necesaria") or ""):
+        filas_d.append({
+            "Cliente": d.get("cliente") or "—",
+            "Producto": d.get("producto") or "—",
+            "Fecha necesaria": d.get("fecha_necesaria"),
+            "Estado": d.get("estado"),
+            **({"Vendedor": db.nombre_vendedor(d["vendedor_id"], vendedores_d)} if user["rol"] != "vendedor" else {}),
+        })
+    st.dataframe(pd.DataFrame(filas_d), use_container_width=True, hide_index=True)
+
+st.divider()
 st.caption(
     "Usa el menú de la izquierda para navegar entre Prospección (CRM), Citas, Visitas de mercadeo, "
     "Cotizaciones, Reclamos, Venta del día y KPIs."
