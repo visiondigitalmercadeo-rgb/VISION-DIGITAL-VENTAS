@@ -18,7 +18,7 @@ Cómo se eligen las credenciales, en este orden:
 """
 
 import os
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 import bcrypt
 import firebase_admin
@@ -329,6 +329,51 @@ def prospectos_con_seguimiento_proximo(vendedor_id=None, dias=3):
 
 
 # ---------------------------------------------------------------------------
+# Llamadas
+# ---------------------------------------------------------------------------
+def find_llamadas_by_nit(nit, exclude_id=None):
+    client = get_client()
+    rows = [_doc_to_dict(s) for s in client.collection("llamadas").where("nit", "==", nit.strip()).stream()]
+    if exclude_id:
+        rows = [r for r in rows if r["id"] != exclude_id]
+    return rows
+
+
+def list_llamadas(vendedor_id=None):
+    client = get_client()
+    coll = client.collection("llamadas")
+    query = coll.where("vendedor_id", "==", vendedor_id) if vendedor_id else coll
+    rows = [_doc_to_dict(s) for s in query.stream()]
+    rows.sort(key=lambda r: r["fecha_registro"] or "", reverse=True)
+    return rows
+
+
+def create_llamada(nombre_cliente, nit, telefono, email, direccion, vendedor_id,
+                    fecha_seguimiento, recordatorio, notas, estado, tipo_llamada):
+    get_client().collection("llamadas").document().set({
+        "nombre_cliente": nombre_cliente, "nit": nit.strip(), "telefono": telefono, "email": email,
+        "direccion": direccion, "vendedor_id": vendedor_id, "fecha_registro": str(date.today()),
+        "fecha_seguimiento": str(fecha_seguimiento) if fecha_seguimiento else None,
+        "recordatorio": recordatorio, "notas": notas, "estado": estado, "tipo_llamada": tipo_llamada,
+    })
+
+
+def update_llamada(llamada_id, **kwargs):
+    if kwargs:
+        get_client().collection("llamadas").document(llamada_id).update(kwargs)
+
+
+def get_llamada(llamada_id):
+    snap = get_client().collection("llamadas").document(llamada_id).get()
+    return _doc_to_dict(snap) if snap.exists else None
+
+
+def delete_llamada(llamada_id):
+    """Elimina la llamada por completo (no se puede deshacer)."""
+    get_client().collection("llamadas").document(llamada_id).delete()
+
+
+# ---------------------------------------------------------------------------
 # Cotizaciones
 # ---------------------------------------------------------------------------
 def list_cotizaciones(vendedor_id=None):
@@ -476,7 +521,6 @@ def create_reclamo(cliente, nit, numero_orden, fecha_reclamo, estatus, descripci
         "fecha_reclamo": str(fecha_reclamo), "fecha_solucion": None,
         "estatus": estatus, "descripcion": descripcion, "vendedor_id": vendedor_id,
         "comentarios_jefe_planta": None, "fecha_cierre": None,
-    
     })
 
 
@@ -504,20 +548,12 @@ def list_ventas(vendedor_id=None, desde=None, hasta=None):
     rows.sort(key=lambda r: r["fecha"], reverse=True)
     return rows
 
-def create_venta(
-    vendedor_id, fecha, planta,
-    linea_venta, monto, notas,
-    cliente=None, numero_ordenes=0,
-):
+
+def create_venta(vendedor_id, fecha, planta, linea_venta, monto, notas, cliente=None, numero_ordenes=0):
     get_client().collection("ventas").document().set({
-        "vendedor_id": vendedor_id,
-        "fecha": str(fecha),
-        "planta": planta,
-        "linea_venta": linea_venta,
-        "monto": monto,
-        "notas": notas,
-        "cliente": cliente,
-        "numero_ordenes": numero_ordenes,
+        "vendedor_id": vendedor_id, "fecha": str(fecha), "planta": planta,
+        "linea_venta": linea_venta, "monto": monto, "notas": notas,
+        "cliente": cliente, "numero_ordenes": numero_ordenes,
     })
 
 
@@ -528,46 +564,43 @@ def update_venta(venta_id, **kwargs):
 
 def delete_venta(venta_id):
     get_client().collection("ventas").document(venta_id).delete()
-  # ---------------------------------------------------------------------------
-# Llamadas
+
+
 # ---------------------------------------------------------------------------
-def find_llamadas_by_nit(nit, exclude_id=None):
+# Diseño Gráfico (tablero estilo Trello)
+# ---------------------------------------------------------------------------
+def list_disenos(vendedor_id=None):
+    """Retorna las solicitudes de diseño, más nuevas primero."""
     client = get_client()
-    rows = [_doc_to_dict(s) for s in client.collection("llamadas").where("nit", "==", nit.strip()).stream()]
-    if exclude_id:
-        rows = [r for r in rows if r["id"] != exclude_id]
-    return rows
-
-
-def list_llamadas(vendedor_id=None):
-    client = get_client()
-    coll = client.collection("llamadas")
+    coll = client.collection("disenos")
     query = coll.where("vendedor_id", "==", vendedor_id) if vendedor_id else coll
     rows = [_doc_to_dict(s) for s in query.stream()]
-    rows.sort(key=lambda r: r["fecha_registro"] or "", reverse=True)
+    rows.sort(key=lambda r: r.get("creado_en") or "", reverse=True)
     return rows
 
 
-def create_llamada(nombre_cliente, nit, telefono, email, direccion, vendedor_id,
-                    fecha_seguimiento, recordatorio, notas, estado, tipo_llamada):
-    get_client().collection("llamadas").document().set({
-        "nombre_cliente": nombre_cliente, "nit": nit.strip(), "telefono": telefono, "email": email,
-        "direccion": direccion, "vendedor_id": vendedor_id, "fecha_registro": str(date.today()),
-        "fecha_seguimiento": str(fecha_seguimiento) if fecha_seguimiento else None,
-        "recordatorio": recordatorio, "notas": notas, "estado": estado, "tipo_llamada": tipo_llamada,
-    })
-
-
-def update_llamada(llamada_id, **kwargs):
-    if kwargs:
-        get_client().collection("llamadas").document(llamada_id).update(kwargs)
-
-
-def get_llamada(llamada_id):
-    snap = get_client().collection("llamadas").document(llamada_id).get()
+def get_diseno(diseno_id):
+    snap = get_client().collection("disenos").document(diseno_id).get()
     return _doc_to_dict(snap) if snap.exists else None
 
 
-def delete_llamada(llamada_id):
-    """Elimina la llamada por completo (no se puede deshacer)."""
-    get_client().collection("llamadas").document(llamada_id).delete()
+def create_diseno(
+    vendedor_id, cliente, producto, material, acabado, medida, fecha_necesaria, estado,
+    archivo_nombre=None, archivo_tipo=None, archivo_b64=None,
+):
+    get_client().collection("disenos").document().set({
+        "vendedor_id": vendedor_id, "cliente": cliente, "producto": producto,
+        "material": material, "acabado": acabado, "medida": medida,
+        "fecha_necesaria": str(fecha_necesaria) if fecha_necesaria else None,
+        "estado": estado, "creado_en": datetime.now().isoformat(timespec="seconds"),
+        "archivo_nombre": archivo_nombre, "archivo_tipo": archivo_tipo, "archivo_b64": archivo_b64,
+    })
+
+
+def update_diseno(diseno_id, **kwargs):
+    if kwargs:
+        get_client().collection("disenos").document(diseno_id).update(kwargs)
+
+
+def delete_diseno(diseno_id):
+    get_client().collection("disenos").document(diseno_id).delete()
