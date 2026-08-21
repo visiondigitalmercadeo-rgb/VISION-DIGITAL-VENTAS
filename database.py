@@ -518,3 +518,46 @@ def update_venta(venta_id, **kwargs):
 
 def delete_venta(venta_id):
     get_client().collection("ventas").document(venta_id).delete()
+  # ---------------------------------------------------------------------------
+# Llamadas
+# ---------------------------------------------------------------------------
+def find_llamadas_by_nit(nit, exclude_id=None):
+    client = get_client()
+    rows = [_doc_to_dict(s) for s in client.collection("llamadas").where("nit", "==", nit.strip()).stream()]
+    if exclude_id:
+        rows = [r for r in rows if r["id"] != exclude_id]
+    return rows
+
+
+def list_llamadas(vendedor_id=None):
+    client = get_client()
+    coll = client.collection("llamadas")
+    query = coll.where("vendedor_id", "==", vendedor_id) if vendedor_id else coll
+    rows = [_doc_to_dict(s) for s in query.stream()]
+    rows.sort(key=lambda r: r["fecha_registro"] or "", reverse=True)
+    return rows
+
+
+def create_llamada(nombre_cliente, nit, telefono, email, direccion, vendedor_id,
+                    fecha_seguimiento, recordatorio, notas, estado, tipo_llamada):
+    get_client().collection("llamadas").document().set({
+        "nombre_cliente": nombre_cliente, "nit": nit.strip(), "telefono": telefono, "email": email,
+        "direccion": direccion, "vendedor_id": vendedor_id, "fecha_registro": str(date.today()),
+        "fecha_seguimiento": str(fecha_seguimiento) if fecha_seguimiento else None,
+        "recordatorio": recordatorio, "notas": notas, "estado": estado, "tipo_llamada": tipo_llamada,
+    })
+
+
+def update_llamada(llamada_id, **kwargs):
+    if kwargs:
+        get_client().collection("llamadas").document(llamada_id).update(kwargs)
+
+
+def get_llamada(llamada_id):
+    snap = get_client().collection("llamadas").document(llamada_id).get()
+    return _doc_to_dict(snap) if snap.exists else None
+
+
+def delete_llamada(llamada_id):
+    """Elimina la llamada por completo (no se puede deshacer)."""
+    get_client().collection("llamadas").document(llamada_id).delete()
