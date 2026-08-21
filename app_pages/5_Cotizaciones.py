@@ -6,7 +6,7 @@ import streamlit as st
 import auth
 import database as db
 from config import ESTADOS_COTIZACION
-from utils import money, sidebar_user_box, vendedor_filter_selector
+from utils import download_excel_button, money, sidebar_user_box, vendedor_filter_selector
 
 user = auth.current_user()
 sidebar_user_box()
@@ -35,6 +35,7 @@ with tab_lista:
             "Estado": r["estado"], "Vendedor": db.nombre_vendedor(r["vendedor_id"], vendedores),
         } for r in rows])
         st.dataframe(df, use_container_width=True, hide_index=True)
+        download_excel_button(df, "cotizaciones.xlsx", key="cot_descargar_excel")
 
         if auth.can_edit():
             st.markdown("#### ✏️ Actualizar estado de cotización")
