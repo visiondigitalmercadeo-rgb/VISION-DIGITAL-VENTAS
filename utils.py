@@ -1,4 +1,6 @@
 import base64
+import hashlib
+import html
 import io
 from datetime import date
 
@@ -168,6 +170,168 @@ def archivo_a_b64(archivo_subido, max_bytes):
     return archivo_subido.name, archivo_subido.type, base64.b64encode(datos).decode("ascii")
 
 
+def archivos_a_b64_lista(archivos_subidos, max_bytes, max_archivos=3):
+    """Convierte una lista de archivos subidos con
+    st.file_uploader(accept_multiple_files=True) a una lista de
+    {"nombre", "tipo", "b64"}. Retorna [] si no hay archivos. Lanza ValueError
+    si se suben más de max_archivos, o si alguno pesa más de max_bytes."""
+    archivos_subidos = archivos_subidos or []
+    if len(archivos_subidos) > max_archivos:
+        raise ValueError(
+            f"Puedes adjuntar máximo {max_archivos} archivos (subiste {len(archivos_subidos)}). "
+            "Quita alguno e intenta de nuevo."
+        )
+    resultado = []
+    for archivo in archivos_subidos:
+        datos = archivo.getvalue()
+        if len(datos) > max_bytes:
+            raise ValueError(
+                f"El archivo '{archivo.name}' pesa {len(datos) / 1000:.0f} KB; el máximo permitido "
+                f"por archivo es {max_bytes / 1000:.0f} KB. Comprime la imagen o el PDF e intenta de nuevo."
+            )
+        resultado.append({
+            "nombre": archivo.name, "tipo": archivo.type,
+            "b64": base64.b64encode(datos).decode("ascii"),
+        })
+    return resultado
+
+
+def diseno_archivos_lista(d: dict) -> list:
+    """Normaliza los archivos adjuntos de una solicitud de diseño: soporta
+    tanto el formato nuevo (lista 'archivos') como el formato viejo (un solo
+    archivo en 'archivo_nombre'/'archivo_tipo'/'archivo_b64'), para que las
+    solicitudes creadas antes de este cambio se sigan viendo bien."""
+    if d.get("archivos"):
+        return d["archivos"]
+    if d.get("archivo_b64"):
+        return [{
+            "nombre": d.get("archivo_nombre") or "archivo",
+            "tipo": d.get("archivo_tipo") or "application/octet-stream",
+            "b64": d["archivo_b64"],
+        }]
+    return []
+
+
+# Versión pastel de la paleta de marca (CATEGORICAL), en el mismo orden, para
+# las etiquetas de producto del resumen de Diseño Gráfico: (fondo, texto).
+_CATEGORICAL_PASTEL = [
+    ("#dce9fb", "#1c5cab"),
+    ("#fbe3d5", "#b14d1f"),
+    ("#d7f3e7", "#0f7a52"),
+    ("#fdeecb", "#8a6100"),
+    ("#fbe0ea", "#a83866"),
+    ("#dcefdc", "#0a5c0a"),
+    ("#e6e2f7", "#392a7a"),
+    ("#fbdcdb", "#a32b2b"),
+]
+
+
+def _color_index(texto, cuantos):
+    """Índice determinístico 0..cuantos-1 a partir de un texto (mismo texto
+    siempre da el mismo índice, para que un vendedor o producto siempre
+    tenga el mismo color)."""
+    if not texto:
+        return 0
+    return int(hashlib.md5(texto.encode("utf-8")).hexdigest(), 16) % cuantos
+
+
+def iniciales_nombre(nombre):
+    """'Juan Pérez' -> 'JP'. Con un solo nombre, usa las primeras 2 letras."""
+    partes = (nombre or "?").split()
+    if len(partes) >= 2:
+        return (partes[0][0] + partes[1][0]).upper()
+    return (partes[0][:2] if partes and partes[0] else "?").upper()
+
+
+def pastel_para_texto(texto):
+    """Color pastel determinístico (fondo, texto) para una etiqueta tipo
+    'tag' — mismo texto siempre da el mismo color, tomado de la paleta de marca."""
+    return _CATEGORICAL_PASTEL[_color_index(texto, len(_CATEGORICAL_PASTEL))]
+
+
+def avatar_color_para(texto):
+    """Color sólido determinístico (de la paleta de marca) para el círculo
+    de iniciales de un vendedor."""
+    return CATEGORICAL[_color_index(texto, len(CATEGORICAL))]
+
+
+def diseno_resumen_html(rows, estados_orden, column_emoji, columnas_con_semaforo, vendedores, hoy, manana):
+    """Genera el HTML de un 'resumen de pendientes' estilo lista (como un
+    tablero de Asana/Trello en modo lista), agrupado por columna del tablero
+    de Diseño Gráfico, con avatar del vendedor, tag del producto y — donde
+    aplica — el semáforo y una urgencia por fecha (Hoy / Mañana)."""
+    hoy_s, manana_s = str(hoy), str(manana)
+    secciones = []
+    for estado in estados_orden:
+        items = [r for r in rows if r.get("estado") == estado]
+        filas_html = []
+        for r in sorted(items, key=lambda x: x.get("fecha_necesaria") or "9999-99-99"):
+            cliente = html.escape(r.get("cliente") or "Sin cliente")
+            producto = html.escape(r.get("producto") or "—")
+            fecha = r.get("fecha_necesaria")
+            nombre_vend = db.nombre_vendedor(r.get("vendedor_id"), vendedores)
+            av_bg = avatar_color_para(nombre_vend)
+            iniciales = html.escape(iniciales_nombre(nombre_vend))
+            p_bg, p_fg = pastel_para_texto(producto)
+
+            pills = f'<span class="vd-pill" style="background:{p_bg};color:{p_fg};">{producto}</span>'
+
+            if estado in columnas_con_semaforo:
+                if r.get("detenido_emergencia"):
+                    pills += '<span class="vd-pill" style="background:#fde8e8;color:#c62828;">🔴 Emergencia</span>'
+                else:
+                    pills += '<span class="vd-pill" style="background:#e4f7e4;color:#0ca30c;">🟢 En proceso</span>'
+
+            if fecha and estado != "Entregado":
+                if fecha == hoy_s:
+                    pills += '<span class="vd-pill" style="background:#fde8e8;color:#c62828;">⏰ Hoy</span>'
+                elif fecha == manana_s:
+                    pills += '<span class="vd-pill" style="background:#fdeecb;color:#8a6100;">⏰ Mañana</span>'
+                else:
+                    pills += f'<span class="vd-pill" style="background:#eceae3;color:#52514e;">📅 {html.escape(fecha)}</span>'
+
+            filas_html.append(
+                '<div class="vd-resumen-row">'
+                f'<span class="vd-avatar" style="background:{av_bg};" title="{html.escape(nombre_vend)}">{iniciales}</span>'
+                f'<span class="vd-resumen-cliente">{cliente}</span>'
+                f'<span class="vd-resumen-spacer">{pills}</span>'
+                '</div>'
+            )
+
+        cuerpo = "".join(filas_html) or '<div class="vd-resumen-empty">Sin solicitudes en esta columna.</div>'
+        secciones.append(
+            '<div class="vd-resumen-section">'
+            '<div class="vd-resumen-section-header">'
+            f'<span>{column_emoji.get(estado, "")} {html.escape(estado)}</span>'
+            f'<span class="vd-resumen-count">{len(items)}</span>'
+            '</div>'
+            f'{cuerpo}'
+            '</div>'
+        )
+
+    estilo = (
+        "<style>"
+        ".vd-resumen-wrap{display:flex;flex-direction:column;gap:14px;margin-bottom:6px;}"
+        ".vd-resumen-section{border:1px solid #e1e0d9;border-radius:10px;overflow:hidden;background:#fcfcfb;}"
+        ".vd-resumen-section-header{display:flex;align-items:center;gap:8px;padding:10px 14px;"
+        "background:#f5f4f0;border-bottom:1px solid #e1e0d9;font-weight:600;color:#0b0b0b;font-size:0.95rem;}"
+        ".vd-resumen-count{margin-left:auto;background:#e1e0d9;color:#52514e;border-radius:999px;"
+        "padding:1px 10px;font-size:0.78rem;font-weight:600;}"
+        ".vd-resumen-row{display:flex;align-items:center;gap:10px;padding:9px 14px;"
+        "border-bottom:1px solid #efeee9;font-size:0.87rem;}"
+        ".vd-resumen-row:last-child{border-bottom:none;}"
+        ".vd-resumen-cliente{font-weight:600;color:#0b0b0b;}"
+        ".vd-avatar{width:24px;height:24px;border-radius:50%;display:flex;align-items:center;"
+        "justify-content:center;color:white;font-size:0.66rem;font-weight:700;flex-shrink:0;}"
+        ".vd-pill{border-radius:999px;padding:2px 10px;font-size:0.72rem;font-weight:600;white-space:nowrap;}"
+        ".vd-resumen-spacer{margin-left:auto;display:flex;gap:6px;align-items:center;"
+        "flex-wrap:wrap;justify-content:flex-end;}"
+        ".vd-resumen-empty{padding:12px 14px;color:#898781;font-size:0.85rem;font-style:italic;}"
+        "</style>"
+    )
+    return estilo + '<div class="vd-resumen-wrap">' + "".join(secciones) + "</div>"
+
+
 def _pdf_safe(texto):
     """Los PDFs con fuentes estándar (Helvetica) solo soportan Latin-1. Si el
     vendedor pegó texto con símbolos raros (emojis, comillas curvas, etc.),
@@ -201,9 +365,12 @@ def diseno_pdf_bytes(d: dict, vendedor_nombre: str) -> bytes:
         ("Medida", d.get("medida") or "-"),
         ("Fecha en que se necesita", d.get("fecha_necesaria") or "-"),
         ("Fecha de solicitud", (d.get("creado_en") or "-")[:10]),
-                ("Estado actual", d.get("estado") or "-"),
+        ("Estado actual", d.get("estado") or "-"),
         ("Cambios necesarios", d.get("cambios_necesarios") or "-"),
-        ("Archivo adjunto", d.get("archivo_nombre") or "Sin archivo adjunto"),
+        (
+            "Archivos adjuntos",
+            ", ".join(a["nombre"] for a in diseno_archivos_lista(d)) or "Sin archivos adjuntos",
+        ),
     ]
     for etiqueta, valor in campos:
         pdf.set_font("Helvetica", "B", 11)
