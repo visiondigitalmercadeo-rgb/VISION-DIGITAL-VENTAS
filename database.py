@@ -503,11 +503,20 @@ def list_ventas(vendedor_id=None, desde=None, hasta=None):
     rows.sort(key=lambda r: r["fecha"], reverse=True)
     return rows
 
-
-def create_venta(vendedor_id, fecha, planta, linea_venta, monto, notas):
+def create_venta(
+    vendedor_id, fecha, planta,
+    linea_venta, monto, notas,
+    cliente=None, numero_ordenes=0,
+):
     get_client().collection("ventas").document().set({
-        "vendedor_id": vendedor_id, "fecha": str(fecha), "planta": planta,
-        "linea_venta": linea_venta, "monto": monto, "notas": notas,
+        "vendedor_id": vendedor_id,
+        "fecha": str(fecha),
+        "planta": planta,
+        "linea_venta": linea_venta,
+        "monto": monto,
+        "notas": notas,
+        "cliente": cliente,
+        "numero_ordenes": numero_ordenes,
     })
 
 
