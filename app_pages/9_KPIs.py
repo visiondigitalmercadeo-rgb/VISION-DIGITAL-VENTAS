@@ -158,12 +158,24 @@ st.divider()
 # 5. Productos más vendidos (línea de venta)
 # ===========================================================================
 st.header("5 · Productos más vendidos")
-st.caption("Basado en la 'Línea de venta' (producto) registrada en cada venta del periodo seleccionado.")
+st.caption(
+    "Basado en la 'Línea de venta' (producto) registrada en cada venta del periodo seleccionado. "
+    "Una venta puede incluir varios productos; en ese caso el monto se contabiliza en cada producto elegido."
+)
 
 if df_v.empty:
     st.info("No hay ventas registradas en este rango para calcular productos más vendidos.")
 else:
-    por_producto = df_v.groupby("linea_venta").agg(
+    df_v_prod = df_v.copy()
+    df_v_prod["linea_venta"] = df_v_prod["linea_venta"].apply(as_lineas_venta)
+    df_v_prod = df_v_prod.explode("linea_venta")
+    df_v_prod = df_v_prod[df_v_prod["linea_venta"].notna() & (df_v_prod["linea_venta"] != "")]
+
+    if df_v_prod.empty:
+        st.info("No hay líneas de venta registradas en este rango para calcular productos más vendidos.")
+        st.stop()
+
+    por_producto = df_v_prod.groupby("linea_venta").agg(
         Transacciones=("monto", "count"), Monto=("monto", "sum"),
     ).sort_values("Monto", ascending=False)
 
