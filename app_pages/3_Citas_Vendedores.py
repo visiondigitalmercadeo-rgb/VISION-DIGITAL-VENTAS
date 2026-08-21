@@ -7,7 +7,7 @@ from streamlit_calendar import calendar as st_calendar
 import auth
 import database as db
 from config import ESTADOS_CITA, STATUS, TIPOS_CITA
-from utils import sidebar_user_box, vendedor_filter_selector
+from utils import download_excel_button, sidebar_user_box, vendedor_filter_selector
 
 user = auth.current_user()
 sidebar_user_box()
@@ -103,6 +103,7 @@ with tab_lista:
             "Vendedor": db.nombre_vendedor(r["vendedor_id"], vendedores),
         } for r in rows])
         st.dataframe(df, use_container_width=True, hide_index=True)
+        download_excel_button(df, "citas.xlsx", key="citas_descargar_excel")
 
         if auth.can_edit():
             st.markdown("#### ✏️ Actualizar estado de una cita")
