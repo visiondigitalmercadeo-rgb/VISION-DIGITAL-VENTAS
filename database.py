@@ -584,6 +584,7 @@ def get_diseno(diseno_id):
     return _doc_to_dict(snap) if snap.exists else None
   
 def create_diseno(
+    def create_diseno(
     vendedor_id, cliente, producto, material, acabado, medida, fecha_necesaria, estado,
     archivo_nombre=None, archivo_tipo=None, archivo_b64=None, cambios_necesarios=None,
 ):
@@ -593,7 +594,7 @@ def create_diseno(
         "fecha_necesaria": str(fecha_necesaria) if fecha_necesaria else None,
         "estado": estado, "creado_en": datetime.now().isoformat(timespec="seconds"),
         "archivo_nombre": archivo_nombre, "archivo_tipo": archivo_tipo, "archivo_b64": archivo_b64,
-        "cambios_necesarios": cambios_necesarios,
+        "cambios_necesarios": cambios_necesarios, "detenido_emergencia": False,
   
     })
 
