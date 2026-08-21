@@ -5,7 +5,7 @@ import streamlit as st
 
 import auth
 import database as db
-from config import PLANTAS
+from config import LINEAS_VENTA, PLANTAS
 from utils import money, sidebar_user_box, vendedor_filter_selector
 
 user = auth.current_user()
@@ -79,8 +79,10 @@ with tab_lista:
                             "Planta", PLANTAS,
                             index=PLANTAS.index(venta["planta"]) if venta["planta"] in PLANTAS else 0,
                         )
-                        linea_venta_ed = st.text_input("Línea de venta (producto/servicio)",
-                                                        value=venta["linea_venta"] or "")
+                        linea_venta_ed = st.selectbox(
+                            "Línea de venta (producto)", LINEAS_VENTA,
+                            index=LINEAS_VENTA.index(venta["linea_venta"]) if venta["linea_venta"] in LINEAS_VENTA else 0,
+                        )
                         monto_ed = st.number_input("Monto de la venta (Q)", value=float(venta["monto"] or 0),
                                                     min_value=0.0, step=50.0)
                         notas_ed = st.text_area("Notas (opcional)", value=venta["notas"] or "")
@@ -96,7 +98,7 @@ with tab_lista:
                             else:
                                 db.update_venta(
                                     vid, vendedor_id=vendedor_id_ed, fecha=str(fecha_ed), planta=planta_ed,
-                                    linea_venta=linea_venta_ed.strip(), monto=monto_ed, notas=notas_ed,
+                                    linea_venta=linea_venta_ed, monto=monto_ed, notas=notas_ed,
                                 )
                                 st.success("Venta actualizada.")
                                 st.rerun()
@@ -122,16 +124,14 @@ with tab_nueva:
             c1, c2 = st.columns(2)
             fecha = c1.date_input("Fecha de la venta", value=date.today())
             planta = c2.selectbox("Planta", PLANTAS)
-            linea_venta = st.text_input("Línea de venta (producto/servicio)", placeholder="Ej. Volantes, Revistas, Empaques...")
+            linea_venta = st.selectbox("Línea de venta (producto)", LINEAS_VENTA)
             monto = st.number_input("Monto de la venta (Q)", min_value=0.0, step=50.0)
             notas = st.text_area("Notas (opcional)")
 
             if st.form_submit_button("Registrar venta", use_container_width=True):
                 if monto <= 0:
                     st.error("El monto debe ser mayor a 0.")
-                elif not linea_venta.strip():
-                    st.error("Ingresa la línea de venta.")
                 else:
-                    db.create_venta(vendedor_id, fecha, planta, linea_venta.strip(), monto, notas)
+                    db.create_venta(vendedor_id, fecha, planta, linea_venta, monto, notas)
                     st.success(f"Venta de {money(monto)} registrada en planta {planta}.")
                     st.rerun()
