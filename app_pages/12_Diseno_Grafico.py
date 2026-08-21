@@ -6,8 +6,11 @@ import streamlit as st
 
 import auth
 import database as db
-from config import DISENO_ARCHIVO_MAX_BYTES, ESTADOS_DISENO, ESTADOS_DISENO_INICIALES, LINEAS_VENTA
-from utils import archivo_a_b64, diseno_pdf_bytes, download_excel_button, sidebar_user_box, vendedor_filter_selector
+from config import DISENO_ARCHIVO_MAX_BYTES, DISENO_ARCHIVOS_MAX, ESTADOS_DISENO, ESTADOS_DISENO_INICIALES, LINEAS_VENTA
+from utils import (
+    archivos_a_b64_lista, diseno_archivos_lista, diseno_pdf_bytes, download_excel_button,
+    sidebar_user_box, vendedor_filter_selector,
+)
 
 user = auth.current_user()
 sidebar_user_box()
@@ -91,6 +94,7 @@ with tab_tablero:
                     ("Parado por emergencia" if r.get("detenido_emergencia") else "Sigue en proceso")
                     if r.get("estado") in COLUMNAS_CON_SEMAFORO else "—"
                 ),
+                "Archivos adjuntos": ", ".join(a["nombre"] for a in diseno_archivos_lista(r)) or "—",
                 "Creado": r.get("creado_en"),
                 "Vendedor": db.nombre_vendedor(r["vendedor_id"], db.list_usuarios()),
             } for r in rows]),
@@ -125,13 +129,13 @@ with tab_tablero:
                         "📄 PDF de la solicitud", data=pdf_bytes, file_name=f"solicitud_{r['id']}.pdf",
                         mime="application/pdf", use_container_width=True, key=f"dis_pdf_{r['id']}",
                     )
-                    if r.get("archivo_b64"):
+                    for i, arch in enumerate(diseno_archivos_lista(r)):
                         st.download_button(
-                            f"📎 {r.get('archivo_nombre') or 'archivo adjunto'}",
-                            data=base64.b64decode(r["archivo_b64"]),
-                            file_name=r.get("archivo_nombre") or "archivo",
-                            mime=r.get("archivo_tipo") or "application/octet-stream",
-                            use_container_width=True, key=f"dis_file_{r['id']}",
+                            f"📎 {arch['nombre']}",
+                            data=base64.b64decode(arch["b64"]),
+                            file_name=arch["nombre"],
+                            mime=arch.get("tipo") or "application/octet-stream",
+                            use_container_width=True, key=f"dis_file_{r['id']}_{i}",
                         )
 
     st.divider()
@@ -180,11 +184,18 @@ with tab_tablero:
                             value=d.get("cambios_necesarios") or "",
                             help="Qué hay que ajustar en el diseño (por ejemplo, después de la revisión del cliente).",
                         )
-                        nuevo_archivo = st.file_uploader(
-                            "Reemplazar archivo adjunto (opcional)", type=["pdf", "png", "jpg", "jpeg"],
-                            key=f"dis_archivo_ed_{did}",
+                        archivos_actuales = diseno_archivos_lista(d)
+                        st.caption(
+                            f"Archivos actuales: {', '.join(a['nombre'] for a in archivos_actuales)}"
+                            if archivos_actuales else "Archivos actuales: ninguno."
                         )
-                        st.caption(f"Tamaño máximo del archivo: {DISENO_ARCHIVO_MAX_BYTES // 1000} KB.")
+                        nuevos_archivos = st.file_uploader(
+                            f"Reemplazar archivos adjuntos (opcional, máximo {DISENO_ARCHIVOS_MAX})",
+                            type=["pdf", "png", "jpg", "jpeg"], accept_multiple_files=True,
+                            key=f"dis_archivo_ed_{did}",
+                            help="Si subes archivos aquí, reemplazan a TODOS los actuales. Déjalo vacío para no cambiarlos.",
+                        )
+                        st.caption(f"Tamaño máximo por archivo: {DISENO_ARCHIVO_MAX_BYTES // 1000} KB.")
                     else:
                         st.caption(f"Cliente: **{d.get('cliente') or '—'}**")
                         st.caption(
@@ -240,11 +251,10 @@ with tab_tablero:
                                     medida=medida_ed.strip(), fecha_necesaria=str(fecha_necesaria_ed),
                                     cambios_necesarios=cambios_necesarios_ed.strip() or None,
                                 )
-                                if nuevo_archivo is not None:
+                                if nuevos_archivos:
                                     try:
-                                        nombre_a, tipo_a, b64_a = archivo_a_b64(nuevo_archivo, DISENO_ARCHIVO_MAX_BYTES)
-                                        update_kwargs.update(
-                                            archivo_nombre=nombre_a, archivo_tipo=tipo_a, archivo_b64=b64_a,
+                                        update_kwargs["archivos"] = archivos_a_b64_lista(
+                                            nuevos_archivos, DISENO_ARCHIVO_MAX_BYTES, DISENO_ARCHIVOS_MAX,
                                         )
                                     except ValueError as e:
                                         error_msg = str(e)
@@ -294,25 +304,25 @@ with tab_nueva:
                 "Cambios necesarios (opcional)",
                 help="Déjalo en blanco si es una solicitud nueva; úsalo si ya hay una versión previa que ajustar.",
             )
-            archivo = st.file_uploader(
-                "Adjuntar archivo de referencia (opcional) — PDF, PNG o JPEG",
-                type=["pdf", "png", "jpg", "jpeg"],
+            archivos = st.file_uploader(
+                f"Adjuntar archivos de referencia (opcional, máximo {DISENO_ARCHIVOS_MAX}) — PDF, PNG o JPEG",
+                type=["pdf", "png", "jpg", "jpeg"], accept_multiple_files=True,
             )
-            st.caption(f"Tamaño máximo del archivo: {DISENO_ARCHIVO_MAX_BYTES // 1000} KB.")
+            st.caption(f"Tamaño máximo por archivo: {DISENO_ARCHIVO_MAX_BYTES // 1000} KB.")
 
             if st.form_submit_button("Enviar solicitud", use_container_width=True):
                 if not cliente.strip():
                     st.error("El nombre del cliente es obligatorio.")
                 else:
                     try:
-                        archivo_nombre, archivo_tipo, archivo_b64 = archivo_a_b64(archivo, DISENO_ARCHIVO_MAX_BYTES)
+                        archivos_lista = archivos_a_b64_lista(archivos, DISENO_ARCHIVO_MAX_BYTES, DISENO_ARCHIVOS_MAX)
                     except ValueError as e:
                         st.error(str(e))
                     else:
                         db.create_diseno(
                             vendedor_id, cliente.strip(), producto, material.strip(), acabado.strip(),
                             medida.strip(), fecha_necesaria, tipo_solicitud,
-                            archivo_nombre=archivo_nombre, archivo_tipo=archivo_tipo, archivo_b64=archivo_b64,
+                            archivos=archivos_lista,
                             cambios_necesarios=cambios_necesarios.strip() or None,
                         )
                         st.success(f"Solicitud enviada a la columna '{tipo_solicitud}'.")
