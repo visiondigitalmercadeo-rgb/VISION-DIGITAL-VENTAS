@@ -32,6 +32,7 @@ with tab_lista:
             "ID": r["id"], "Cliente": r["cliente"], "NIT": r["nit"] or "—",
             "Nº orden": r["numero_orden"], "Fecha reclamo": r["fecha_reclamo"],
             "Fecha solución": r["fecha_solucion"] or "—", "Estatus": r["estatus"],
+            "Comentarios jefe planta": r.get("comentarios_jefe_planta") or "—",
             "Vendedor": db.nombre_vendedor(r["vendedor_id"], vendedores),
         } for r in rows])
         st.dataframe(df, use_container_width=True, hide_index=True)
@@ -64,6 +65,11 @@ with tab_lista:
                             descripcion = rec["descripcion"]
                             st.caption(f"Descripción / notas: {descripcion or '—'}")
 
+                        comentarios_jp = st.text_area(
+                            "Comentarios jefe planta (solución dada)",
+                            value=rec.get("comentarios_jefe_planta") or "",
+                        )
+
                         if puede_editar_completo:
                             colf1, colf2 = st.columns(2)
                             guardar = colf1.form_submit_button("Guardar", use_container_width=True)
@@ -77,6 +83,7 @@ with tab_lista:
                                 rid, estatus=estatus,
                                 fecha_solucion=str(fecha_solucion) if tiene_solucion else None,
                                 descripcion=descripcion,
+                                comentarios_jefe_planta=comentarios_jp,
                             )
                             st.success("Reclamo actualizado.")
                             st.rerun()
