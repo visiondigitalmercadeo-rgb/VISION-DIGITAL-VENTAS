@@ -4,7 +4,7 @@ import streamlit as st
 import auth
 import database as db
 from config import ESTADOS_PROSPECTO
-from utils import sidebar_user_box
+from utils import download_excel_button, sidebar_user_box
 
 user = auth.current_user()
 sidebar_user_box()
@@ -31,6 +31,7 @@ else:
         "Próximo seguimiento": r["fecha_seguimiento"],
     } for r in rows])
     st.dataframe(df, use_container_width=True, hide_index=True)
+    download_excel_button(df, "prospectos_generales.xlsx", key="generales_descargar_excel")
 
     st.markdown("##### Resumen por estado")
     resumen = df["Estado"].value_counts().reindex(ESTADOS_PROSPECTO).fillna(0).astype(int)
