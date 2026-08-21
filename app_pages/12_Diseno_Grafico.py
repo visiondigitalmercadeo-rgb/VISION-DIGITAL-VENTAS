@@ -8,7 +8,7 @@ import auth
 import database as db
 from config import DISENO_ARCHIVO_MAX_BYTES, DISENO_ARCHIVOS_MAX, ESTADOS_DISENO, ESTADOS_DISENO_INICIALES, LINEAS_VENTA
 from utils import (
-    archivos_a_b64_lista, diseno_archivos_lista, diseno_pdf_bytes, download_excel_button,
+    archivos_a_b64_lista, diseno_archivos_lista, diseno_pdf_bytes, diseno_resumen_html, download_excel_button,
     sidebar_user_box, vendedor_filter_selector,
 )
 
@@ -41,6 +41,7 @@ with tab_tablero:
     filtro_vendedor = vendedor_filter_selector(key="dis_filtro_vendedor")
 
     rows = db.list_disenos(filtro_vendedor)  # ya vienen ordenadas: más nueva primero
+    vendedores = db.list_usuarios()
 
     # ------------------------------------------------------------------
     # KPI: solicitudes por entregar hoy y mañana (para dar seguimiento
@@ -61,14 +62,13 @@ with tab_tablero:
 
     if pendientes_entrega:
         with st.expander(f"Ver detalle de las {len(pendientes_entrega)} solicitudes por entregar (hoy y mañana)"):
-            vendedores_kpi = db.list_usuarios()
             st.dataframe(
                 pd.DataFrame([{
                     "Cliente": r.get("cliente") or "—",
                     "Producto": r.get("producto") or "—",
                     "Fecha necesaria": r.get("fecha_necesaria"),
                     "Estado": r.get("estado"),
-                    "Vendedor": db.nombre_vendedor(r["vendedor_id"], vendedores_kpi),
+                    "Vendedor": db.nombre_vendedor(r["vendedor_id"], vendedores),
                 } for r in sorted(pendientes_entrega, key=lambda x: x.get("fecha_necesaria") or "")]),
                 use_container_width=True, hide_index=True,
             )
@@ -96,12 +96,23 @@ with tab_tablero:
                 ),
                 "Archivos adjuntos": ", ".join(a["nombre"] for a in diseno_archivos_lista(r)) or "—",
                 "Creado": r.get("creado_en"),
-                "Vendedor": db.nombre_vendedor(r["vendedor_id"], db.list_usuarios()),
+                "Vendedor": db.nombre_vendedor(r["vendedor_id"], vendedores),
             } for r in rows]),
             "solicitudes_diseno.xlsx", key="dis_descargar_excel",
         )
 
-    vendedores = db.list_usuarios()
+    # ------------------------------------------------------------------
+    # Resumen de pendientes (vista de lista, estilo tablero tipo Asana)
+    # — un resumen de las mismas columnas del tablero, antes de mostrarlas.
+    # ------------------------------------------------------------------
+    st.markdown("#### 📋 Resumen de pendientes")
+    st.markdown(
+        diseno_resumen_html(rows, ESTADOS_DISENO, COLUMN_EMOJI, COLUMNAS_CON_SEMAFORO, vendedores, hoy, manana),
+        unsafe_allow_html=True,
+    )
+
+    st.divider()
+
     cols = st.columns(len(ESTADOS_DISENO))
     for col, estado in zip(cols, ESTADOS_DISENO):
         items = [r for r in rows if r.get("estado") == estado]
