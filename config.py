@@ -34,13 +34,14 @@ SURFACE = "#fcfcfb"
 # ---------------------------------------------------------------------------
 # Catálogos de negocio
 # ---------------------------------------------------------------------------
-ROLES = ["admin", "vendedor", "vista", "mercadeo", "jefe_planta"]
+ROLES = ["admin", "vendedor", "vista", "mercadeo", "jefe_planta", "disenador"]
 ROLES_LABEL = {
     "admin": "Administrador",
     "vendedor": "Vendedor",
     "vista": "Solo vista",
     "mercadeo": "Mercadeo",
     "jefe_planta": "Jefe de planta",
+    "disenador": "Diseñador",
 }
 
 PLANTAS = ["Offset", "Digital", "Valloy", "Colorado"]
@@ -48,6 +49,16 @@ PLANTAS = ["Offset", "Digital", "Valloy", "Colorado"]
 ESTADOS_PROSPECTO = ["Prospecto", "En negociación", "Cliente (Ganado)", "Perdido"]
 
 TIPOS_LLAMADA = ["Llamada inicial", "Llamada de seguimiento"]
+
+# ---------------------------------------------------------------------------
+# Diseño Gráfico (tablero estilo Trello)
+# ---------------------------------------------------------------------------
+ESTADOS_DISENO = ["Lista de tareas", "Emergencias", "En proceso", "Cambios", "Entregado"]
+# Columnas en las que puede caer una solicitud NUEVA (la llena el vendedor).
+ESTADOS_DISENO_INICIALES = ["Lista de tareas", "Emergencias"]
+# Columnas que solo el diseñador (o el administrador) puede asignar después.
+ESTADOS_DISENO_DISENADOR = ["Lista de tareas", "Emergencias", "En proceso", "Cambios", "Entregado"]
+DISENO_ARCHIVO_MAX_BYTES = 900_000  # ~900 KB — límite práctico por documento en Firestore
 
 TIPOS_CITA = ["Cita", "Visita", "Llamada"]
 ESTADOS_CITA = ["Programada", "Realizada", "Cancelada", "No asistió"]
