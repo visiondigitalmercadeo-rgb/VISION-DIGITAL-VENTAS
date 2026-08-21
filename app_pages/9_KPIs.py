@@ -7,7 +7,7 @@ import streamlit as st
 import auth
 import database as db
 from config import CATEGORICAL, PLANTAS, STATUS, TIPOS_CITA
-from utils import base_layout, money, sidebar_user_box
+from utils import as_lineas_venta, base_layout, money, sidebar_user_box
 
 user = auth.current_user()
 sidebar_user_box()
