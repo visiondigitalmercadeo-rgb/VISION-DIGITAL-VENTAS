@@ -32,3 +32,94 @@ GRIDLINE = "#e1e0d9"
 SURFACE = "#fcfcfb"
 
 # ---------------------------------------------------------------------------
+# Catálogos de negocio
+# ---------------------------------------------------------------------------
+ROLES = ["admin", "vendedor", "vista", "mercadeo", "jefe_planta"]
+ROLES_LABEL = {
+    "admin": "Administrador",
+    "vendedor": "Vendedor",
+    "vista": "Solo vista",
+    "mercadeo": "Mercadeo",
+    "jefe_planta": "Jefe de planta",
+}
+
+PLANTAS = ["Offset", "Digital", "Valloy", "Colorado"]
+
+ESTADOS_PROSPECTO = ["Prospecto", "En negociación", "Cliente (Ganado)", "Perdido"]
+
+TIPOS_CITA = ["Cita", "Visita", "Llamada"]
+ESTADOS_CITA = ["Programada", "Realizada", "Cancelada", "No asistió"]
+
+ESTADOS_COTIZACION = ["Enviada", "Pendiente", "En negociación", "Aprobada", "Rechazada"]
+
+ESTADOS_VISITA_MERCADEO = ["Pendiente", "Realizada"]
+CHECKLIST_DEFAULT = [
+    "Exhibición correcta del producto",
+    "Material POP colocado",
+    "Precios visibles y correctos",
+    "Stock disponible",
+    "Limpieza y orden del punto de venta",
+    "Presencia de competencia relevante",
+    "Punto de venta satisfecho con el servicio",
+]
+
+ESTADOS_RECLAMO = ["Abierto", "En proceso", "Resuelto", "Cerrado"]
+
+ESTADOS_PENDIENTE_MERCADEO = ["Pendiente", "En proceso", "Resuelto"]
+
+LINEAS_VENTA = [
+    "AFICHE",
+    "CALENDARIO",
+    "MARBETE",
+    "TARJETAS DE PRESENTACION",
+    "VOLANTES",
+    "AGENDAS",
+    "FOLDER OFICIO",
+    "GIFT CARD",
+    "Sticker DTF",
+    "MANTA VINILICA",
+    "LIBROS",
+    "LIBRETAS",
+    "MENÚ",
+    "EMPAQUE",
+    "REVISTAS",
+    "PHOTOBOOK",
+    "HANG TAG",
+    "TARJETAS DE CUMPLEAÑOS",
+    "ETIQUETAS",
+    "FAJAS",
+    "MATERIAL BANCARIO",
+    "STICKER VINIL COLORADO",
+    "ROLL UP",
+    "PORTA VASOS",
+    "TICKETS",
+    "IMPRESIONES",
+    "SEPARADORES",
+    "STICKER COMIDA",
+    "STICKER VARIOS",
+    "FOTOGRAFIAS",
+    "GAFETES",
+    "Bolsas Kraft",
+    "MATERIAL PVC",
+    "TABLE TENT",
+    "CAJAS",
+    "BOTONES",
+    "TRIFOLIAR",
+    "PORTA CREPAS",
+    "TARJETA FIDELIDAD",
+    "HOJAS MEMBRETADA",
+    "LOTERIA",
+    "MAPA",
+    "BLOCK DE NOTAS",
+    "PUBLICIDAD MUNDIAL",
+    "PROMOCIONAL MUNDIAL",
+    "RASPABLES",
+    "BANDEJA COMIDA",
+    "INVITACIONES",
+    "PAPEL REGALO",
+    "DIPLOMAS",
+    "Material Tigo",
+    "Fotocopias",
+    "Sobre Oficio",
+    "Otro",
+]
