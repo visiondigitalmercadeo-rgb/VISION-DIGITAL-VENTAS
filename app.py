@@ -50,6 +50,7 @@ mercadeo = st.Page("app_pages/4_Visitas_Mercadeo.py", title="Visitas de mercadeo
 cotizaciones = st.Page("app_pages/5_Cotizaciones.py", title="Cotizaciones", icon="💰")
 reclamos = st.Page("app_pages/6_Reclamos.py", title="Reclamos", icon="⚠️")
 diseno = st.Page("app_pages/12_Diseno_Grafico.py", title="Diseño Gráfico - Nicolás", icon="🎨")
+diseno_alvaro = st.Page("app_pages/14_Diseno_Grafico_Alvaro.py", title="Diseño Gráfico - Álvaro", icon="🖌️")
 logistica = st.Page("app_pages/13_Logistica.py", title="Logística", icon="🚚")
 ventas = st.Page("app_pages/7_Ventas_Diarias.py", title="Venta del día", icon="🧮")
 generales = st.Page("app_pages/8_Prospectos_Generales.py", title="Prospectos generales (todos)", icon="🌐")
@@ -64,8 +65,11 @@ elif rol == "jefe_planta":
     # (allí puede cambiar el estado de cada reclamo).
     pages = [reclamos]
 elif rol == "disenador":
-    # El rol 'disenador' solo tiene acceso al tablero de Diseño Gráfico.
+    # El rol 'disenador' solo tiene acceso al tablero de Diseño Gráfico - Nicolás.
     pages = [diseno]
+elif rol == "disenador_alvaro":
+    # El rol 'disenador_alvaro' solo tiene acceso al tablero de Diseño Gráfico - Álvaro.
+    pages = [diseno_alvaro]
 elif rol == "jefe_logistica":
     # El rol 'jefe_logistica' solo tiene acceso a la pestaña de Logística.
     pages = [logistica]
@@ -76,7 +80,7 @@ elif rol == "repartidor":
 else:
     pages = [
         inicio, prospectos, llamadas, citas, mercadeo, cotizaciones, reclamos,
-        diseno, logistica, ventas, generales, kpis,
+        diseno, diseno_alvaro, logistica, ventas, generales, kpis,
     ]
     if rol == "admin":
         pages.append(admin)
