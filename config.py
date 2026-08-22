@@ -34,7 +34,7 @@ SURFACE = "#fcfcfb"
 # ---------------------------------------------------------------------------
 # Catálogos de negocio
 # ---------------------------------------------------------------------------
-ROLES = ["admin", "vendedor", "vista", "mercadeo", "jefe_planta", "disenador"]
+ROLES = ["admin", "vendedor", "vista", "mercadeo", "jefe_planta", "disenador", "jefe_logistica", "repartidor"]
 ROLES_LABEL = {
     "admin": "Administrador",
     "vendedor": "Vendedor",
@@ -42,6 +42,8 @@ ROLES_LABEL = {
     "mercadeo": "Mercadeo",
     "jefe_planta": "Jefe de planta",
     "disenador": "Diseñador",
+    "jefe_logistica": "Jefe de logística",
+    "repartidor": "Repartidor",
 }
 
 PLANTAS = ["Offset", "Digital", "Valloy", "Colorado"]
@@ -60,6 +62,13 @@ ESTADOS_DISENO_INICIALES = ["Lista de tareas", "Emergencias"]
 ESTADOS_DISENO_DISENADOR = ["Lista de tareas", "Emergencias", "En proceso", "Cambios", "Entregado"]
 DISENO_ARCHIVO_MAX_BYTES = 900_000  # ~900 KB — límite práctico por archivo en Firestore
 DISENO_ARCHIVOS_MAX = 3  # máximo de archivos adjuntos por solicitud
+
+# ---------------------------------------------------------------------------
+# Logística (pedidos AM/PM)
+# ---------------------------------------------------------------------------
+FRANJAS_PEDIDO = ["AM", "PM"]
+ESTADOS_PEDIDO = ["Pendiente", "En ruta", "Entregado", "No entregado"]
+ZONAS_CAPITAL = [f"Zona {i}" for i in range(1, 22)]
 
 TIPOS_CITA = ["Cita", "Visita", "Llamada"]
 ESTADOS_CITA = ["Programada", "Realizada", "Cancelada", "No asistió"]
@@ -101,7 +110,7 @@ LINEAS_VENTA = [
     "HANG TAG",
     "TARJETAS DE CUMPLEAÑOS",
     "ETIQUETAS",
-    "ETIQUETAS VALLOY",
+    "Etiquetas Valloy",
     "FAJAS",
     "MATERIAL BANCARIO",
     "STICKER VINIL COLORADO",
