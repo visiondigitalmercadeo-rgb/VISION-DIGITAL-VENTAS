@@ -92,6 +92,11 @@ def is_disenador():
     return u is not None and u["rol"] == "disenador"
 
 
+def is_disenador_alvaro():
+    u = current_user()
+    return u is not None and u["rol"] == "disenador_alvaro"
+
+
 def is_jefe_logistica():
     u = current_user()
     return u is not None and u["rol"] == "jefe_logistica"
