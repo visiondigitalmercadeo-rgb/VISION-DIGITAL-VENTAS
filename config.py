@@ -34,14 +34,18 @@ SURFACE = "#fcfcfb"
 # ---------------------------------------------------------------------------
 # Catálogos de negocio
 # ---------------------------------------------------------------------------
-ROLES = ["admin", "vendedor", "vista", "mercadeo", "jefe_planta", "disenador", "jefe_logistica", "repartidor"]
+ROLES = [
+    "admin", "vendedor", "vista", "mercadeo", "jefe_planta", "disenador", "disenador_alvaro",
+    "jefe_logistica", "repartidor",
+]
 ROLES_LABEL = {
     "admin": "Administrador",
     "vendedor": "Vendedor",
     "vista": "Solo vista",
     "mercadeo": "Mercadeo",
     "jefe_planta": "Jefe de planta",
-    "disenador": "Diseñador",
+    "disenador": "Diseñador (Nicolás)",
+    "disenador_alvaro": "Diseñador (Álvaro)",
     "jefe_logistica": "Jefe de logística",
     "repartidor": "Repartidor",
 }
