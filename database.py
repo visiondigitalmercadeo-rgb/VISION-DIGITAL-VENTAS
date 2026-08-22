@@ -618,6 +618,49 @@ def delete_diseno(diseno_id):
 
 
 # ---------------------------------------------------------------------------
+# Diseño Gráfico — Álvaro (tablero independiente, mismo sistema que el de
+# Nicolás pero con su propia colección, para que las solicitudes no se mezclen)
+# ---------------------------------------------------------------------------
+def list_disenos_alvaro(vendedor_id=None):
+    """Retorna las solicitudes de diseño de Álvaro, más nuevas primero."""
+    client = get_client()
+    coll = client.collection("disenos_alvaro")
+    query = coll.where("vendedor_id", "==", vendedor_id) if vendedor_id else coll
+    rows = [_doc_to_dict(s) for s in query.stream()]
+    rows.sort(key=lambda r: r.get("creado_en") or "", reverse=True)
+    return rows
+
+
+def get_diseno_alvaro(diseno_id):
+    snap = get_client().collection("disenos_alvaro").document(diseno_id).get()
+    return _doc_to_dict(snap) if snap.exists else None
+
+
+def create_diseno_alvaro(
+    vendedor_id, cliente, producto, material, acabado, medida, fecha_necesaria, estado,
+    archivos=None, cambios_necesarios=None,
+):
+    """archivos: lista de hasta 3 dicts {"nombre", "tipo", "b64"}."""
+    get_client().collection("disenos_alvaro").document().set({
+        "vendedor_id": vendedor_id, "cliente": cliente, "producto": producto,
+        "material": material, "acabado": acabado, "medida": medida,
+        "fecha_necesaria": str(fecha_necesaria) if fecha_necesaria else None,
+        "estado": estado, "creado_en": datetime.now().isoformat(timespec="seconds"),
+        "archivos": archivos or [],
+        "cambios_necesarios": cambios_necesarios, "detenido_emergencia": False,
+    })
+
+
+def update_diseno_alvaro(diseno_id, **kwargs):
+    if kwargs:
+        get_client().collection("disenos_alvaro").document(diseno_id).update(kwargs)
+
+
+def delete_diseno_alvaro(diseno_id):
+    get_client().collection("disenos_alvaro").document(diseno_id).delete()
+
+
+# ---------------------------------------------------------------------------
 # Logística (pedidos AM/PM de la ruta de reparto)
 # ---------------------------------------------------------------------------
 def list_pedidos(fecha=None, franja=None, repartidor_id=None, vendedor_id=None):
