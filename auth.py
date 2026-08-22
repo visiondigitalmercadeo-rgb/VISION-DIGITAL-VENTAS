@@ -92,6 +92,16 @@ def is_disenador():
     return u is not None and u["rol"] == "disenador"
 
 
+def is_jefe_logistica():
+    u = current_user()
+    return u is not None and u["rol"] == "jefe_logistica"
+
+
+def is_repartidor():
+    u = current_user()
+    return u is not None and u["rol"] == "repartidor"
+
+
 def can_edit():
     """Admin, vendedor y mercadeo pueden crear/editar (el rol 'mercadeo' solo
     tiene acceso a la pestaña de Visitas de mercadeo, restringido en app.py);
