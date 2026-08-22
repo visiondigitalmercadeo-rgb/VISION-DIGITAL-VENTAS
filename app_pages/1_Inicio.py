@@ -30,13 +30,22 @@ ventas_mes = db.list_ventas(vendedor_id, desde=inicio_mes, hasta=hoy)
 total_ventas_mes = sum(v["monto"] or 0 for v in ventas_mes)
 ordenes_mes = sum(v.get("numero_ordenes") or 0 for v in ventas_mes)
 
-c1, c2, c3, c4, c5 = st.columns(5)
+# Citas y prospectos del mes en curso (todo el mes: pasado y por venir).
+mes_actual = hoy.strftime("%Y-%m")
+citas_mes = [c for c in db.list_citas(vendedor_id) if (c.get("fecha") or "")[:7] == mes_actual]
+prospectos_mes = [p for p in db.list_prospectos(vendedor_id) if (p.get("fecha_registro") or "")[:7] == mes_actual]
+
+c1, c2, c3, c4, c5, c6, c7 = st.columns(7)
 c1.metric("Citas/visitas de hoy", len(citas_hoy))
 c2.metric("Seguimientos próximos (3 días)", len(seguimientos))
 c3.metric("Venta registrada hoy", money(total_ventas_hoy))
 c4.metric("Reclamos abiertos", len(reclamos_abiertos))
 c5.metric(f"Venta del mes en curso ({hoy.strftime('%B')})", money(total_ventas_mes),
           help=f"{ordenes_mes} órdenes registradas en {hoy.strftime('%B')}.")
+c6.metric(f"Citas del mes ({hoy.strftime('%B')})", len(citas_mes),
+          help="Incluye citas, visitas y llamadas de todo el mes en curso (ya realizadas y por venir).")
+c7.metric(f"Prospectos nuevos ({hoy.strftime('%B')})", len(prospectos_mes),
+          help="Prospectos registrados durante el mes en curso.")
 
 st.divider()
 
