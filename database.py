@@ -228,6 +228,15 @@ def list_vendedores(solo_activos=True):
     return rows
 
 
+def list_repartidores(solo_activos=True):
+    client = get_client()
+    rows = [_doc_to_dict(s) for s in client.collection("usuarios").where("rol", "==", "repartidor").stream()]
+    if solo_activos:
+        rows = [r for r in rows if r["activo"]]
+    rows.sort(key=lambda r: r["nombre"])
+    return rows
+
+
 def create_usuario(nombre, username, password, rol):
     client = get_client()
     client.collection("usuarios").document().set({
@@ -606,3 +615,49 @@ def update_diseno(diseno_id, **kwargs):
 
 def delete_diseno(diseno_id):
     get_client().collection("disenos").document(diseno_id).delete()
+
+
+# ---------------------------------------------------------------------------
+# Logística (pedidos AM/PM de la ruta de reparto)
+# ---------------------------------------------------------------------------
+def list_pedidos(fecha=None, franja=None, repartidor_id=None, vendedor_id=None):
+    client = get_client()
+    query = client.collection("pedidos")
+    if fecha:
+        query = query.where("fecha", "==", str(fecha))
+    if franja:
+        query = query.where("franja", "==", franja)
+    if repartidor_id:
+        query = query.where("repartidor_id", "==", repartidor_id)
+    if vendedor_id:
+        query = query.where("vendedor_id", "==", vendedor_id)
+    rows = [_doc_to_dict(s) for s in query.stream()]
+    rows.sort(key=lambda r: r.get("creado_en") or "", reverse=True)
+    return rows
+
+
+def get_pedido(pedido_id):
+    snap = get_client().collection("pedidos").document(pedido_id).get()
+    return _doc_to_dict(snap) if snap.exists else None
+
+
+def create_pedido(
+    fecha, franja, cliente, direccion, zona, producto, numero_orden,
+    vendedor_id, repartidor_id, notas=None,
+):
+    get_client().collection("pedidos").document().set({
+        "fecha": str(fecha), "franja": franja, "cliente": cliente, "direccion": direccion,
+        "zona": zona, "producto": producto, "numero_orden": numero_orden,
+        "vendedor_id": vendedor_id, "repartidor_id": repartidor_id,
+        "estado": "Pendiente", "notas": notas,
+        "creado_en": datetime.now().isoformat(timespec="seconds"),
+    })
+
+
+def update_pedido(pedido_id, **kwargs):
+    if kwargs:
+        get_client().collection("pedidos").document(pedido_id).update(kwargs)
+
+
+def delete_pedido(pedido_id):
+    get_client().collection("pedidos").document(pedido_id).delete()
