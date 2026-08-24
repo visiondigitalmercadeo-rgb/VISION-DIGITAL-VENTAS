@@ -85,14 +85,25 @@ with tab_vista:
                     if p.get("notas"):
                         st.caption(f"📝 {p['notas']}")
 
+                    if puede_cambiar_estado:
+                        estado_actual = p.get("estado") if p.get("estado") in ESTADOS_PEDIDO else ESTADOS_PEDIDO[0]
+                        siguiente = ESTADOS_PEDIDO[(ESTADOS_PEDIDO.index(estado_actual) + 1) % len(ESTADOS_PEDIDO)]
+                        if st.button(
+                            f"➡️ Marcar como «{siguiente}»", key=f"log_avanzar_{p['id']}", use_container_width=True,
+                        ):
+                            db.update_pedido(p["id"], estado=siguiente)
+                            st.rerun()
+
     st.divider()
 
     # ----------------------------------------------------------------------
-    # Gestionar un pedido: jefe de logística / admin editan todo;
-    # repartidor solo puede cambiar el estado (y la nota) de lo suyo.
+    # Editar un pedido: jefe de logística / admin editan todos los datos;
+    # repartidor solo puede agregar una nota a lo suyo (el estado se cambia
+    # con el botón de la tarjeta, arriba).
     # ----------------------------------------------------------------------
     if puede_cambiar_estado:
-        st.markdown("#### ✏️ Actualizar un pedido")
+        st.markdown("#### ✏️ Editar datos o nota de un pedido")
+        st.caption("Para cambiar el estado, usa el botón «Marcar como…» en la tarjeta del pedido, arriba.")
         gestionables = todos_los_pedidos
         if not gestionables:
             st.caption("No hay pedidos para gestionar con estos filtros.")
@@ -150,10 +161,6 @@ with tab_vista:
                         st.caption(f"Producto: {p.get('producto') or '—'}")
                         st.caption(f"Fecha/franja: {p.get('fecha') or '—'} {p.get('franja') or ''}")
 
-                    estado_ed = st.selectbox(
-                        "Estado", ESTADOS_PEDIDO,
-                        index=ESTADOS_PEDIDO.index(p["estado"]) if p.get("estado") in ESTADOS_PEDIDO else 0,
-                    )
                     notas_ed = st.text_area(
                         "Notas", value=p.get("notas") or "",
                         help="Por ejemplo, el motivo si el pedido no se pudo entregar.",
@@ -164,11 +171,11 @@ with tab_vista:
                         guardar = colf1.form_submit_button("Guardar cambios", use_container_width=True)
                         eliminar = colf2.form_submit_button("Eliminar pedido", use_container_width=True)
                     else:
-                        guardar = st.form_submit_button("Guardar estado", use_container_width=True)
+                        guardar = st.form_submit_button("Guardar nota", use_container_width=True)
                         eliminar = False
 
                     if guardar:
-                        update_kwargs = {"estado": estado_ed, "notas": notas_ed.strip() or None}
+                        update_kwargs = {"notas": notas_ed.strip() or None}
                         if puede_crear:
                             if not cliente_ed.strip() or not direccion_ed.strip():
                                 st.error("El nombre del cliente y la dirección son obligatorios.")
