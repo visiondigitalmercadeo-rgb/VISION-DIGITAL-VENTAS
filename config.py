@@ -36,7 +36,7 @@ SURFACE = "#fcfcfb"
 # ---------------------------------------------------------------------------
 ROLES = [
     "admin", "vendedor", "vista", "mercadeo", "jefe_planta", "disenador", "disenador_alvaro",
-    "jefe_logistica", "repartidor",
+    "jefe_logistica", "repartidor", "jefe_capacitacion", "asistente_capacitacion",
 ]
 ROLES_LABEL = {
     "admin": "Administrador",
@@ -48,6 +48,8 @@ ROLES_LABEL = {
     "disenador_alvaro": "Diseñador (Álvaro)",
     "jefe_logistica": "Jefe de logística",
     "repartidor": "Repartidor",
+    "jefe_capacitacion": "Jefe de capacitación",
+    "asistente_capacitacion": "Asistente de capacitación",
 }
 
 PLANTAS = ["Offset", "Digital", "Valloy", "Colorado"]
@@ -91,6 +93,13 @@ CHECKLIST_DEFAULT = [
 ]
 
 ESTADOS_RECLAMO = ["Abierto", "En proceso", "Resuelto", "Cerrado"]
+
+# ---------------------------------------------------------------------------
+# Capacitación (módulos / submódulos por tienda)
+# ---------------------------------------------------------------------------
+CAPACITACION_TIENDAS = ["Cayalá", "Vista Hermosa", "Majadas", "CAES"]
+CAPACITACION_ARCHIVO_MAX_BYTES = 900_000  # ~900 KB — mismo límite práctico que Diseño Gráfico
+CAPACITACION_ARCHIVOS_MAX = 5  # máximo de archivos adjuntos por submódulo
 
 ESTADOS_PENDIENTE_MERCADEO = ["Pendiente", "En proceso", "Resuelto"]
 
