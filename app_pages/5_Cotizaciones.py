@@ -145,7 +145,12 @@ with tab_nueva:
                 if st.form_submit_button("Guardar cotización", use_container_width=True):
                     db.create_cotizacion(prospecto_id, vendedor_id, fecha_contacto, fecha_cotizacion,
                                           numero_cotizacion, monto, estado, notas)
-                    st.success("Cotización registrada.")
+                    mensaje = "Cotización registrada."
+                    prospecto_actual = db.get_prospecto(prospecto_id)
+                    if prospecto_actual and prospecto_actual.get("estado") == "Prospecto":
+                        db.update_prospecto(prospecto_id, estado="En negociación")
+                        mensaje += " El prospecto pasó automáticamente a 'En negociación'."
+                    st.success(mensaje)
                     if pid_prefill:
                         st.query_params.clear()
                     st.rerun()
