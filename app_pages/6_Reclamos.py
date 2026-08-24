@@ -19,37 +19,62 @@ st.caption(
 
 tab_lista, tab_nueva = st.tabs(["📋 Reclamos", "➕ Nuevo reclamo"])
 
+def _reclamos_df(rows, vendedores):
+    return pd.DataFrame([{
+        "ID": r["id"], "Cliente": r["cliente"], "NIT": r["nit"] or "—",
+        "Nº orden": r["numero_orden"], "Fecha reclamo": r["fecha_reclamo"],
+        "Estatus": r["estatus"],
+        "Descripción": r["descripcion"] or "—",
+        "Comentarios jefe planta": r.get("comentarios_jefe_planta") or "—",
+        "Fecha compromiso planta": r["fecha_solucion"] or "—",
+        "Fecha de cierre": r.get("fecha_cierre") or "—",
+        "Vendedor": db.nombre_vendedor(r["vendedor_id"], vendedores),
+    } for r in rows])
+
+
 with tab_lista:
     filtro_vendedor = vendedor_filter_selector(key="rec_filtro_vendedor")
-    filtro_estado = st.multiselect("Filtrar por estatus", ESTADOS_RECLAMO, default=[])
+    estados_pendientes = [e for e in ESTADOS_RECLAMO if e != "Cerrado"]
+    filtro_estado = st.multiselect("Filtrar por estatus (pendientes)", estados_pendientes, default=[])
 
     rows = db.list_reclamos(filtro_vendedor)
+    # Los reclamos con estatus "Cerrado" se sacan de la lista de pendientes y
+    # se muestran aparte, más abajo — así el jefe de planta mantiene la parte
+    # de arriba (pendientes) lo más limpia posible.
+    pendientes = [r for r in rows if r["estatus"] != "Cerrado"]
+    cerrados = [r for r in rows if r["estatus"] == "Cerrado"]
     if filtro_estado:
-        rows = [r for r in rows if r["estatus"] in filtro_estado]
+        pendientes = [r for r in pendientes if r["estatus"] in filtro_estado]
+
+    vendedores = db.list_usuarios()
+
+    st.markdown(f"#### 📋 Pendientes ({len(pendientes)})")
+    if not pendientes:
+        st.info("No hay reclamos pendientes con estos filtros.")
+    else:
+        df = _reclamos_df(pendientes, vendedores)
+        st.dataframe(df, use_container_width=True, hide_index=True)
+        download_excel_button(df, "reclamos_pendientes.xlsx", key="rec_descargar_excel")
+
+    st.divider()
+    with st.expander(f"🗂️ Reclamos cerrados ({len(cerrados)})"):
+        if not cerrados:
+            st.caption("Todavía no hay reclamos cerrados con estos filtros.")
+        else:
+            df_cerrados = _reclamos_df(cerrados, vendedores)
+            st.dataframe(df_cerrados, use_container_width=True, hide_index=True)
+            download_excel_button(df_cerrados, "reclamos_cerrados.xlsx", key="rec_descargar_excel_cerrados")
 
     if not rows:
         st.info("No hay reclamos registrados con estos filtros.")
     else:
-        vendedores = db.list_usuarios()
-        df = pd.DataFrame([{
-            "ID": r["id"], "Cliente": r["cliente"], "NIT": r["nit"] or "—",
-            "Nº orden": r["numero_orden"], "Fecha reclamo": r["fecha_reclamo"],
-            "Estatus": r["estatus"],
-            "Descripción": r["descripcion"] or "—",
-            "Comentarios jefe planta": r.get("comentarios_jefe_planta") or "—",
-            "Fecha compromiso planta": r["fecha_solucion"] or "—",
-            "Fecha de cierre": r.get("fecha_cierre") or "—",
-            "Vendedor": db.nombre_vendedor(r["vendedor_id"], vendedores),
-        } for r in rows])
-        st.dataframe(df, use_container_width=True, hide_index=True)
-        download_excel_button(df, "reclamos.xlsx", key="rec_descargar_excel")
-
         puede_editar_completo = auth.can_edit()
         puede_cambiar_estado = puede_editar_completo or user["rol"] == "jefe_planta"
         puede_cerrar_caso = user["rol"] in ("admin", "vendedor")
 
         if puede_cambiar_estado:
             st.markdown("#### ✏️ Actualizar estatus / fecha de solución")
+            st.caption("Aquí aparecen todos los reclamos, incluyendo los ya cerrados (por si hay que corregir alguno).")
             opciones = {f"{r['numero_orden'] or r['id']} — {r['cliente']}": r["id"] for r in rows}
             elegido = st.selectbox("Selecciona un reclamo", ["—"] + list(opciones.keys()))
             if elegido != "—":
