@@ -107,6 +107,24 @@ def is_repartidor():
     return u is not None and u["rol"] == "repartidor"
 
 
+def is_jefe_capacitacion():
+    u = current_user()
+    return u is not None and u["rol"] == "jefe_capacitacion"
+
+
+def is_asistente_capacitacion():
+    u = current_user()
+    return u is not None and u["rol"] == "asistente_capacitacion"
+
+
+def puede_editar_capacitacion():
+    """Admin, jefe de capacitación y asistente de capacitación tienen el mismo
+    nivel de permiso dentro de la pestaña de Capacitación (crear/editar
+    módulos, submódulos, personal y calificaciones)."""
+    u = current_user()
+    return u is not None and u["rol"] in ("admin", "jefe_capacitacion", "asistente_capacitacion")
+
+
 def can_edit():
     """Admin, vendedor y mercadeo pueden crear/editar (el rol 'mercadeo' solo
     tiene acceso a la pestaña de Visitas de mercadeo, restringido en app.py);
