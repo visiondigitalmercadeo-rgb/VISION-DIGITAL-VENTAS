@@ -70,13 +70,15 @@ with tab_tablero:
     cotizaciones_rows = db.list_cotizaciones(filtro_vendedor)
     monto_cotizaciones = sum(c.get("monto") or 0 for c in cotizaciones_rows)
 
-    m1, m2, m3, m4, m5, m6 = st.columns(6)
-    m1.metric("Total prospectos", len(rows))
-    m2.metric("En negociación", en_negociacion)
-    m3.metric("Cantidad de cotizaciones", len(cotizaciones_rows))
-    m4.metric("Monto en cotizaciones", money(monto_cotizaciones))
-    m5.metric("Clientes ganados", ganados)
-    m6.metric("Clientes perdidos", perdidos)
+    fila1 = st.columns(4)
+    fila1[0].metric("Total prospectos", len(rows))
+    fila1[1].metric("En negociación", en_negociacion)
+    fila1[2].metric("Cantidad de cotizaciones", len(cotizaciones_rows))
+    fila1[3].metric("Monto en cotizaciones", money(monto_cotizaciones))
+
+    fila2 = st.columns(4)
+    fila2[0].metric("Clientes ganados", ganados)
+    fila2[1].metric("Clientes perdidos", perdidos)
 
     if rows:
         df_export = pd.DataFrame([{
@@ -317,3 +319,4 @@ with tab_nueva:
                     )
                     st.success(f"Prospecto '{nombre_cliente}' guardado correctamente.")
                     st.rerun()
+                    
