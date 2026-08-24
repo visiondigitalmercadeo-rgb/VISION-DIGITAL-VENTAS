@@ -115,6 +115,7 @@ with tab_tablero:
                             f"<span style='font-weight:600;'>{r['nombre_cliente']}</span></div>",
                             unsafe_allow_html=True,
                         )
+                        st.caption(f"👤 Vendedor: {nombre_vend}")
                         contacto = " · ".join(x for x in [r.get("telefono"), r.get("email")] if x)
                         if contacto:
                             st.caption(contacto)
@@ -319,4 +320,3 @@ with tab_nueva:
                     )
                     st.success(f"Prospecto '{nombre_cliente}' guardado correctamente.")
                     st.rerun()
-                    
