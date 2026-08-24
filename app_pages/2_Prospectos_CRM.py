@@ -7,7 +7,7 @@ import auth
 import database as db
 from config import ESTADOS_PROSPECTO
 from utils import (
-    avatar_color_para, download_excel_button, iniciales_nombre, sidebar_user_box, vendedor_filter_selector,
+    avatar_color_para, download_excel_button, iniciales_nombre, money, sidebar_user_box, vendedor_filter_selector,
 )
 
 user = auth.current_user()
@@ -64,23 +64,19 @@ with tab_tablero:
     # ------------------------------------------------------------------
     # Resumen numérico rápido
     # ------------------------------------------------------------------
-    hoy = date.today()
-    vencidos = 0
-    for r in rows:
-        if r.get("fecha_seguimiento"):
-            try:
-                if date.fromisoformat(r["fecha_seguimiento"]) < hoy:
-                    vencidos += 1
-            except ValueError:
-                pass
     en_negociacion = sum(1 for r in rows if r.get("estado") == "En negociación")
     ganados = sum(1 for r in rows if r.get("estado") == "Cliente (Ganado)")
+    perdidos = sum(1 for r in rows if r.get("estado") == "Perdido")
+    cotizaciones_rows = db.list_cotizaciones(filtro_vendedor)
+    monto_cotizaciones = sum(c.get("monto") or 0 for c in cotizaciones_rows)
 
-    m1, m2, m3, m4 = st.columns(4)
+    m1, m2, m3, m4, m5, m6 = st.columns(6)
     m1.metric("Total prospectos", len(rows))
     m2.metric("En negociación", en_negociacion)
-    m3.metric("Clientes ganados", ganados)
-    m4.metric("🔴 Seguimientos vencidos", vencidos)
+    m3.metric("Cantidad de cotizaciones", len(cotizaciones_rows))
+    m4.metric("Monto en cotizaciones", money(monto_cotizaciones))
+    m5.metric("Clientes ganados", ganados)
+    m6.metric("Clientes perdidos", perdidos)
 
     if rows:
         df_export = pd.DataFrame([{
@@ -125,7 +121,10 @@ with tab_tablero:
                             st.caption(badge)
                         if r.get("recordatorio"):
                             st.caption(f"📝 {r['recordatorio']}")
-                        if auth.can_edit():
+                        if r.get("motivo_perdida"):
+                            st.caption(f"❌ Motivo: {r['motivo_perdida']}")
+
+                        if auth.can_edit() and estado == "Prospecto":
                             if st.button(
                                 "💰 Crear cotización", key=f"crm_cotizar_{r['id']}", use_container_width=True,
                             ):
@@ -133,6 +132,38 @@ with tab_tablero:
                                     "app_pages/5_Cotizaciones.py",
                                     query_params={"prospecto_id": r["id"]},
                                 )
+                        elif auth.can_edit() and estado == "En negociación":
+                            perdiendo_key = f"crm_perdiendo_{r['id']}"
+                            if st.session_state.get(perdiendo_key):
+                                motivo = st.text_area(
+                                    "¿Por qué se perdió?", key=f"crm_motivo_{r['id']}", height=80,
+                                )
+                                cc1, cc2 = st.columns(2)
+                                if cc1.button(
+                                    "Confirmar", key=f"crm_confirmar_perdida_{r['id']}", use_container_width=True,
+                                ):
+                                    db.update_prospecto(
+                                        r["id"], estado="Perdido", motivo_perdida=motivo.strip() or None,
+                                    )
+                                    st.session_state.pop(perdiendo_key, None)
+                                    st.rerun()
+                                if cc2.button(
+                                    "Cancelar", key=f"crm_cancelar_perdida_{r['id']}", use_container_width=True,
+                                ):
+                                    st.session_state.pop(perdiendo_key, None)
+                                    st.rerun()
+                            else:
+                                bc1, bc2 = st.columns(2)
+                                if bc1.button(
+                                    "✅ Ganado", key=f"crm_ganado_{r['id']}", use_container_width=True,
+                                ):
+                                    db.update_prospecto(r["id"], estado="Cliente (Ganado)")
+                                    st.rerun()
+                                if bc2.button(
+                                    "❌ Perdido", key=f"crm_perdido_{r['id']}", use_container_width=True,
+                                ):
+                                    st.session_state[perdiendo_key] = True
+                                    st.rerun()
 
     st.divider()
 
