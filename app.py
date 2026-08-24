@@ -53,6 +53,7 @@ diseno = st.Page("app_pages/12_Diseno_Grafico.py", title="Diseño Gráfico - Nic
 diseno_alvaro = st.Page("app_pages/14_Diseno_Grafico_Alvaro.py", title="Diseño Gráfico - Álvaro", icon="🖌️")
 logistica = st.Page("app_pages/13_Logistica.py", title="Logística", icon="🚚")
 ventas = st.Page("app_pages/7_Ventas_Diarias.py", title="Venta del día", icon="🧮")
+ventas_mes = st.Page("app_pages/15_Ventas_Por_Mes.py", title="Ventas por mes", icon="📅")
 generales = st.Page("app_pages/8_Prospectos_Generales.py", title="Prospectos generales (todos)", icon="🌐")
 kpis = st.Page("app_pages/9_KPIs.py", title="KPIs", icon="📊")
 admin = st.Page("app_pages/10_Administracion.py", title="Administración de usuarios", icon="👥")
@@ -80,7 +81,7 @@ elif rol == "repartidor":
 else:
     pages = [
         inicio, prospectos, llamadas, citas, mercadeo, cotizaciones, reclamos,
-        diseno, diseno_alvaro, logistica, ventas, generales, kpis,
+        diseno, diseno_alvaro, logistica, ventas, ventas_mes, generales, kpis,
     ]
     if rol == "admin":
         pages.append(admin)
