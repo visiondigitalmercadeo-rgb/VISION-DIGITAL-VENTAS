@@ -1,13 +1,12 @@
-from datetime import date, timedelta
+from datetime import date
 
 import pandas as pd
-import plotly.graph_objects as go
 import streamlit as st
 
 import auth
 import database as db
-from config import CATEGORICAL, PLANTAS, STATUS, TIPOS_CITA
-from utils import as_lineas_venta, base_layout, money, sidebar_user_box
+from config import PLANTAS, TIPOS_CITA
+from utils import as_lineas_venta, money, sidebar_user_box
 
 user = auth.current_user()
 sidebar_user_box()
@@ -41,12 +40,10 @@ else:
     df_citas["Vendedor"] = df_citas["vendedor_id"].map(vend_lookup).fillna("Sin asignar")
     pivot = df_citas.pivot_table(index="Vendedor", columns="tipo", values="id", aggfunc="count", fill_value=0)
     pivot = pivot.reindex(columns=TIPOS_CITA, fill_value=0)
-
-    fig = go.Figure()
-    for i, tipo in enumerate(TIPOS_CITA):
-        fig.add_trace(go.Bar(name=tipo, x=pivot.index, y=pivot[tipo], marker_color=CATEGORICAL[i]))
-    fig.update_layout(barmode="group")
-    st.plotly_chart(base_layout(fig, title="Actividades por vendedor y tipo"), use_container_width=True)
+    pivot["Total"] = pivot.sum(axis=1)
+    pivot = pivot.sort_values("Total", ascending=False)
+    st.markdown("##### Actividades por vendedor y tipo")
+    st.dataframe(pivot.rename_axis("Vendedor").reset_index(), use_container_width=True, hide_index=True)
 
 st.divider()
 
@@ -65,15 +62,19 @@ m1.metric("Total clientes cerrados", len(df_cerrados))
 if not df_cerrados.empty:
     df_cerrados["Vendedor"] = df_cerrados["vendedor_id"].map(vend_lookup).fillna("Sin asignar")
     df_cerrados["Mes"] = pd.to_datetime(df_cerrados["fecha_registro"]).dt.strftime("%Y-%m")
-    top = df_cerrados["Vendedor"].value_counts().idxmax()
-    m2.metric("Vendedor con más cierres", top)
+    ranking_cierres = (
+        df_cerrados["Vendedor"].value_counts().rename_axis("Vendedor").reset_index(name="Nº de cierres")
+    )
+    m2.metric("Vendedor con más cierres", ranking_cierres.iloc[0]["Vendedor"])
 
-    pivot2 = df_cerrados.pivot_table(index="Mes", columns="Vendedor", values="id", aggfunc="count", fill_value=0).sort_index()
-    fig2 = go.Figure()
-    for i, vend in enumerate(pivot2.columns):
-        fig2.add_trace(go.Bar(name=vend, x=pivot2.index, y=pivot2[vend], marker_color=CATEGORICAL[i % len(CATEGORICAL)]))
-    fig2.update_layout(barmode="stack")
-    st.plotly_chart(base_layout(fig2, title="Clientes cerrados por mes y vendedor"), use_container_width=True)
+    st.markdown("##### Cierres por vendedor")
+    st.dataframe(ranking_cierres, use_container_width=True, hide_index=True)
+
+    st.markdown("##### Cierres por mes y vendedor")
+    pivot2 = df_cerrados.pivot_table(
+        index="Mes", columns="Vendedor", values="id", aggfunc="count", fill_value=0
+    ).sort_index()
+    st.dataframe(pivot2.rename_axis("Mes").reset_index(), use_container_width=True, hide_index=True)
 else:
     st.info("Todavía no hay clientes marcados como 'Cliente (Ganado)'.")
 
@@ -117,38 +118,61 @@ st.header("4 · Venta del día y acumulado")
 
 ventas_hoy = db.list_ventas(desde=date.today(), hasta=date.today())
 total_hoy = sum(v["monto"] or 0 for v in ventas_hoy)
+ordenes_hoy = sum(v.get("numero_ordenes") or 0 for v in ventas_hoy)
 
 ventas_rango = db.list_ventas(desde=desde, hasta=hasta)
-df_v = pd.DataFrame(ventas_rango) if ventas_rango else pd.DataFrame(columns=["fecha", "planta", "monto", "vendedor_id"])
+df_v = pd.DataFrame(ventas_rango) if ventas_rango else pd.DataFrame(
+    columns=["fecha", "planta", "monto", "vendedor_id", "cliente", "numero_ordenes"]
+)
+if not df_v.empty and "numero_ordenes" not in df_v.columns:
+    df_v["numero_ordenes"] = 0
+if not df_v.empty:
+    df_v["numero_ordenes"] = df_v["numero_ordenes"].fillna(0)
 total_acumulado = df_v["monto"].sum() if not df_v.empty else 0
+total_ordenes_periodo = int(df_v["numero_ordenes"].sum()) if not df_v.empty else 0
 
-m1, m2, m3 = st.columns(3)
+m1, m2, m3, m4, m5 = st.columns(5)
 m1.metric("Venta de hoy", money(total_hoy))
-m2.metric("Acumulado del periodo", money(total_acumulado))
-m3.metric("Nº de transacciones", len(df_v))
+m2.metric("Órdenes de hoy", int(ordenes_hoy))
+m3.metric("Acumulado del periodo", money(total_acumulado))
+m4.metric("Nº de transacciones", len(df_v))
+m5.metric("Órdenes del periodo", total_ordenes_periodo)
 
 if not df_v.empty:
     df_v["Fecha"] = pd.to_datetime(df_v["fecha"])
-    diario = df_v.groupby("Fecha")["monto"].sum().sort_index()
-    acumulado = diario.cumsum()
 
-    fig3 = go.Figure()
-    fig3.add_trace(go.Scatter(x=acumulado.index, y=acumulado.values, mode="lines",
-                               line=dict(color=CATEGORICAL[0], width=2), fill="tozeroy", name="Acumulado"))
-    st.plotly_chart(base_layout(fig3, title="Venta acumulada en el periodo"), use_container_width=True)
+    st.markdown("##### Venta y acumulado por día")
+    diario = df_v.groupby("Fecha").agg(Venta=("monto", "sum"), Ordenes=("numero_ordenes", "sum")).sort_index()
+    diario["Acumulado"] = diario["Venta"].cumsum()
+    tabla_diaria = diario.copy()
+    tabla_diaria.index = tabla_diaria.index.strftime("%Y-%m-%d")
+    tabla_diaria["Venta"] = tabla_diaria["Venta"].apply(money)
+    tabla_diaria["Acumulado"] = tabla_diaria["Acumulado"].apply(money)
+    tabla_diaria["Ordenes"] = tabla_diaria["Ordenes"].astype(int)
+    tabla_diaria = tabla_diaria.rename(columns={"Ordenes": "Nº de órdenes"})
+    st.dataframe(tabla_diaria.rename_axis("Fecha").reset_index(), use_container_width=True, hide_index=True)
 
-    col_a, col_b = st.columns(2)
-    with col_a:
-        por_planta = df_v.groupby("planta")["monto"].sum().reindex(PLANTAS).fillna(0)
-        fig4 = go.Figure(go.Bar(x=por_planta.index, y=por_planta.values,
-                                 marker_color=CATEGORICAL[:len(PLANTAS)]))
-        st.plotly_chart(base_layout(fig4, title="Venta por planta"), use_container_width=True)
-    with col_b:
-        df_v["Vendedor"] = df_v["vendedor_id"].map(vend_lookup).fillna("Sin asignar")
-        por_vendedor = df_v.groupby("Vendedor")["monto"].sum().sort_values(ascending=True)
-        fig5 = go.Figure(go.Bar(x=por_vendedor.values, y=por_vendedor.index, orientation="h",
-                                 marker_color=CATEGORICAL[0]))
-        st.plotly_chart(base_layout(fig5, title="Venta por vendedor"), use_container_width=True)
+    st.markdown("##### Venta por planta")
+    por_planta = df_v.groupby("planta")["monto"].sum().reindex(PLANTAS).fillna(0)
+    cols_planta = st.columns(len(PLANTAS))
+    for col, p in zip(cols_planta, PLANTAS):
+        col.metric(p, money(por_planta.get(p, 0)))
+
+    st.markdown("##### Venta por vendedor")
+    df_v["Vendedor"] = df_v["vendedor_id"].map(vend_lookup).fillna("Sin asignar")
+    por_vendedor = df_v.groupby("Vendedor").agg(
+        Monto=("monto", "sum"), Ordenes=("numero_ordenes", "sum"), Transacciones=("monto", "count"),
+    ).sort_values("Monto", ascending=False)
+    tabla_vend = por_vendedor.copy()
+    tabla_vend["Monto"] = tabla_vend["Monto"].apply(money)
+    tabla_vend["Ordenes"] = tabla_vend["Ordenes"].astype(int)
+    tabla_vend = tabla_vend.rename(columns={"Ordenes": "Nº de órdenes", "Transacciones": "Nº de ventas"})
+    st.dataframe(tabla_vend.rename_axis("Vendedor").reset_index(), use_container_width=True, hide_index=True)
+
+    st.markdown("##### Órdenes por mes")
+    df_v["Mes"] = df_v["Fecha"].dt.strftime("%Y-%m")
+    ordenes_mes = df_v.groupby("Mes")["numero_ordenes"].sum().sort_index()
+    st.dataframe(ordenes_mes.rename("Nº de órdenes").astype(int), use_container_width=True)
 else:
     st.info("No hay ventas registradas en este rango.")
 
@@ -184,16 +208,9 @@ else:
     top_cantidad = por_producto.sort_values("Transacciones", ascending=False).index[0]
     m2.metric("Producto más vendido (Nº de ventas)", top_cantidad)
 
-    top10 = por_producto.head(10).sort_values("Monto", ascending=True)
-    fig6 = go.Figure(go.Bar(x=top10["Monto"], y=top10.index, orientation="h", marker_color=CATEGORICAL[2]))
-    st.plotly_chart(
-        base_layout(fig6, title="Top 10 productos por monto vendido (Q)", height=max(320, 32 * len(top10) + 120)),
-        use_container_width=True,
-    )
-
+    st.markdown("##### Ranking de productos por monto vendido")
     tabla_productos = por_producto.copy()
     tabla_productos["Monto"] = tabla_productos["Monto"].apply(money)
-    st.dataframe(
-        tabla_productos.rename_axis("Producto").reset_index(),
-        use_container_width=True, hide_index=True,
-    )
+    tabla_productos = tabla_productos.rename_axis("Producto").reset_index()
+    tabla_productos.insert(0, "#", range(1, len(tabla_productos) + 1))
+    st.dataframe(tabla_productos, use_container_width=True, hide_index=True)
