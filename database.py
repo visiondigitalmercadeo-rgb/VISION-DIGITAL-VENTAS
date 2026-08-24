@@ -739,3 +739,170 @@ def update_pedido(pedido_id, **kwargs):
 
 def delete_pedido(pedido_id):
     get_client().collection("pedidos").document(pedido_id).delete()
+
+
+# ---------------------------------------------------------------------------
+# Capacitación — personal por tienda
+# ---------------------------------------------------------------------------
+def list_personal_tiendas(tienda=None, solo_activos=True):
+    client = get_client()
+    query = client.collection("personal_tiendas")
+    if tienda:
+        query = query.where("tienda", "==", tienda)
+    rows = [_doc_to_dict(s) for s in query.stream()]
+    if solo_activos:
+        rows = [r for r in rows if r.get("activo", True)]
+    rows.sort(key=lambda r: (r.get("tienda") or "", r.get("nombre") or ""))
+    return rows
+
+
+def get_personal_tienda(persona_id):
+    snap = get_client().collection("personal_tiendas").document(persona_id).get()
+    return _doc_to_dict(snap) if snap.exists else None
+
+
+def create_personal_tienda(nombre, tienda, puesto=None):
+    get_client().collection("personal_tiendas").document().set({
+        "nombre": nombre, "tienda": tienda, "puesto": puesto, "activo": True,
+        "creado_en": datetime.now().isoformat(timespec="seconds"),
+    })
+
+
+def update_personal_tienda(persona_id, **kwargs):
+    if kwargs:
+        get_client().collection("personal_tiendas").document(persona_id).update(kwargs)
+
+
+def set_personal_tienda_activo(persona_id, activo):
+    get_client().collection("personal_tiendas").document(persona_id).update({"activo": bool(activo)})
+
+
+def delete_personal_tienda(persona_id):
+    """Elimina a la persona del listado. Las calificaciones que ya tenga
+    registradas no se borran, solo dejan de estar vinculadas a un nombre visible."""
+    get_client().collection("personal_tiendas").document(persona_id).delete()
+
+
+def nombre_personal_tienda(persona_id, personal=None):
+    if not persona_id:
+        return "—"
+    if personal is None:
+        personal = list_personal_tiendas(solo_activos=False)
+    for p in personal:
+        if p["id"] == persona_id:
+            return p["nombre"]
+    return "—"
+
+
+# ---------------------------------------------------------------------------
+# Capacitación — módulos y submódulos
+# ---------------------------------------------------------------------------
+def list_modulos():
+    client = get_client()
+    rows = [_doc_to_dict(s) for s in client.collection("capacitacion_modulos").stream()]
+    rows.sort(key=lambda r: r.get("nombre") or "")
+    return rows
+
+
+def get_modulo(modulo_id):
+    snap = get_client().collection("capacitacion_modulos").document(modulo_id).get()
+    return _doc_to_dict(snap) if snap.exists else None
+
+
+def create_modulo(nombre, descripcion=None):
+    get_client().collection("capacitacion_modulos").document().set({
+        "nombre": nombre, "descripcion": descripcion,
+        "creado_en": datetime.now().isoformat(timespec="seconds"),
+    })
+
+
+def update_modulo(modulo_id, **kwargs):
+    if kwargs:
+        get_client().collection("capacitacion_modulos").document(modulo_id).update(kwargs)
+
+
+def delete_modulo(modulo_id):
+    """Elimina el módulo junto con todos sus submódulos y las calificaciones
+    (generales y por submódulo) ligadas a él — para no dejar nada huérfano."""
+    client = get_client()
+    for sub in list_submodulos(modulo_id):
+        delete_submodulo(sub["id"])
+    for c in list_calificaciones(modulo_id=modulo_id):
+        client.collection("capacitacion_calificaciones").document(c["id"]).delete()
+    client.collection("capacitacion_modulos").document(modulo_id).delete()
+
+
+def list_submodulos(modulo_id=None):
+    client = get_client()
+    query = client.collection("capacitacion_submodulos")
+    if modulo_id:
+        query = query.where("modulo_id", "==", modulo_id)
+    rows = [_doc_to_dict(s) for s in query.stream()]
+    rows.sort(key=lambda r: r.get("nombre") or "")
+    return rows
+
+
+def get_submodulo(submodulo_id):
+    snap = get_client().collection("capacitacion_submodulos").document(submodulo_id).get()
+    return _doc_to_dict(snap) if snap.exists else None
+
+
+def create_submodulo(modulo_id, nombre, descripcion=None, archivos=None):
+    get_client().collection("capacitacion_submodulos").document().set({
+        "modulo_id": modulo_id, "nombre": nombre, "descripcion": descripcion,
+        "archivos": archivos or [], "creado_en": datetime.now().isoformat(timespec="seconds"),
+    })
+
+
+def update_submodulo(submodulo_id, **kwargs):
+    if kwargs:
+        get_client().collection("capacitacion_submodulos").document(submodulo_id).update(kwargs)
+
+
+def delete_submodulo(submodulo_id):
+    client = get_client()
+    for c in list_calificaciones(submodulo_id=submodulo_id):
+        client.collection("capacitacion_calificaciones").document(c["id"]).delete()
+    client.collection("capacitacion_submodulos").document(submodulo_id).delete()
+
+
+# ---------------------------------------------------------------------------
+# Capacitación — calificaciones (una por persona + módulo, o por persona +
+# submódulo; siempre reemplaza el valor anterior, no suma).
+# ---------------------------------------------------------------------------
+def list_calificaciones(modulo_id=None, submodulo_id=None, persona_id=None):
+    client = get_client()
+    query = client.collection("capacitacion_calificaciones")
+    if modulo_id:
+        query = query.where("modulo_id", "==", modulo_id)
+    if persona_id:
+        query = query.where("persona_id", "==", persona_id)
+    rows = [_doc_to_dict(s) for s in query.stream()]
+    if submodulo_id is not None:
+        rows = [r for r in rows if r.get("submodulo_id") == submodulo_id]
+    return rows
+
+
+def get_calificacion(persona_id, modulo_id, submodulo_id=None):
+    coincidencias = [
+        c for c in list_calificaciones(modulo_id=modulo_id, persona_id=persona_id)
+        if c.get("submodulo_id") == submodulo_id
+    ]
+    return coincidencias[0] if coincidencias else None
+
+
+def upsert_calificacion(persona_id, modulo_id, submodulo_id, calificacion, notas=None):
+    """submodulo_id=None significa que es la calificación general del módulo.
+    Si ya existe una calificación para esta persona + módulo (+ submódulo),
+    la reemplaza; si no, la crea."""
+    existente = get_calificacion(persona_id, modulo_id, submodulo_id)
+    data = {
+        "persona_id": persona_id, "modulo_id": modulo_id, "submodulo_id": submodulo_id,
+        "calificacion": calificacion, "notas": notas,
+        "actualizado_en": datetime.now().isoformat(timespec="seconds"),
+    }
+    client = get_client()
+    if existente:
+        client.collection("capacitacion_calificaciones").document(existente["id"]).set(data)
+    else:
+        client.collection("capacitacion_calificaciones").document().set(data)
