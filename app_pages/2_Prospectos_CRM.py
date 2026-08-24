@@ -125,6 +125,14 @@ with tab_tablero:
                             st.caption(badge)
                         if r.get("recordatorio"):
                             st.caption(f"📝 {r['recordatorio']}")
+                        if auth.can_edit():
+                            if st.button(
+                                "💰 Crear cotización", key=f"crm_cotizar_{r['id']}", use_container_width=True,
+                            ):
+                                st.switch_page(
+                                    "app_pages/5_Cotizaciones.py",
+                                    query_params={"prospecto_id": r["id"]},
+                                )
 
     st.divider()
 
