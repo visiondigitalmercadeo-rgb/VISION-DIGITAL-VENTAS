@@ -2,6 +2,7 @@ import streamlit as st
 
 import auth
 import database as db
+import public_tickets
 from config import EMPRESA_NOMBRE, LOGO_PATH
 
 st.set_page_config(page_title=f"{EMPRESA_NOMBRE} — Plataforma Comercial", page_icon=LOGO_PATH, layout="wide")
@@ -26,6 +27,20 @@ except Exception:
     pass
 
 db.init_db(seed_demo=True)
+
+# ---------------------------------------------------------------------------
+# Rutas públicas del Sistema de Tickets — Tiendas (check-in por QR y pantalla
+# "Ahora atendiendo"). NO requieren haber iniciado sesión, así que se
+# atienden aquí mismo, antes del login, y se detiene la ejecución.
+# ---------------------------------------------------------------------------
+_qp_ticket = st.query_params.get("ticket")
+_qp_pantalla = st.query_params.get("pantalla")
+if _qp_ticket:
+    public_tickets.render_checkin(_qp_ticket)
+    st.stop()
+elif _qp_pantalla:
+    public_tickets.render_pantalla(_qp_pantalla)
+    st.stop()
 
 if not db.firebase_conectado():
     st.warning(
@@ -55,6 +70,7 @@ logistica = st.Page("app_pages/13_Logistica.py", title="Logística", icon="🚚"
 ventas = st.Page("app_pages/7_Ventas_Diarias.py", title="Venta del día", icon="🧮")
 ventas_mes = st.Page("app_pages/15_Ventas_Por_Mes.py", title="Ventas por mes", icon="📅")
 capacitacion = st.Page("app_pages/16_Capacitacion.py", title="Capacitación", icon="🎓")
+tickets_tienda = st.Page("app_pages/17_Tickets_Tienda.py", title="Sistema Tickets Tiendas", icon="🎫")
 generales = st.Page("app_pages/8_Prospectos_Generales.py", title="Prospectos generales (todos)", icon="🌐")
 kpis = st.Page("app_pages/9_KPIs.py", title="KPIs", icon="📊")
 admin = st.Page("app_pages/10_Administracion.py", title="Administración de usuarios", icon="👥")
@@ -82,10 +98,15 @@ elif rol == "repartidor":
 elif rol in ("jefe_capacitacion", "asistente_capacitacion"):
     # Estos roles solo tienen acceso a la pestaña de Capacitación.
     pages = [capacitacion]
+elif rol in ("anfitriona", "jefe_tienda", "asesor_ventas"):
+    # Estos roles solo tienen acceso al Sistema de Tickets — Tiendas (y solo
+    # ven la tienda asignada a su usuario).
+    pages = [tickets_tienda]
 else:
     pages = [
         inicio, prospectos, llamadas, citas, mercadeo, cotizaciones, reclamos,
-        diseno, diseno_alvaro, logistica, ventas, ventas_mes, capacitacion, generales, kpis,
+        diseno, diseno_alvaro, logistica, ventas, ventas_mes, capacitacion, tickets_tienda,
+        generales, kpis,
     ]
     if rol == "admin":
         pages.append(admin)
