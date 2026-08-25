@@ -1010,16 +1010,32 @@ def create_ticket_tienda(tienda, nombre, telefono, servicio):
 
 
 def list_tickets_tienda(tienda=None, fecha=None, activos_solo=False):
+    """Tickets 'vivos' (no incluye los que se hayan eliminado — para esos ver
+    list_tickets_eliminados)."""
     client = get_client()
     query = client.collection("tickets_tienda")
     if tienda:
         query = query.where("tienda", "==", tienda)
     rows = [_doc_to_dict(s) for s in query.stream()]
+    rows = [r for r in rows if not r.get("eliminado")]
     if fecha:
         rows = [r for r in rows if r.get("fecha") == fecha]
     if activos_solo:
         rows = [r for r in rows if r.get("estado") not in ("Facturado", "Abandono")]
     rows.sort(key=lambda r: r.get("hora_ingreso") or "", reverse=True)
+    return rows
+
+
+def list_tickets_eliminados(tienda=None):
+    """Todos los tickets que se han eliminado (con motivo, quién y cuándo),
+    para el listado de auditoría al final de la pestaña de Tickets — Tiendas."""
+    client = get_client()
+    query = client.collection("tickets_tienda")
+    if tienda:
+        query = query.where("tienda", "==", tienda)
+    rows = [_doc_to_dict(s) for s in query.stream()]
+    rows = [r for r in rows if r.get("eliminado")]
+    rows.sort(key=lambda r: r.get("eliminado_en") or "", reverse=True)
     return rows
 
 
@@ -1049,11 +1065,28 @@ def abandonar_ticket_tienda(ticket_id, motivo=None):
     })
 
 
+def eliminar_ticket_tienda(ticket_id, motivo, eliminado_por=None):
+    """'Elimina' un ticket del tablero (deja de aparecer ahí y en el
+    historial), pero NO lo borra de la base de datos: lo marca como
+    eliminado y guarda el motivo, quién lo eliminó y cuándo, para que quede
+    un registro de auditoría (ver list_tickets_eliminados)."""
+    get_client().collection("tickets_tienda").document(ticket_id).update({
+        "eliminado": True,
+        "motivo_eliminacion": (motivo or "").strip() or None,
+        "eliminado_por": eliminado_por,
+        "eliminado_en": ahora_guatemala().isoformat(timespec="seconds"),
+    })
+
+
 def update_ticket_tienda(ticket_id, **kwargs):
     if kwargs:
         get_client().collection("tickets_tienda").document(ticket_id).update(kwargs)
 
 
 def delete_ticket_tienda(ticket_id):
-    """Elimina un ticket por completo (no se puede deshacer)."""
+    """Elimina un ticket de la base de datos por completo y sin dejar
+    rastro (no se puede deshacer). No se usa desde la pestaña de Tickets —
+    ahí se usa eliminar_ticket_tienda(), que sí deja un registro de
+    auditoría; esta función queda disponible para una limpieza manual de
+    datos si algún día hace falta."""
     get_client().collection("tickets_tienda").document(ticket_id).delete()
