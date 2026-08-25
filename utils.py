@@ -131,14 +131,16 @@ def hora_legible(iso_ts):
 
 def minutos_entre(inicio_iso, fin_iso=None):
     """Minutos transcurridos entre dos timestamps ISO ('...T09:14:32'). Si no
-    hay fin_iso, usa la hora actual (para tickets todavía en curso). Devuelve
-    None si inicio_iso no existe todavía (esa etapa no ha comenzado)."""
+    hay fin_iso, usa la hora actual de Guatemala (para tickets todavía en
+    curso — los timestamps se guardan en hora de Guatemala, así que la hora
+    actual con la que se comparan debe ser la misma). Devuelve None si
+    inicio_iso no existe todavía (esa etapa no ha comenzado)."""
     if not inicio_iso:
         return None
     from datetime import datetime as _dt
     try:
         inicio = _dt.fromisoformat(inicio_iso)
-        fin = _dt.fromisoformat(fin_iso) if fin_iso else _dt.now()
+        fin = _dt.fromisoformat(fin_iso) if fin_iso else db.ahora_guatemala()
     except (ValueError, TypeError):
         return None
     return max(0, int((fin - inicio).total_seconds() // 60))
