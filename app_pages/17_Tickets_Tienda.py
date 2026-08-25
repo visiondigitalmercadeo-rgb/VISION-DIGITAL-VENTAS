@@ -275,13 +275,63 @@ with tab_tablero:
                                 st.rerun()
 
                     st.markdown("###### 🗑️ Eliminar este ticket")
-                    st.caption("Esto borra el ticket por completo (no se puede deshacer).")
-                    if st.button(
-                        "🗑️ Eliminar ticket", key=f"tt_del_ticket_{tid}", use_container_width=True,
-                    ):
-                        db.delete_ticket_tienda(tid)
-                        st.success("Ticket eliminado.")
-                        st.rerun()
+                    st.caption(
+                        "El ticket deja de aparecer en el tablero y en el historial, pero queda "
+                        "guardado en el listado de 'Tickets eliminados' de más abajo, junto con el "
+                        "motivo y quién lo eliminó."
+                    )
+                    eliminando_key = f"tt_eliminando_{tid}"
+                    if st.session_state.get(eliminando_key):
+                        motivo_el = st.text_area(
+                            "¿Por qué se elimina este ticket?", key=f"tt_motivo_el_{tid}", height=80,
+                        )
+                        dc1, dc2 = st.columns(2)
+                        if dc1.button(
+                            "Confirmar eliminación", key=f"tt_confirmar_el_{tid}", use_container_width=True,
+                        ):
+                            if not motivo_el.strip():
+                                st.error("Escribe el motivo antes de confirmar.")
+                            else:
+                                db.eliminar_ticket_tienda(tid, motivo_el, eliminado_por=user["nombre"])
+                                st.session_state.pop(eliminando_key, None)
+                                st.success("Ticket eliminado.")
+                                st.rerun()
+                        if dc2.button("Cancelar", key=f"tt_cancelar_el_{tid}", use_container_width=True):
+                            st.session_state.pop(eliminando_key, None)
+                            st.rerun()
+                    else:
+                        if st.button(
+                            "🗑️ Eliminar ticket", key=f"tt_del_ticket_{tid}", use_container_width=True,
+                        ):
+                            st.session_state[eliminando_key] = True
+                            st.rerun()
+
+    # ------------------------------------------------------------------
+    # Tickets eliminados (registro de auditoría)
+    # ------------------------------------------------------------------
+    if puede_gestionar:
+        st.divider()
+        st.markdown("#### 🗑️ Tickets eliminados")
+        st.caption("Registro de todos los tickets que se han eliminado, con el motivo y quién lo hizo.")
+        eliminados = db.list_tickets_eliminados(tienda=tienda_activa)
+        if eliminados:
+            df_el = pd.DataFrame([{
+                **({} if tienda_activa else {"Tienda": t["tienda"]}),
+                "N° ticket": t["numero_ticket"], "Cliente": t["nombre"],
+                "Teléfono": t.get("telefono") or "—",
+                "Servicio/producto": lineas_venta_display(t.get("servicio")),
+                "Estado al eliminarlo": ESTADO_TITULO_COLUMNA.get(t["estado"], t["estado"]),
+                "Motivo de eliminación": t.get("motivo_eliminacion") or "—",
+                "Eliminado por": t.get("eliminado_por") or "—",
+                "Eliminado el": (
+                    f"{(t.get('eliminado_en') or '')[:10]} {hora_legible(t.get('eliminado_en'))}"
+                    if t.get("eliminado_en") else "—"
+                ),
+            } for t in eliminados])
+            st.dataframe(df_el, use_container_width=True, hide_index=True)
+            download_excel_button(df_el, "tickets_tienda_eliminados.xlsx", key="tt_descargar_eliminados")
+        else:
+            st.caption("No hay tickets eliminados todavía.")
 
 # ---------------------------------------------------------------------------
 # Código QR / Pantalla pública
