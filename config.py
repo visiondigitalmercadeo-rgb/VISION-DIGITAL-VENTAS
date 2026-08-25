@@ -37,7 +37,7 @@ SURFACE = "#fcfcfb"
 ROLES = [
     "admin", "vendedor", "vista", "mercadeo", "jefe_planta", "disenador", "disenador_alvaro",
     "jefe_logistica", "repartidor", "jefe_capacitacion", "asistente_capacitacion",
-    "anfitriona", "jefe_tienda", "asesor_ventas",
+    "anfitriona", "jefe_tienda", "asesor_ventas", "cajero",
 ]
 ROLES_LABEL = {
     "admin": "Administrador",
@@ -54,11 +54,12 @@ ROLES_LABEL = {
     "anfitriona": "Anfitriona (tienda)",
     "jefe_tienda": "Jefe de tienda",
     "asesor_ventas": "Asesor de ventas",
+    "cajero": "Cajero",
 }
 
 # Roles que pertenecen a una tienda específica (necesitan el campo "tienda"
 # en su usuario) para el Sistema de Tickets — Tiendas.
-ROLES_DE_TIENDA = ["anfitriona", "jefe_tienda", "asesor_ventas"]
+ROLES_DE_TIENDA = ["anfitriona", "jefe_tienda", "asesor_ventas", "cajero"]
 
 PLANTAS = ["Offset", "Digital", "Valloy", "Colorado"]
 
