@@ -160,12 +160,66 @@ with tab_tablero:
                         total = minutos_entre(t.get("hora_ingreso"), t.get("hora_facturado"))
                         st.caption(f"✅ Facturado: {hora_legible(t.get('hora_facturado'))}")
                         st.caption(f"⏱️ Tiempo total: {minutos_legible(total)}")
-                        if auth.is_admin():
-                            if st.button(
-                                "🗑️ Eliminar", key=f"tt_del_{t['id']}", use_container_width=True,
-                            ):
-                                db.delete_ticket_tienda(t["id"])
+
+    if puede_gestionar:
+        st.divider()
+        st.markdown("#### ✏️ Gestionar o eliminar un ticket")
+        st.caption(
+            "Corrige el nombre, teléfono, servicio o estado de un ticket, o elimínalo por "
+            "completo — por ejemplo si un cliente lo registró dos veces por error."
+        )
+        if not tickets_hoy:
+            st.caption("No hay tickets registrados hoy todavía.")
+        else:
+            opciones_tk = {
+                f"#{t['numero_ticket']} — {t['nombre']} "
+                f"({t['tienda']}, {ESTADO_TITULO_COLUMNA.get(t['estado'], t['estado'])})": t["id"]
+                for t in sorted(tickets_hoy, key=lambda t: t.get("numero_ticket") or 0)
+            }
+            elegido_tk = st.selectbox(
+                "Selecciona un ticket", ["—"] + list(opciones_tk.keys()), key="tt_gestionar_sel"
+            )
+            if elegido_tk != "—":
+                tid = opciones_tk[elegido_tk]
+                tk = db.get_ticket_tienda(tid)
+                if tk:
+                    with st.form(f"tt_editar_form_{tid}"):
+                        ge1, ge2 = st.columns(2)
+                        nombre_ed = ge1.text_input("Nombre", value=tk.get("nombre") or "")
+                        telefono_ed = ge2.text_input("Teléfono", value=tk.get("telefono") or "")
+                        servicio_ed = st.multiselect(
+                            "Servicio/producto",
+                            TICKET_SERVICIOS,
+                            default=[s for s in (tk.get("servicio") or []) if s in TICKET_SERVICIOS],
+                        )
+                        estado_ed = st.selectbox(
+                            "Estado", ESTADOS_TICKET,
+                            index=ESTADOS_TICKET.index(tk["estado"]) if tk.get("estado") in ESTADOS_TICKET else 0,
+                            format_func=lambda e: ESTADO_TITULO_COLUMNA.get(e, e),
+                        )
+                        if st.form_submit_button("💾 Guardar cambios", use_container_width=True):
+                            if not nombre_ed.strip() or not servicio_ed:
+                                st.error("Nombre y servicio/producto son obligatorios.")
+                            else:
+                                if estado_ed != tk.get("estado"):
+                                    # avanzar_ticket_tienda registra también la hora de la
+                                    # nueva etapa (si aplica), igual que los botones del tablero.
+                                    db.avanzar_ticket_tienda(tid, estado_ed)
+                                db.update_ticket_tienda(
+                                    tid, nombre=nombre_ed.strip(), telefono=telefono_ed.strip(),
+                                    servicio=[s for s in servicio_ed if s],
+                                )
+                                st.success("Ticket actualizado.")
                                 st.rerun()
+
+                    st.markdown("###### 🗑️ Eliminar este ticket")
+                    st.caption("Esto borra el ticket por completo (no se puede deshacer).")
+                    if st.button(
+                        "🗑️ Eliminar ticket", key=f"tt_del_ticket_{tid}", use_container_width=True,
+                    ):
+                        db.delete_ticket_tienda(tid)
+                        st.success("Ticket eliminado.")
+                        st.rerun()
 
 # ---------------------------------------------------------------------------
 # Código QR / Pantalla pública
