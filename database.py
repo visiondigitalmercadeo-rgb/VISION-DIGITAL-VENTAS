@@ -74,7 +74,14 @@ def get_client():
     if cred is not None:
         if not firebase_admin._apps:
             firebase_admin.initialize_app(cred)
-        _client = firestore.client()
+        # NOTA: se apunta explícitamente a la base de datos "vision-digital-ventas-2"
+        # (en vez de la "(default)") porque la base "(default)" del proyecto quedó
+        # con un problema de conexión desde el lado de Google tras activar el plan
+        # Blaze (error "Invalid database id (default)"). Los datos originales ya
+        # fueron migrados (exportados e importados) a esta base nueva, que funciona
+        # con normalidad. Si en el futuro Firebase confirma que "(default)" volvió
+        # a funcionar, se puede quitar el parámetro database_id para volver a usarla.
+        _client = firestore.client(database_id="vision-digital-ventas-2")
         MODO_PRACTICA = False
     else:
         _client = fake_firestore.FakeFirestoreClient()
