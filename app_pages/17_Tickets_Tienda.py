@@ -68,6 +68,37 @@ def _render_abandono_form(ticket_id, abandonando_key):
         st.rerun()
 
 
+def _render_asignar_form(ticket_id, tienda, asignando_key):
+    """Caja para elegir qué asesor de ventas va a elaborar el pedido antes de
+    pasar el ticket a 'En elaboración' — mismo patrón de 'Confirmar/Cancelar'
+    que _render_abandono_form."""
+    asesores = db.list_asesores_tienda(tienda)
+    opciones_as = {a["nombre"]: a["id"] for a in asesores}
+    if asesores:
+        elegido_as = st.selectbox(
+            "¿Quién va a elaborar este pedido?", ["—"] + list(opciones_as.keys()),
+            key=f"tt_asesor_sel_{ticket_id}",
+        )
+    else:
+        elegido_as = "—"
+        st.caption(
+            "No hay asesores de ventas registrados para esta tienda todavía. Puedes "
+            "continuar sin asignar uno, o pedirle a un administrador que cree ese usuario "
+            "desde 'Administración de usuarios'."
+        )
+    cc1, cc2 = st.columns(2)
+    if cc1.button("Confirmar", key=f"tt_confirmar_as_{ticket_id}", use_container_width=True):
+        if asesores and elegido_as == "—":
+            st.error("Selecciona quién va a elaborar el pedido.")
+        else:
+            db.avanzar_ticket_tienda(ticket_id, "En elaboración", asesor_id=opciones_as.get(elegido_as))
+            st.session_state.pop(asignando_key, None)
+            st.rerun()
+    if cc2.button("Cancelar", key=f"tt_cancelar_as_{ticket_id}", use_container_width=True):
+        st.session_state.pop(asignando_key, None)
+        st.rerun()
+
+
 tab_tablero, tab_qr, tab_historial = st.tabs(
     ["🗂️ Tablero de hoy", "🔗 Código QR / Pantalla", "📋 Historial"]
 )
@@ -126,6 +157,8 @@ with tab_tablero:
 
     st.divider()
 
+    usuarios_todos = db.list_usuarios()
+
     cols = st.columns(len(ESTADOS_TICKET))
     for col, estado in zip(cols, ESTADOS_TICKET):
         with col:
@@ -173,14 +206,17 @@ with tab_tablero:
                         st.caption(f"⏱️ Esperó {minutos_legible(espera)}")
                         st.caption(f"🗣️ En esta etapa hace {minutos_legible(en_atencion)}")
                         if puede_gestionar:
+                            asignando_key = f"tt_asignando_{t['id']}"
                             if st.session_state.get(abandonando_key):
                                 _render_abandono_form(t["id"], abandonando_key)
+                            elif st.session_state.get(asignando_key):
+                                _render_asignar_form(t["id"], t["tienda"], asignando_key)
                             else:
                                 bc1, bc2 = st.columns(2)
                                 if bc1.button(
                                     "➡️ Elaborar", key=f"tt_elabora_{t['id']}", use_container_width=True,
                                 ):
-                                    db.avanzar_ticket_tienda(t["id"], "En elaboración")
+                                    st.session_state[asignando_key] = True
                                     st.rerun()
                                 if bc2.button(
                                     "🚫", key=f"tt_abandono_{t['id']}", use_container_width=True,
@@ -191,6 +227,7 @@ with tab_tablero:
                     elif estado == "En elaboración":
                         en_elaboracion = minutos_entre(t.get("hora_inicio_elaboracion"))
                         st.caption(f"🛠️ En elaboración hace {minutos_legible(en_elaboracion)}")
+                        st.caption(f"👤 Asignado a: {db.nombre_vendedor(t.get('asesor_id'), usuarios_todos)}")
                         if puede_gestionar:
                             if st.session_state.get(abandonando_key):
                                 _render_abandono_form(t["id"], abandonando_key)
@@ -211,6 +248,8 @@ with tab_tablero:
                         total = minutos_entre(t.get("hora_ingreso"), t.get("hora_facturado"))
                         st.caption(f"✅ Facturado: {hora_legible(t.get('hora_facturado'))}")
                         st.caption(f"⏱️ Tiempo total: {minutos_legible(total)}")
+                        if t.get("asesor_id"):
+                            st.caption(f"👤 Elaborado por: {db.nombre_vendedor(t['asesor_id'], usuarios_todos)}")
                     elif estado == "Abandono":
                         total = minutos_entre(t.get("hora_ingreso"), t.get("hora_abandono"))
                         st.caption(f"🚫 Abandonó: {hora_legible(t.get('hora_abandono'))}")
@@ -254,6 +293,20 @@ with tab_tablero:
                             index=ESTADOS_TICKET.index(tk["estado"]) if tk.get("estado") in ESTADOS_TICKET else 0,
                             format_func=lambda e: ESTADO_TITULO_COLUMNA.get(e, e),
                         )
+                        asesores_ed = db.list_asesores_tienda(tk.get("tienda"))
+                        opciones_as_ed = {"(sin asignar)": None}
+                        opciones_as_ed.update({a["nombre"]: a["id"] for a in asesores_ed})
+                        nombre_as_actual = db.nombre_vendedor(tk.get("asesor_id"))
+                        valores_as_ed = list(opciones_as_ed.keys())
+                        if nombre_as_actual not in valores_as_ed and nombre_as_actual != "—":
+                            # El asesor asignado ya no está activo/en esta tienda, pero lo
+                            # dejamos como opción para no perder el dato al guardar.
+                            valores_as_ed.append(nombre_as_actual)
+                            opciones_as_ed[nombre_as_actual] = tk.get("asesor_id")
+                        asesor_ed = st.selectbox(
+                            "Asesor asignado (elaboración)", valores_as_ed,
+                            index=valores_as_ed.index(nombre_as_actual) if nombre_as_actual in valores_as_ed else 0,
+                        )
                         motivo_ab_ed = st.text_input(
                             "Motivo de abandono (solo aplica si el estado es Abandono)",
                             value=tk.get("motivo_abandono") or "",
@@ -270,6 +323,7 @@ with tab_tablero:
                                     tid, nombre=nombre_ed.strip(), telefono=telefono_ed.strip(),
                                     servicio=[s for s in servicio_ed if s],
                                     motivo_abandono=motivo_ab_ed.strip() or None,
+                                    asesor_id=opciones_as_ed.get(asesor_ed),
                                 )
                                 st.success("Ticket actualizado.")
                                 st.rerun()
@@ -405,10 +459,12 @@ with tab_historial:
     tickets_hist.sort(key=lambda t: t.get("numero_ticket") or 0)
 
     if tickets_hist:
+        usuarios_hist = db.list_usuarios()
         df = pd.DataFrame([{
             "N° ticket": t["numero_ticket"], "Tienda": t["tienda"], "Cliente": t["nombre"],
             "Teléfono": t.get("telefono") or "—", "Servicio/producto": lineas_venta_display(t.get("servicio")),
             "Estado": ESTADO_TITULO_COLUMNA.get(t["estado"], t["estado"]),
+            "Asesor asignado": db.nombre_vendedor(t.get("asesor_id"), usuarios_hist),
             "Ingresó": hora_legible(t.get("hora_ingreso")),
             "Espera (min)": minutos_entre(t.get("hora_ingreso"), t.get("hora_inicio_atencion")),
             "Atención (min)": minutos_entre(t.get("hora_inicio_atencion"), t.get("hora_inicio_elaboracion")),
