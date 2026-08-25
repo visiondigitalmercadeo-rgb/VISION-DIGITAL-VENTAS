@@ -244,6 +244,19 @@ def list_repartidores(solo_activos=True):
     return rows
 
 
+def list_asesores_tienda(tienda=None, solo_activos=True):
+    """Asesores de ventas (rol 'asesor_ventas'), opcionalmente filtrados por
+    tienda — para asignarlos a un ticket cuando pasa a 'En elaboración'."""
+    client = get_client()
+    rows = [_doc_to_dict(s) for s in client.collection("usuarios").where("rol", "==", "asesor_ventas").stream()]
+    if tienda:
+        rows = [r for r in rows if r.get("tienda") == tienda]
+    if solo_activos:
+        rows = [r for r in rows if r["activo"]]
+    rows.sort(key=lambda r: r["nombre"])
+    return rows
+
+
 def create_usuario(nombre, username, password, rol, tienda=None):
     client = get_client()
     client.collection("usuarios").document().set({
@@ -1004,7 +1017,7 @@ def create_ticket_tienda(tienda, nombre, telefono, servicio):
         "estado": "Esperando",
         "hora_ingreso": ahora_guatemala().isoformat(timespec="seconds"),
         "hora_inicio_atencion": None, "hora_inicio_elaboracion": None, "hora_facturado": None,
-        "hora_abandono": None, "motivo_abandono": None,
+        "hora_abandono": None, "motivo_abandono": None, "asesor_id": None,
     })
     return {"id": doc_ref.id, "numero_ticket": numero}
 
@@ -1044,14 +1057,21 @@ def get_ticket_tienda(ticket_id):
     return _doc_to_dict(snap) if snap.exists else None
 
 
-def avanzar_ticket_tienda(ticket_id, nuevo_estado):
+_SIN_CAMBIO_ASESOR = object()
+
+
+def avanzar_ticket_tienda(ticket_id, nuevo_estado, asesor_id=_SIN_CAMBIO_ASESOR):
     """Cambia el estado del ticket y, si corresponde, registra la hora exacta
     en la que entró a esa etapa (para poder medir cuánto tiempo pasó en cada
-    una: espera, elaboración, etc.)."""
+    una: espera, elaboración, etc.). Si se pasa 'asesor_id' (por ejemplo al
+    pasar a 'En elaboración'), también queda asignado ese asesor de ventas
+    al ticket; si no se pasa, el asesor ya asignado no se toca."""
     cambios = {"estado": nuevo_estado}
     campo_ts = _TICKET_TS_POR_ESTADO.get(nuevo_estado)
     if campo_ts:
         cambios[campo_ts] = ahora_guatemala().isoformat(timespec="seconds")
+    if asesor_id is not _SIN_CAMBIO_ASESOR:
+        cambios["asesor_id"] = asesor_id
     get_client().collection("tickets_tienda").document(ticket_id).update(cambios)
 
 
