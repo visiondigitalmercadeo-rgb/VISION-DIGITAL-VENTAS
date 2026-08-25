@@ -76,8 +76,10 @@ kpis = st.Page("app_pages/9_KPIs.py", title="KPIs", icon="📊")
 admin = st.Page("app_pages/10_Administracion.py", title="Administración de usuarios", icon="👥")
 
 if rol == "mercadeo":
-    # El rol 'mercadeo' solo tiene acceso a la pestaña de Visitas de mercadeo.
-    pages = [mercadeo]
+    # El rol 'mercadeo' tiene acceso a Visitas de mercadeo y, además, a
+    # Tickets — Tiendas (solo para configurar los tiempos meta / KPIs; no
+    # puede avanzar ni gestionar tickets, eso lo hace el personal de tienda).
+    pages = [mercadeo, tickets_tienda]
 elif rol == "jefe_planta":
     # El rol 'jefe_planta' solo tiene acceso a la pestaña de Reclamos
     # (allí puede cambiar el estado de cada reclamo).
@@ -98,7 +100,7 @@ elif rol == "repartidor":
 elif rol in ("jefe_capacitacion", "asistente_capacitacion"):
     # Estos roles solo tienen acceso a la pestaña de Capacitación.
     pages = [capacitacion]
-elif rol in ("anfitriona", "jefe_tienda", "asesor_ventas"):
+elif rol in ("anfitriona", "jefe_tienda", "asesor_ventas", "cajero"):
     # Estos roles solo tienen acceso al Sistema de Tickets — Tiendas (y solo
     # ven la tienda asignada a su usuario).
     pages = [tickets_tienda]
