@@ -18,7 +18,7 @@ Cómo se eligen las credenciales, en este orden:
 """
 
 import os
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 import bcrypt
 import firebase_admin
@@ -957,10 +957,27 @@ _TICKET_TS_POR_ESTADO = {
     "Facturado": "hora_facturado",
 }
 
+# Guatemala usa siempre UTC-6 (no tiene horario de verano), así que un
+# desplazamiento fijo es suficiente y no depende de que el servidor donde
+# corre Streamlit Cloud tenga instalada la base de datos de zonas horarias.
+GUATEMALA_TZ = timezone(timedelta(hours=-6))
+
+
+def ahora_guatemala():
+    """Hora actual en horario de Guatemala, como datetime 'naive' (sin
+    información de zona horaria en el valor) para que se guarde y se compare
+    siempre igual, sin importar en qué servidor/zona horaria esté corriendo
+    la app. Se usa para todo lo relacionado al Sistema de Tickets — Tiendas."""
+    return datetime.now(GUATEMALA_TZ).replace(tzinfo=None)
+
+
+def hoy_guatemala():
+    return ahora_guatemala().date()
+
 
 def _siguiente_numero_ticket(tienda):
-    """Numeración diaria por tienda: reinicia en 1 cada día."""
-    hoy = str(date.today())
+    """Numeración diaria por tienda: reinicia en 1 cada día (día de Guatemala)."""
+    hoy = str(hoy_guatemala())
     tickets_hoy = [
         t for t in list_tickets_tienda(tienda=tienda) if t.get("fecha") == hoy
     ]
@@ -981,10 +998,10 @@ def create_ticket_tienda(tienda, nombre, telefono, servicio):
     numero = _siguiente_numero_ticket(tienda)
     doc_ref = get_client().collection("tickets_tienda").document()
     doc_ref.set({
-        "tienda": tienda, "fecha": str(date.today()), "numero_ticket": numero,
+        "tienda": tienda, "fecha": str(hoy_guatemala()), "numero_ticket": numero,
         "nombre": nombre.strip(), "telefono": telefono.strip(), "servicio": servicio_lista,
         "estado": "Esperando",
-        "hora_ingreso": datetime.now().isoformat(timespec="seconds"),
+        "hora_ingreso": ahora_guatemala().isoformat(timespec="seconds"),
         "hora_inicio_atencion": None, "hora_inicio_elaboracion": None, "hora_facturado": None,
     })
     return {"id": doc_ref.id, "numero_ticket": numero}
@@ -1016,7 +1033,7 @@ def avanzar_ticket_tienda(ticket_id, nuevo_estado):
     cambios = {"estado": nuevo_estado}
     campo_ts = _TICKET_TS_POR_ESTADO.get(nuevo_estado)
     if campo_ts:
-        cambios[campo_ts] = datetime.now().isoformat(timespec="seconds")
+        cambios[campo_ts] = ahora_guatemala().isoformat(timespec="seconds")
     get_client().collection("tickets_tienda").document(ticket_id).update(cambios)
 
 
