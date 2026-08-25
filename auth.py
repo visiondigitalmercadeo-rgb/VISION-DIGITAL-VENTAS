@@ -146,13 +146,23 @@ def is_cajero():
     return u is not None and u["rol"] == "cajero"
 
 
-def puede_gestionar_tickets_tienda():
-    """Admin, anfitriona, jefe de tienda, asesor de ventas y cajero tienen el
-    mismo nivel de permiso dentro del Sistema de Tickets — Tiendas (ver y
-    avanzar los tickets de la fila, incluyendo marcarlos como Facturado),
-    igual que se hizo con capacitación."""
+def is_subjefe_tienda():
     u = current_user()
-    return u is not None and u["rol"] in ("admin", "anfitriona", "jefe_tienda", "asesor_ventas", "cajero")
+    return u is not None and u["rol"] == "subjefe_tienda"
+
+
+def puede_gestionar_tickets_tienda():
+    """Admin y todos los roles de tienda con usuario (anfitriona, jefe de
+    tienda, sub jefe de tienda, asesor de ventas, cajero) tienen el mismo
+    nivel de permiso dentro del Sistema de Tickets — Tiendas (ver y avanzar
+    los tickets de la fila, incluyendo marcarlos como Facturado), igual que
+    se hizo con capacitación. El resto del personal de tienda (acabados,
+    express) no tiene usuario propio — solo aparece como nombre asignado a
+    su tienda para poder elegir quién elabora un pedido."""
+    u = current_user()
+    return u is not None and u["rol"] in (
+        "admin", "anfitriona", "jefe_tienda", "subjefe_tienda", "asesor_ventas", "cajero",
+    )
 
 
 def puede_gestionar_mantenimiento():
