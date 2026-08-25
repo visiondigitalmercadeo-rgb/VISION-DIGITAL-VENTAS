@@ -9,7 +9,7 @@ from datetime import date
 import streamlit as st
 
 import database as db
-from config import EMPRESA_NOMBRE, LOGO_PATH, TICKET_SLUG_TIENDA
+from config import EMPRESA_NOMBRE, LOGO_PATH, TICKET_SERVICIOS, TICKET_SLUG_TIENDA
 
 
 def _tienda_desde_slug(slug):
@@ -57,13 +57,13 @@ def render_checkin(slug):
         with st.form("tt_checkin_form"):
             nombre = st.text_input("Nombre completo")
             telefono = st.text_input("Número de teléfono")
-            servicio = st.text_area(
-                "¿Qué servicio o producto necesitas?",
-                placeholder="Ej.: Tarjetas de presentación, un banner, fotocopias...",
+            servicio = st.multiselect(
+                "¿Qué servicio o producto necesitas? (puedes elegir varios)",
+                TICKET_SERVICIOS,
             )
             enviado = st.form_submit_button("✅ Registrarme", use_container_width=True)
             if enviado:
-                if not nombre.strip() or not servicio.strip():
+                if not nombre.strip() or not servicio:
                     st.error("Por favor completa al menos tu nombre y qué necesitas.")
                 else:
                     r = db.create_ticket_tienda(tienda, nombre, telefono, servicio)
