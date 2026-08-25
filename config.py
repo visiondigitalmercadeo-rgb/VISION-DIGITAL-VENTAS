@@ -112,6 +112,14 @@ CAPACITACION_ARCHIVOS_MAX = 5  # máximo de archivos adjuntos por submódulo
 
 ESTADOS_PENDIENTE_MERCADEO = ["Pendiente", "En proceso", "Resuelto"]
 
+# ---------------------------------------------------------------------------
+# Mantenimiento de Maquinaria (por planta — no confundir con TICKET_TIENDAS,
+# que son las tiendas del Sistema de Tickets)
+# ---------------------------------------------------------------------------
+PLANTAS_MAQUINARIA = ["Offset", "Digital", "Valloy"]
+MANTENIMIENTO_ARCHIVO_MAX_BYTES = 900_000  # ~900 KB — mismo límite práctico que Diseño/Capacitación
+TIPOS_MANTENIMIENTO = ["Preventivo", "Correctivo"]
+
 LINEAS_VENTA = [
     "AFICHE",
     "CALENDARIO",
