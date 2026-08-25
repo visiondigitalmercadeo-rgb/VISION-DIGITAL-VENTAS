@@ -65,19 +65,68 @@ with tab_calendario:
         if visita_sel:
             with st.container(border=True):
                 st.markdown(f"**{visita_sel['punto_venta']}**")
-                ok_count = sum(1 for i in visita_sel["checklist_items"] if i.get("ok"))
-                total_count = len(visita_sel["checklist_items"])
-                st.write(
-                    f"📅 {visita_sel['fecha']} · 📍 {visita_sel['direccion'] or '—'} · "
-                    f"Estado: {visita_sel['estado']} · Checklist: {ok_count}/{total_count}"
-                )
                 if user["rol"] != "vendedor":
                     st.caption(f"Vendedor: {db.nombre_vendedor(visita_sel['vendedor_id'], vendedores_cal)}")
-                if visita_sel["pendientes"]:
-                    st.caption(f"Pendientes: {visita_sel['pendientes']}")
-                if visita_sel["notas"]:
-                    st.caption(f"Notas: {visita_sel['notas']}")
-                st.caption("Para editar el checklist o eliminar la visita, usa la pestaña 'Visitas registradas'.")
+
+                puede_editar_visita = auth.can_edit() and (
+                    user["rol"] != "vendedor" or visita_sel["vendedor_id"] == user["id"]
+                )
+                if not puede_editar_visita:
+                    ok_count = sum(1 for i in visita_sel["checklist_items"] if i.get("ok"))
+                    total_count = len(visita_sel["checklist_items"])
+                    st.write(
+                        f"📅 {visita_sel['fecha']} · 📍 {visita_sel['direccion'] or '—'} · "
+                        f"Estado: {visita_sel['estado']} · Checklist: {ok_count}/{total_count}"
+                    )
+                    if visita_sel["pendientes"]:
+                        st.caption(f"Pendientes: {visita_sel['pendientes']}")
+                    if visita_sel["notas"]:
+                        st.caption(f"Notas: {visita_sel['notas']}")
+                    st.caption(
+                        "Esta visita pertenece a otro vendedor y no puedes editarla."
+                        if auth.can_edit() else "Tu rol es de solo vista."
+                    )
+                else:
+                    with st.form(f"editar_visita_cal_{vid_cal}"):
+                        punto_venta_ed = st.text_input(
+                            "Nombre del punto de venta", value=visita_sel["punto_venta"] or ""
+                        )
+                        direccion_ed = st.text_input("Dirección", value=visita_sel["direccion"] or "")
+                        fecha_ed = st.date_input(
+                            "Fecha de la visita",
+                            value=date.fromisoformat(visita_sel["fecha"]) if visita_sel["fecha"] else date.today(),
+                        )
+                        nuevos_items = []
+                        st.write("**Checklist de la visita**")
+                        for idx, item in enumerate(visita_sel["checklist_items"]):
+                            ok = st.checkbox(
+                                item["item"], value=item.get("ok", False), key=f"chk_cal_{vid_cal}_{idx}"
+                            )
+                            nuevos_items.append({"item": item["item"], "ok": ok})
+                        pendientes = st.text_area("Pendientes por resolver", value=visita_sel["pendientes"] or "")
+                        estado = st.selectbox(
+                            "Estado de la visita", ESTADOS_VISITA_MERCADEO,
+                            index=ESTADOS_VISITA_MERCADEO.index(visita_sel["estado"]),
+                        )
+                        notas = st.text_area("Notas", value=visita_sel["notas"] or "")
+                        colf1, colf2 = st.columns(2)
+                        guardar_v = colf1.form_submit_button("💾 Guardar", use_container_width=True)
+                        eliminar_v = colf2.form_submit_button("Eliminar visita", use_container_width=True)
+                        if guardar_v:
+                            if not punto_venta_ed.strip():
+                                st.error("El nombre del punto de venta es obligatorio.")
+                            else:
+                                db.update_visita_mercadeo(
+                                    vid_cal, punto_venta=punto_venta_ed.strip(), direccion=direccion_ed,
+                                    fecha=str(fecha_ed), checklist_items=nuevos_items, pendientes=pendientes,
+                                    estado=estado, notas=notas,
+                                )
+                                st.success("Visita actualizada.")
+                                st.rerun()
+                        if eliminar_v:
+                            db.delete_visita_mercadeo(vid_cal)
+                            st.success("Visita eliminada.")
+                            st.rerun()
 
 with tab_lista:
     filtro_vendedor = vendedor_filter_selector(key="mkt_filtro_vendedor")
@@ -100,56 +149,7 @@ with tab_lista:
         } for v in visitas])
         st.dataframe(resumen, use_container_width=True, hide_index=True)
         download_excel_button(resumen, "visitas_mercadeo.xlsx", key="mkt_descargar_excel")
-
-        st.markdown("#### ✅ Completar / actualizar checklist de una visita")
-        opciones = {f"{v['fecha']} — {v['punto_venta']}": v["id"] for v in visitas}
-        elegido = st.selectbox("Selecciona una visita", ["—"] + list(opciones.keys()))
-        if elegido != "—":
-            vid = opciones[elegido]
-            visita = next(v for v in visitas if v["id"] == vid)
-            puede_editar = auth.can_edit() and (user["rol"] != "vendedor" or visita["vendedor_id"] == user["id"])
-            if not puede_editar:
-                st.caption("Solo el vendedor asignado (o un administrador) puede editar esta visita.")
-            with st.form(f"editar_visita_{vid}"):
-                punto_venta_ed = st.text_input("Nombre del punto de venta", value=visita["punto_venta"] or "",
-                                                disabled=not puede_editar)
-                direccion_ed = st.text_input("Dirección", value=visita["direccion"] or "",
-                                              disabled=not puede_editar)
-                fecha_ed = st.date_input(
-                    "Fecha de la visita",
-                    value=date.fromisoformat(visita["fecha"]) if visita["fecha"] else date.today(),
-                    disabled=not puede_editar,
-                )
-                nuevos_items = []
-                st.write("**Checklist de la visita**")
-                for idx, item in enumerate(visita["checklist_items"]):
-                    ok = st.checkbox(item["item"], value=item.get("ok", False),
-                                      key=f"chk_{vid}_{idx}", disabled=not puede_editar)
-                    nuevos_items.append({"item": item["item"], "ok": ok})
-                pendientes = st.text_area("Pendientes por resolver", value=visita["pendientes"] or "",
-                                           disabled=not puede_editar)
-                estado = st.selectbox("Estado de la visita", ESTADOS_VISITA_MERCADEO,
-                                       index=ESTADOS_VISITA_MERCADEO.index(visita["estado"]),
-                                       disabled=not puede_editar)
-                notas = st.text_area("Notas", value=visita["notas"] or "", disabled=not puede_editar)
-                colf1, colf2 = st.columns(2)
-                guardar_v = colf1.form_submit_button("Guardar", use_container_width=True, disabled=not puede_editar)
-                eliminar_v = colf2.form_submit_button("Eliminar visita", use_container_width=True, disabled=not puede_editar)
-                if guardar_v and puede_editar:
-                    if not punto_venta_ed.strip():
-                        st.error("El nombre del punto de venta es obligatorio.")
-                    else:
-                        db.update_visita_mercadeo(
-                            vid, punto_venta=punto_venta_ed.strip(), direccion=direccion_ed,
-                            fecha=str(fecha_ed), checklist_items=nuevos_items, pendientes=pendientes,
-                            estado=estado, notas=notas,
-                        )
-                        st.success("Visita actualizada.")
-                        st.rerun()
-                if eliminar_v and puede_editar:
-                    db.delete_visita_mercadeo(vid)
-                    st.success("Visita eliminada.")
-                    st.rerun()
+        st.caption("Para editar el checklist o eliminar una visita, ve a la pestaña '🗓️ Calendario' y haz clic sobre la visita.")
 
 with tab_gantt:
     st.caption("Vista Gantt de los pendientes reportados en los puntos de venta: cada barra va desde la "
