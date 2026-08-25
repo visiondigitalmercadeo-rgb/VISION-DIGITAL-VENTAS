@@ -40,6 +40,15 @@ ESTADO_EMOJI = {
     "Facturado": "✅",
 }
 
+# Títulos que ve el equipo en cada columna del tablero (el valor interno de
+# "estado" que se guarda en la base de datos no cambia, solo cómo se muestra).
+ESTADO_TITULO_COLUMNA = {
+    "Esperando": "Ingresado",
+    "En atención": "En espera",
+    "En elaboración": "En elaboración",
+    "Facturado": "Facturado",
+}
+
 tab_tablero, tab_qr, tab_historial = st.tabs(
     ["🗂️ Tablero de hoy", "🔗 Código QR / Pantalla", "📋 Historial"]
 )
@@ -57,7 +66,7 @@ with tab_tablero:
         )
         tienda_activa = None if filtro_tienda == "Todas" else filtro_tienda
 
-    hoy = str(pd.Timestamp.now().date())
+    hoy = str(db.hoy_guatemala())
     if tienda_activa:
         tickets_hoy = db.list_tickets_tienda(tienda=tienda_activa, fecha=hoy)
     else:
@@ -67,8 +76,8 @@ with tab_tablero:
 
     k1, k2, k3, k4, k5 = st.columns(5)
     k1.metric("Tickets hoy", len(tickets_hoy))
-    k2.metric("Esperando", sum(1 for t in tickets_hoy if t["estado"] == "Esperando"))
-    k3.metric("En atención", sum(1 for t in tickets_hoy if t["estado"] == "En atención"))
+    k2.metric("Ingresado", sum(1 for t in tickets_hoy if t["estado"] == "Esperando"))
+    k3.metric("En espera", sum(1 for t in tickets_hoy if t["estado"] == "En atención"))
     k4.metric("En elaboración", sum(1 for t in tickets_hoy if t["estado"] == "En elaboración"))
     k5.metric("Facturados", sum(1 for t in tickets_hoy if t["estado"] == "Facturado"))
 
@@ -100,7 +109,7 @@ with tab_tablero:
     cols = st.columns(len(ESTADOS_TICKET))
     for col, estado in zip(cols, ESTADOS_TICKET):
         with col:
-            st.markdown(f"**{ESTADO_EMOJI.get(estado, '')} {estado}**")
+            st.markdown(f"**{ESTADO_EMOJI.get(estado, '')} {ESTADO_TITULO_COLUMNA.get(estado, estado)}**")
             en_este_estado = sorted(
                 [t for t in tickets_hoy if t["estado"] == estado],
                 key=lambda t: t.get("numero_ticket") or 0,
@@ -130,7 +139,7 @@ with tab_tablero:
                         espera = minutos_entre(t.get("hora_ingreso"), t.get("hora_inicio_atencion"))
                         en_atencion = minutos_entre(t.get("hora_inicio_atencion"))
                         st.caption(f"⏱️ Esperó {minutos_legible(espera)}")
-                        st.caption(f"🗣️ En atención hace {minutos_legible(en_atencion)}")
+                        st.caption(f"🗣️ En esta etapa hace {minutos_legible(en_atencion)}")
                         if puede_gestionar:
                             if st.button(
                                 "➡️ Pasar a elaboración", key=f"tt_elabora_{t['id']}",
@@ -218,7 +227,7 @@ with tab_historial:
         )
         tienda_hist = None if filtro_tienda_hist == "Todas" else filtro_tienda_hist
 
-    fecha_hist = st.date_input("Fecha", value=pd.Timestamp.now().date(), key="tt_hist_fecha")
+    fecha_hist = st.date_input("Fecha", value=db.hoy_guatemala(), key="tt_hist_fecha")
 
     if tienda_hist:
         tickets_hist = db.list_tickets_tienda(tienda=tienda_hist, fecha=str(fecha_hist))
