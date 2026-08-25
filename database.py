@@ -970,12 +970,19 @@ def _siguiente_numero_ticket(tienda):
 def create_ticket_tienda(tienda, nombre, telefono, servicio):
     """Crea un ticket nuevo. Esta es la función que usa el formulario público
     de check-in (por QR) — se llama SIN que el cliente haya iniciado sesión.
+    'servicio' es una lista (el cliente puede elegir varios productos/servicios
+    del catálogo TICKET_SERVICIOS); por compatibilidad también acepta texto
+    suelto y lo convierte en una lista de un solo elemento.
     Devuelve el id y el número de ticket asignado, para mostrárselo al cliente."""
+    if isinstance(servicio, list):
+        servicio_lista = [s for s in servicio if s]
+    else:
+        servicio_lista = [servicio.strip()] if servicio and servicio.strip() else []
     numero = _siguiente_numero_ticket(tienda)
     doc_ref = get_client().collection("tickets_tienda").document()
     doc_ref.set({
         "tienda": tienda, "fecha": str(date.today()), "numero_ticket": numero,
-        "nombre": nombre.strip(), "telefono": telefono.strip(), "servicio": servicio.strip(),
+        "nombre": nombre.strip(), "telefono": telefono.strip(), "servicio": servicio_lista,
         "estado": "Esperando",
         "hora_ingreso": datetime.now().isoformat(timespec="seconds"),
         "hora_inicio_atencion": None, "hora_inicio_elaboracion": None, "hora_facturado": None,
