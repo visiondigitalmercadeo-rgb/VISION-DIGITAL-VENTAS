@@ -6,8 +6,11 @@ import streamlit as st
 
 import auth
 import database as db
-from config import APP_URL, ESTADOS_TICKET, TICKET_TIENDA_SLUG, TICKET_TIENDAS
-from utils import download_excel_button, hora_legible, minutos_entre, minutos_legible, sidebar_user_box
+from config import APP_URL, ESTADOS_TICKET, TICKET_SERVICIOS, TICKET_TIENDA_SLUG, TICKET_TIENDAS
+from utils import (
+    download_excel_button, hora_legible, lineas_venta_display, minutos_entre, minutos_legible,
+    sidebar_user_box,
+)
 
 user = auth.current_user()
 sidebar_user_box()
@@ -81,9 +84,11 @@ with tab_tablero:
                 m1, m2 = st.columns(2)
                 nombre_m = m1.text_input("Nombre del cliente")
                 telefono_m = m2.text_input("Teléfono")
-                servicio_m = st.text_input("¿Qué servicio o producto necesita?")
+                servicio_m = st.multiselect(
+                    "¿Qué servicio o producto necesita? (puedes elegir varios)", TICKET_SERVICIOS,
+                )
                 if st.form_submit_button("Registrar ticket", use_container_width=True):
-                    if not nombre_m.strip() or not servicio_m.strip():
+                    if not nombre_m.strip() or not servicio_m:
                         st.error("Nombre y servicio/producto son obligatorios.")
                     else:
                         r = db.create_ticket_tienda(tienda_manual, nombre_m, telefono_m, servicio_m)
@@ -109,7 +114,7 @@ with tab_tablero:
                         st.caption(f"🏬 {t['tienda']}")
                     if t.get("telefono"):
                         st.caption(f"📱 {t['telefono']}")
-                    st.caption(f"🧾 {t['servicio']}")
+                    st.caption(f"🧾 {lineas_venta_display(t.get('servicio'))}")
                     st.caption(f"Ingresó: {hora_legible(t.get('hora_ingreso'))}")
 
                     if estado == "Esperando":
@@ -227,7 +232,7 @@ with tab_historial:
     if tickets_hist:
         df = pd.DataFrame([{
             "N° ticket": t["numero_ticket"], "Tienda": t["tienda"], "Cliente": t["nombre"],
-            "Teléfono": t.get("telefono") or "—", "Servicio/producto": t["servicio"],
+            "Teléfono": t.get("telefono") or "—", "Servicio/producto": lineas_venta_display(t.get("servicio")),
             "Estado": t["estado"],
             "Ingresó": hora_legible(t.get("hora_ingreso")),
             "Espera (min)": minutos_entre(t.get("hora_ingreso"), t.get("hora_inicio_atencion")),
