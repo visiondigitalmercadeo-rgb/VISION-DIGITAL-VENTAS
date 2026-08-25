@@ -38,6 +38,7 @@ ESTADO_EMOJI = {
     "En atención": "🗣️",
     "En elaboración": "🛠️",
     "Facturado": "✅",
+    "Abandono": "🚫",
 }
 
 # Títulos que ve el equipo en cada columna del tablero (el valor interno de
@@ -47,7 +48,25 @@ ESTADO_TITULO_COLUMNA = {
     "En atención": "En espera",
     "En elaboración": "En elaboración",
     "Facturado": "Facturado",
+    "Abandono": "Abandono",
 }
+
+def _render_abandono_form(ticket_id, abandonando_key):
+    """Caja para capturar el motivo antes de marcar un ticket como Abandono —
+    mismo patrón de 'Confirmar/Cancelar' que ya se usa en Llamadas para
+    marcar un cliente como 'Perdido'."""
+    motivo = st.text_area(
+        "¿Por qué abandonó el cliente?", key=f"tt_motivo_ab_{ticket_id}", height=80,
+    )
+    cc1, cc2 = st.columns(2)
+    if cc1.button("Confirmar", key=f"tt_confirmar_ab_{ticket_id}", use_container_width=True):
+        db.abandonar_ticket_tienda(ticket_id, motivo)
+        st.session_state.pop(abandonando_key, None)
+        st.rerun()
+    if cc2.button("Cancelar", key=f"tt_cancelar_ab_{ticket_id}", use_container_width=True):
+        st.session_state.pop(abandonando_key, None)
+        st.rerun()
+
 
 tab_tablero, tab_qr, tab_historial = st.tabs(
     ["🗂️ Tablero de hoy", "🔗 Código QR / Pantalla", "📋 Historial"]
@@ -74,12 +93,13 @@ with tab_tablero:
             t for tda in TICKET_TIENDAS for t in db.list_tickets_tienda(tienda=tda, fecha=hoy)
         ]
 
-    k1, k2, k3, k4, k5 = st.columns(5)
+    k1, k2, k3, k4, k5, k6 = st.columns(6)
     k1.metric("Tickets hoy", len(tickets_hoy))
     k2.metric("Ingresado", sum(1 for t in tickets_hoy if t["estado"] == "Esperando"))
     k3.metric("En espera", sum(1 for t in tickets_hoy if t["estado"] == "En atención"))
     k4.metric("En elaboración", sum(1 for t in tickets_hoy if t["estado"] == "En elaboración"))
     k5.metric("Facturados", sum(1 for t in tickets_hoy if t["estado"] == "Facturado"))
+    k6.metric("Abandono", sum(1 for t in tickets_hoy if t["estado"] == "Abandono"))
 
     if puede_gestionar:
         with st.expander("➕ Agregar ticket manualmente (si el cliente no puede usar el QR)"):
@@ -126,40 +146,77 @@ with tab_tablero:
                     st.caption(f"🧾 {lineas_venta_display(t.get('servicio'))}")
                     st.caption(f"Ingresó: {hora_legible(t.get('hora_ingreso'))}")
 
+                    abandonando_key = f"tt_abandonando_{t['id']}"
+
                     if estado == "Esperando":
                         espera = minutos_entre(t.get("hora_ingreso"))
                         st.caption(f"⏱️ Esperando hace {minutos_legible(espera)}")
                         if puede_gestionar:
-                            if st.button(
-                                "➡️ Atender", key=f"tt_atender_{t['id']}", use_container_width=True
-                            ):
-                                db.avanzar_ticket_tienda(t["id"], "En atención")
-                                st.rerun()
+                            if st.session_state.get(abandonando_key):
+                                _render_abandono_form(t["id"], abandonando_key)
+                            else:
+                                bc1, bc2 = st.columns(2)
+                                if bc1.button(
+                                    "➡️ Atender", key=f"tt_atender_{t['id']}", use_container_width=True,
+                                ):
+                                    db.avanzar_ticket_tienda(t["id"], "En atención")
+                                    st.rerun()
+                                if bc2.button(
+                                    "🚫", key=f"tt_abandono_{t['id']}", use_container_width=True,
+                                    help="Marcar como Abandono",
+                                ):
+                                    st.session_state[abandonando_key] = True
+                                    st.rerun()
                     elif estado == "En atención":
                         espera = minutos_entre(t.get("hora_ingreso"), t.get("hora_inicio_atencion"))
                         en_atencion = minutos_entre(t.get("hora_inicio_atencion"))
                         st.caption(f"⏱️ Esperó {minutos_legible(espera)}")
                         st.caption(f"🗣️ En esta etapa hace {minutos_legible(en_atencion)}")
                         if puede_gestionar:
-                            if st.button(
-                                "➡️ Pasar a elaboración", key=f"tt_elabora_{t['id']}",
-                                use_container_width=True,
-                            ):
-                                db.avanzar_ticket_tienda(t["id"], "En elaboración")
-                                st.rerun()
+                            if st.session_state.get(abandonando_key):
+                                _render_abandono_form(t["id"], abandonando_key)
+                            else:
+                                bc1, bc2 = st.columns(2)
+                                if bc1.button(
+                                    "➡️ Elaborar", key=f"tt_elabora_{t['id']}", use_container_width=True,
+                                ):
+                                    db.avanzar_ticket_tienda(t["id"], "En elaboración")
+                                    st.rerun()
+                                if bc2.button(
+                                    "🚫", key=f"tt_abandono_{t['id']}", use_container_width=True,
+                                    help="Marcar como Abandono",
+                                ):
+                                    st.session_state[abandonando_key] = True
+                                    st.rerun()
                     elif estado == "En elaboración":
                         en_elaboracion = minutos_entre(t.get("hora_inicio_elaboracion"))
                         st.caption(f"🛠️ En elaboración hace {minutos_legible(en_elaboracion)}")
                         if puede_gestionar:
-                            if st.button(
-                                "➡️ Facturar", key=f"tt_facturar_{t['id']}", use_container_width=True,
-                            ):
-                                db.avanzar_ticket_tienda(t["id"], "Facturado")
-                                st.rerun()
+                            if st.session_state.get(abandonando_key):
+                                _render_abandono_form(t["id"], abandonando_key)
+                            else:
+                                bc1, bc2 = st.columns(2)
+                                if bc1.button(
+                                    "➡️ Facturar", key=f"tt_facturar_{t['id']}", use_container_width=True,
+                                ):
+                                    db.avanzar_ticket_tienda(t["id"], "Facturado")
+                                    st.rerun()
+                                if bc2.button(
+                                    "🚫", key=f"tt_abandono_{t['id']}", use_container_width=True,
+                                    help="Marcar como Abandono",
+                                ):
+                                    st.session_state[abandonando_key] = True
+                                    st.rerun()
                     elif estado == "Facturado":
                         total = minutos_entre(t.get("hora_ingreso"), t.get("hora_facturado"))
                         st.caption(f"✅ Facturado: {hora_legible(t.get('hora_facturado'))}")
                         st.caption(f"⏱️ Tiempo total: {minutos_legible(total)}")
+                    elif estado == "Abandono":
+                        total = minutos_entre(t.get("hora_ingreso"), t.get("hora_abandono"))
+                        st.caption(f"🚫 Abandonó: {hora_legible(t.get('hora_abandono'))}")
+                        st.caption(f"⏱️ Tiempo en el sistema: {minutos_legible(total)}")
+                        if t.get("motivo_abandono"):
+                            st.caption(f"📝 Motivo: {t['motivo_abandono']}")
 
     if puede_gestionar:
         st.divider()
@@ -197,6 +254,10 @@ with tab_tablero:
                             index=ESTADOS_TICKET.index(tk["estado"]) if tk.get("estado") in ESTADOS_TICKET else 0,
                             format_func=lambda e: ESTADO_TITULO_COLUMNA.get(e, e),
                         )
+                        motivo_ab_ed = st.text_input(
+                            "Motivo de abandono (solo aplica si el estado es Abandono)",
+                            value=tk.get("motivo_abandono") or "",
+                        )
                         if st.form_submit_button("💾 Guardar cambios", use_container_width=True):
                             if not nombre_ed.strip() or not servicio_ed:
                                 st.error("Nombre y servicio/producto son obligatorios.")
@@ -208,6 +269,7 @@ with tab_tablero:
                                 db.update_ticket_tienda(
                                     tid, nombre=nombre_ed.strip(), telefono=telefono_ed.strip(),
                                     servicio=[s for s in servicio_ed if s],
+                                    motivo_abandono=motivo_ab_ed.strip() or None,
                                 )
                                 st.success("Ticket actualizado.")
                                 st.rerun()
@@ -296,13 +358,14 @@ with tab_historial:
         df = pd.DataFrame([{
             "N° ticket": t["numero_ticket"], "Tienda": t["tienda"], "Cliente": t["nombre"],
             "Teléfono": t.get("telefono") or "—", "Servicio/producto": lineas_venta_display(t.get("servicio")),
-            "Estado": t["estado"],
+            "Estado": ESTADO_TITULO_COLUMNA.get(t["estado"], t["estado"]),
             "Ingresó": hora_legible(t.get("hora_ingreso")),
             "Espera (min)": minutos_entre(t.get("hora_ingreso"), t.get("hora_inicio_atencion")),
             "Atención (min)": minutos_entre(t.get("hora_inicio_atencion"), t.get("hora_inicio_elaboracion")),
             "Elaboración (min)": minutos_entre(t.get("hora_inicio_elaboracion"), t.get("hora_facturado")),
             "Facturado": hora_legible(t.get("hora_facturado")),
-            "Tiempo total (min)": minutos_entre(t.get("hora_ingreso"), t.get("hora_facturado")),
+            "Tiempo total (min)": minutos_entre(t.get("hora_ingreso"), t.get("hora_facturado") or t.get("hora_abandono")),
+            "Motivo abandono": t.get("motivo_abandono") or "—",
         } for t in tickets_hist])
         st.dataframe(df, use_container_width=True, hide_index=True)
         download_excel_button(df, "tickets_tienda.xlsx", key="tt_descargar_historial")
