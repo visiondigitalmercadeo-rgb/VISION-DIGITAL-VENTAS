@@ -4,8 +4,6 @@ la pantalla pública "Ahora atendiendo" para mostrar en una TV/tablet dentro
 de la tienda. Ninguna de las dos requiere haber iniciado sesión — se llaman
 desde app.py ANTES de auth.require_login()."""
 
-from datetime import date
-
 import streamlit as st
 
 import database as db
@@ -84,7 +82,7 @@ def render_pantalla(slug):
         st.error("Enlace de pantalla no válido.")
         return True
 
-    hoy = str(date.today())
+    hoy = str(db.hoy_guatemala())
     tickets_hoy = db.list_tickets_tienda(tienda=tienda, fecha=hoy)
 
     en_curso = [t for t in tickets_hoy if t["estado"] in ("En atención", "En elaboración")]
