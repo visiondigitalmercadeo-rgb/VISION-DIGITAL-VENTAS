@@ -157,6 +157,19 @@ FRANJAS_PEDIDO = ["AM", "PM"]
 ESTADOS_PEDIDO = ["Pendiente", "En ruta", "Entregado", "No entregado"]
 ZONAS_CAPITAL = [f"Zona {i}" for i in range(1, 22)]
 
+# Vendedores adicionales (sin necesitar usuario propio) que también se
+# pueden elegir como "vendedor que hizo la venta" en un pedido de Logística,
+# además de los usuarios que ya tienen el rol 'vendedor'. Se cargan solos la
+# primera vez que arranca la app (ver database._seed_logistica_vendedores) y
+# no requieren ningún paso manual.
+LOGISTICA_VENDEDORES_INICIAL = [
+    "Hemerson Hernandez", "Alejandra Santizo", "Paola Sandoval", "Benjamin Reneau",
+    "Brenda Rodas", "Jorge Leal", "Luis Crespin", "Jazmin Solorzano",
+]
+
+# Para tipificar cada pedido de Logística según el canal/ruta de venta.
+TIPOS_RUTA_PEDIDO = ["Venta Externa", "Venta Tiendas", "Administración", "Compras"]
+
 TIPOS_CITA = ["Cita", "Visita", "Llamada"]
 ESTADOS_CITA = ["Programada", "Realizada", "Cancelada", "No asistió"]
 
