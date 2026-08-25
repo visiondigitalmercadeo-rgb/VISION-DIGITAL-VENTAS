@@ -3,7 +3,7 @@ import streamlit as st
 
 import auth
 import database as db
-from config import ROLES, ROLES_LABEL
+from config import ROLES, ROLES_DE_TIENDA, ROLES_LABEL, TICKET_TIENDAS
 from utils import sidebar_user_box
 
 user = auth.current_user()
@@ -22,7 +22,8 @@ with tab_lista:
     usuarios = db.list_usuarios()
     df = pd.DataFrame([{
         "ID": u["id"], "Nombre": u["nombre"], "Usuario": u["username"],
-        "Rol": ROLES_LABEL.get(u["rol"], u["rol"]), "Activo": "Sí" if u["activo"] else "No",
+        "Rol": ROLES_LABEL.get(u["rol"], u["rol"]), "Tienda": u.get("tienda") or "—",
+        "Activo": "Sí" if u["activo"] else "No",
     } for u in usuarios])
     st.dataframe(df, use_container_width=True, hide_index=True)
 
@@ -63,16 +64,26 @@ with tab_lista:
                     "Rol", ROLES, index=ROLES.index(u["rol"]) if u["rol"] in ROLES else 0,
                     format_func=lambda r: ROLES_LABEL.get(r, r),
                 )
+            tienda_ed = st.selectbox(
+                "Tienda (solo aplica a Anfitriona, Jefe de tienda o Asesor de ventas)",
+                ["—"] + TICKET_TIENDAS,
+                index=(["—"] + TICKET_TIENDAS).index(u["tienda"]) if u.get("tienda") in TICKET_TIENDAS else 0,
+            )
             if st.form_submit_button("Guardar cambios", use_container_width=True):
                 username_norm = username_ed.strip().lower()
                 if not nombre_ed.strip() or not username_norm:
                     st.error("Completa nombre y usuario.")
+                elif rol_ed in ROLES_DE_TIENDA and tienda_ed == "—":
+                    st.error("Este rol necesita una tienda asignada.")
                 else:
                     existente = db.get_user_by_username(username_norm)
                     if existente and existente["id"] != uid:
                         st.error("Ese nombre de usuario ya lo usa otra persona.")
                     else:
-                        db.update_usuario(uid, nombre=nombre_ed.strip(), username=username_norm, rol=rol_ed)
+                        db.update_usuario(
+                            uid, nombre=nombre_ed.strip(), username=username_norm, rol=rol_ed,
+                            tienda=None if tienda_ed == "—" else tienda_ed,
+                        )
                         st.success("Usuario actualizado.")
                         st.rerun()
 
@@ -106,13 +117,22 @@ with tab_nueva:
         username = st.text_input("Usuario (para iniciar sesión)")
         password = st.text_input("Contraseña", type="password")
         rol = st.selectbox("Rol", ROLES, format_func=lambda r: ROLES_LABEL.get(r, r))
+        tienda_nueva = st.selectbox(
+            "Tienda (solo aplica a Anfitriona, Jefe de tienda o Asesor de ventas)",
+            ["—"] + TICKET_TIENDAS,
+        )
 
         if st.form_submit_button("Crear usuario", use_container_width=True):
             if not nombre.strip() or not username.strip() or len(password) < 4:
                 st.error("Completa nombre, usuario y una contraseña de al menos 4 caracteres.")
             elif db.get_user_by_username(username.strip().lower()):
                 st.error("Ese nombre de usuario ya existe.")
+            elif rol in ROLES_DE_TIENDA and tienda_nueva == "—":
+                st.error("Este rol necesita una tienda asignada.")
             else:
-                db.create_usuario(nombre.strip(), username.strip().lower(), password, rol)
+                db.create_usuario(
+                    nombre.strip(), username.strip().lower(), password, rol,
+                    tienda=None if tienda_nueva == "—" else tienda_nueva,
+                )
                 st.success(f"Usuario '{username}' creado como {ROLES_LABEL.get(rol, rol)}.")
                 st.rerun()
