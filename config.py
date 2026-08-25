@@ -37,6 +37,7 @@ SURFACE = "#fcfcfb"
 ROLES = [
     "admin", "vendedor", "vista", "mercadeo", "jefe_planta", "disenador", "disenador_alvaro",
     "jefe_logistica", "repartidor", "jefe_capacitacion", "asistente_capacitacion",
+    "anfitriona", "jefe_tienda", "asesor_ventas",
 ]
 ROLES_LABEL = {
     "admin": "Administrador",
@@ -50,7 +51,14 @@ ROLES_LABEL = {
     "repartidor": "Repartidor",
     "jefe_capacitacion": "Jefe de capacitación",
     "asistente_capacitacion": "Asistente de capacitación",
+    "anfitriona": "Anfitriona (tienda)",
+    "jefe_tienda": "Jefe de tienda",
+    "asesor_ventas": "Asesor de ventas",
 }
+
+# Roles que pertenecen a una tienda específica (necesitan el campo "tienda"
+# en su usuario) para el Sistema de Tickets — Tiendas.
+ROLES_DE_TIENDA = ["anfitriona", "jefe_tienda", "asesor_ventas"]
 
 PLANTAS = ["Offset", "Digital", "Valloy", "Colorado"]
 
@@ -160,3 +168,25 @@ LINEAS_VENTA = [
     "Sobre Oficio",
     "Otro",
 ]
+
+# ---------------------------------------------------------------------------
+# Sistema de Tickets — Tiendas (fila de clientes nuevos, con check-in por QR
+# desde el celular del cliente, estilo Waitwhile)
+# ---------------------------------------------------------------------------
+TICKET_TIENDAS = CAPACITACION_TIENDAS  # se reutiliza la misma lista de tiendas
+
+ESTADOS_TICKET = ["Esperando", "En atención", "En elaboración", "Facturado"]
+
+# Slug corto (sin acentos/espacios) para usar en el enlace del código QR, por tienda.
+TICKET_TIENDA_SLUG = {
+    "Cayalá": "cayala",
+    "Vista Hermosa": "vistahermosa",
+    "Majadas": "majadas",
+    "CAES": "caes",
+}
+TICKET_SLUG_TIENDA = {v: k for k, v in TICKET_TIENDA_SLUG.items()}
+
+# URL pública de la plataforma, usada para armar el enlace/QR de check-in y el
+# enlace de la pantalla "Ahora atendiendo". Si algún día cambia el dominio de
+# Streamlit Cloud, solo hay que actualizar esto.
+APP_URL = "https://vision-digital-ventas.streamlit.app"
