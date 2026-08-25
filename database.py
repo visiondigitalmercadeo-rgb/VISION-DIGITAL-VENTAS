@@ -1103,6 +1103,36 @@ def update_ticket_tienda(ticket_id, **kwargs):
         get_client().collection("tickets_tienda").document(ticket_id).update(kwargs)
 
 
+_TICKET_KPI_DEFAULT = {"meta_espera": None, "meta_atencion": None, "meta_elaboracion": None}
+
+
+def get_ticket_kpis(tienda):
+    """Tiempos meta (en minutos) configurados para una tienda, uno por cada
+    etapa del Sistema de Tickets — Tiendas: 'meta_espera' (Ingresado, antes
+    de que lo atiendan), 'meta_atencion' (En espera, antes de pasar a
+    elaboración) y 'meta_elaboracion' (En elaboración, antes de facturar).
+    Si todavía no se ha configurado nada para esa tienda, los tres valores
+    vienen en None (sin meta) y no se pinta nada en rojo."""
+    snap = get_client().collection("tickets_kpis_metas").document(tienda).get()
+    if not snap.exists:
+        return dict(_TICKET_KPI_DEFAULT)
+    data = _doc_to_dict(snap)
+    return {
+        "meta_espera": data.get("meta_espera"),
+        "meta_atencion": data.get("meta_atencion"),
+        "meta_elaboracion": data.get("meta_elaboracion"),
+    }
+
+
+def set_ticket_kpis(tienda, meta_espera, meta_atencion, meta_elaboracion):
+    """Guarda (o corrige) los tiempos meta de una tienda. Cada valor es en
+    minutos, o None para dejar esa etapa sin meta."""
+    get_client().collection("tickets_kpis_metas").document(tienda).set({
+        "tienda": tienda, "meta_espera": meta_espera,
+        "meta_atencion": meta_atencion, "meta_elaboracion": meta_elaboracion,
+    })
+
+
 def delete_ticket_tienda(ticket_id):
     """Elimina un ticket de la base de datos por completo y sin dejar
     rastro (no se puede deshacer). No se usa desde la pestaña de Tickets —
