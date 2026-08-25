@@ -345,6 +345,35 @@ def prospectos_con_seguimiento_proximo(vendedor_id=None, dias=3):
 
 
 # ---------------------------------------------------------------------------
+# Registros CF (Consumidor Final) — registros adicionales de facturación
+# dentro de un mismo prospecto. Un prospecto puede tener una cantidad
+# ilimitada de estos registros (por ejemplo, distintas razones sociales o
+# ventas facturadas a "Consumidor Final" asociadas al mismo cliente).
+# ---------------------------------------------------------------------------
+def list_registros_cf(prospecto_id):
+    client = get_client()
+    rows = [
+        _doc_to_dict(s) for s in client.collection("registros_cf")
+        .where("prospecto_id", "==", prospecto_id).stream()
+    ]
+    rows.sort(key=lambda r: r.get("fecha_registro") or "", reverse=True)
+    return rows
+
+
+def create_registro_cf(prospecto_id, nombre_cliente, nit_cf, telefono, email, direccion):
+    get_client().collection("registros_cf").document().set({
+        "prospecto_id": prospecto_id, "nombre_cliente": nombre_cliente, "nit_cf": nit_cf.strip(),
+        "telefono": telefono, "email": email, "direccion": direccion,
+        "fecha_registro": str(date.today()),
+    })
+
+
+def delete_registro_cf(registro_id):
+    """Elimina un registro CF por completo (no se puede deshacer)."""
+    get_client().collection("registros_cf").document(registro_id).delete()
+
+
+# ---------------------------------------------------------------------------
 # Llamadas
 # ---------------------------------------------------------------------------
 def find_llamadas_by_nit(nit, exclude_id=None):
