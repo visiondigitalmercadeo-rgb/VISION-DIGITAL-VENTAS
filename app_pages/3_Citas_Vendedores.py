@@ -73,15 +73,65 @@ with tab_calendario:
         if cita_sel:
             with st.container(border=True):
                 st.markdown(f"**{cita_sel['tipo']} — {cita_sel['cliente_nombre']}**")
-                st.write(
-                    f"📅 {cita_sel['fecha']} {cita_sel['hora'] or ''} · 📍 {cita_sel['lugar'] or '—'} · "
-                    f"Estado: {cita_sel['estado']}"
-                )
                 if user["rol"] != "vendedor":
                     st.caption(f"Vendedor: {db.nombre_vendedor(cita_sel['vendedor_id'], vendedores)}")
-                if cita_sel["notas"]:
-                    st.caption(f"Notas: {cita_sel['notas']}")
-                st.caption("Para cambiar el estado o eliminarla, usa la pestaña 'Lista / editar'.")
+
+                puede_editar_cita = auth.can_edit() and (
+                    user["rol"] != "vendedor" or cita_sel["vendedor_id"] == user["id"]
+                )
+                if not puede_editar_cita:
+                    st.write(
+                        f"📅 {cita_sel['fecha']} {cita_sel['hora'] or ''} · 📍 {cita_sel['lugar'] or '—'} · "
+                        f"Estado: {cita_sel['estado']}"
+                    )
+                    if cita_sel["notas"]:
+                        st.caption(f"Notas: {cita_sel['notas']}")
+                    st.caption(
+                        "Esta cita pertenece a otro vendedor y no puedes editarla."
+                        if auth.can_edit() else "Tu rol es de solo vista."
+                    )
+                else:
+                    with st.form(f"editar_cita_cal_{cid}"):
+                        cliente_nombre_ed = st.text_input(
+                            "Nombre del cliente", value=cita_sel["cliente_nombre"] or ""
+                        )
+                        ce1, ce2 = st.columns(2)
+                        tipo_ed = ce1.selectbox(
+                            "Tipo", TIPOS_CITA,
+                            index=TIPOS_CITA.index(cita_sel["tipo"]) if cita_sel["tipo"] in TIPOS_CITA else 0,
+                        )
+                        fecha_ed = ce2.date_input(
+                            "Fecha",
+                            value=date.fromisoformat(cita_sel["fecha"]) if cita_sel["fecha"] else date.today(),
+                        )
+                        hora12_ed, minuto_ed, ampm_ed = hora_24_a_12(cita_sel["hora"] or "09:00")
+                        hora_texto_ed = selector_hora(
+                            "Hora", f"editar_cita_cal_{cid}",
+                            hora12=hora12_ed, minuto=minuto_ed, ampm=ampm_ed,
+                        )
+                        lugar_ed = st.text_input("Lugar", value=cita_sel["lugar"] or "")
+                        nuevo_estado = st.selectbox(
+                            "Estado", ESTADOS_CITA, index=ESTADOS_CITA.index(cita_sel["estado"])
+                        )
+                        notas = st.text_area("Notas", value=cita_sel["notas"] or "")
+                        colf1, colf2 = st.columns(2)
+                        guardar = colf1.form_submit_button("💾 Guardar", use_container_width=True)
+                        eliminar = colf2.form_submit_button("Eliminar", use_container_width=True)
+                        if guardar:
+                            if not cliente_nombre_ed.strip():
+                                st.error("El nombre del cliente es obligatorio.")
+                            else:
+                                db.update_cita(
+                                    cid, cliente_nombre=cliente_nombre_ed.strip(), tipo=tipo_ed,
+                                    fecha=str(fecha_ed), hora=hora_texto_ed,
+                                    lugar=lugar_ed, estado=nuevo_estado, notas=notas,
+                                )
+                                st.success("Actualizado.")
+                                st.rerun()
+                        if eliminar:
+                            db.delete_cita(cid)
+                            st.success("Eliminada.")
+                            st.rerun()
 
 # --------------------------------------------------------------------------
 # Lista / editar
@@ -104,54 +154,7 @@ with tab_lista:
         } for r in rows])
         st.dataframe(df, use_container_width=True, hide_index=True)
         download_excel_button(df, "citas.xlsx", key="citas_descargar_excel")
-
-        if auth.can_edit():
-            st.markdown("#### ✏️ Actualizar estado de una cita")
-            opciones = {f"{r['fecha']} {r['hora'] or ''} — {r['cliente_nombre']}": r["id"] for r in rows}
-            elegido = st.selectbox("Selecciona", ["—"] + list(opciones.keys()), key="citas_editar_select")
-            if elegido != "—":
-                cid = opciones[elegido]
-                cita = next(r for r in rows if r["id"] == cid)
-                if user["rol"] == "vendedor" and cita["vendedor_id"] != user["id"]:
-                    st.warning("Esta cita pertenece a otro vendedor.")
-                else:
-                    with st.form(f"editar_cita_{cid}"):
-                        cliente_nombre_ed = st.text_input("Nombre del cliente", value=cita["cliente_nombre"] or "")
-                        ce1, ce2 = st.columns(2)
-                        tipo_ed = ce1.selectbox(
-                            "Tipo", TIPOS_CITA,
-                            index=TIPOS_CITA.index(cita["tipo"]) if cita["tipo"] in TIPOS_CITA else 0,
-                        )
-                        fecha_ed = ce2.date_input(
-                            "Fecha",
-                            value=date.fromisoformat(cita["fecha"]) if cita["fecha"] else date.today(),
-                        )
-                        hora12_ed, minuto_ed, ampm_ed = hora_24_a_12(cita["hora"] or "09:00")
-                        hora_texto_ed = selector_hora(
-                            "Hora", f"editar_cita_{cid}",
-                            hora12=hora12_ed, minuto=minuto_ed, ampm=ampm_ed,
-                        )
-                        lugar_ed = st.text_input("Lugar", value=cita["lugar"] or "")
-                        nuevo_estado = st.selectbox("Estado", ESTADOS_CITA, index=ESTADOS_CITA.index(cita["estado"]))
-                        notas = st.text_area("Notas", value=cita["notas"] or "")
-                        colf1, colf2 = st.columns(2)
-                        guardar = colf1.form_submit_button("Guardar", use_container_width=True)
-                        eliminar = colf2.form_submit_button("Eliminar", use_container_width=True)
-                        if guardar:
-                            if not cliente_nombre_ed.strip():
-                                st.error("El nombre del cliente es obligatorio.")
-                            else:
-                                db.update_cita(
-                                    cid, cliente_nombre=cliente_nombre_ed.strip(), tipo=tipo_ed,
-                                    fecha=str(fecha_ed), hora=hora_texto_ed,
-                                    lugar=lugar_ed, estado=nuevo_estado, notas=notas,
-                                )
-                                st.success("Actualizado.")
-                                st.rerun()
-                        if eliminar:
-                            db.delete_cita(cid)
-                            st.success("Eliminada.")
-                            st.rerun()
+        st.caption("Para editar o eliminar una cita, ve a la pestaña '🗓️ Calendario' y haz clic sobre la cita.")
 
 # --------------------------------------------------------------------------
 # Nueva cita
