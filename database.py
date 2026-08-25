@@ -244,11 +244,11 @@ def list_repartidores(solo_activos=True):
     return rows
 
 
-def create_usuario(nombre, username, password, rol):
+def create_usuario(nombre, username, password, rol, tienda=None):
     client = get_client()
     client.collection("usuarios").document().set({
         "nombre": nombre, "username": username, "password_hash": hash_password(password),
-        "rol": rol, "activo": True, "fecha_creacion": str(date.today()),
+        "rol": rol, "activo": True, "fecha_creacion": str(date.today()), "tienda": tienda,
     })
 
 
@@ -942,3 +942,82 @@ def upsert_calificacion(persona_id, modulo_id, submodulo_id, calificacion, notas
         client.collection("capacitacion_calificaciones").document(existente["id"]).set(data)
     else:
         client.collection("capacitacion_calificaciones").document().set(data)
+
+
+# ---------------------------------------------------------------------------
+# Sistema de Tickets — Tiendas (fila de clientes nuevos, con check-in público
+# por QR desde el celular del cliente — no requiere haber iniciado sesión).
+# Se mide el tiempo en cada etapa guardando la hora exacta en la que el
+# ticket entra a ella: hora_ingreso (check-in), hora_inicio_atencion,
+# hora_inicio_elaboracion y hora_facturado.
+# ---------------------------------------------------------------------------
+_TICKET_TS_POR_ESTADO = {
+    "En atención": "hora_inicio_atencion",
+    "En elaboración": "hora_inicio_elaboracion",
+    "Facturado": "hora_facturado",
+}
+
+
+def _siguiente_numero_ticket(tienda):
+    """Numeración diaria por tienda: reinicia en 1 cada día."""
+    hoy = str(date.today())
+    tickets_hoy = [
+        t for t in list_tickets_tienda(tienda=tienda) if t.get("fecha") == hoy
+    ]
+    return (max([t.get("numero_ticket") or 0 for t in tickets_hoy], default=0)) + 1
+
+
+def create_ticket_tienda(tienda, nombre, telefono, servicio):
+    """Crea un ticket nuevo. Esta es la función que usa el formulario público
+    de check-in (por QR) — se llama SIN que el cliente haya iniciado sesión.
+    Devuelve el id y el número de ticket asignado, para mostrárselo al cliente."""
+    numero = _siguiente_numero_ticket(tienda)
+    doc_ref = get_client().collection("tickets_tienda").document()
+    doc_ref.set({
+        "tienda": tienda, "fecha": str(date.today()), "numero_ticket": numero,
+        "nombre": nombre.strip(), "telefono": telefono.strip(), "servicio": servicio.strip(),
+        "estado": "Esperando",
+        "hora_ingreso": datetime.now().isoformat(timespec="seconds"),
+        "hora_inicio_atencion": None, "hora_inicio_elaboracion": None, "hora_facturado": None,
+    })
+    return {"id": doc_ref.id, "numero_ticket": numero}
+
+
+def list_tickets_tienda(tienda=None, fecha=None, activos_solo=False):
+    client = get_client()
+    query = client.collection("tickets_tienda")
+    if tienda:
+        query = query.where("tienda", "==", tienda)
+    rows = [_doc_to_dict(s) for s in query.stream()]
+    if fecha:
+        rows = [r for r in rows if r.get("fecha") == fecha]
+    if activos_solo:
+        rows = [r for r in rows if r.get("estado") != "Facturado"]
+    rows.sort(key=lambda r: r.get("hora_ingreso") or "", reverse=True)
+    return rows
+
+
+def get_ticket_tienda(ticket_id):
+    snap = get_client().collection("tickets_tienda").document(ticket_id).get()
+    return _doc_to_dict(snap) if snap.exists else None
+
+
+def avanzar_ticket_tienda(ticket_id, nuevo_estado):
+    """Cambia el estado del ticket y, si corresponde, registra la hora exacta
+    en la que entró a esa etapa (para poder medir cuánto tiempo pasó en cada
+    una: espera, elaboración, etc.)."""
+    cambios = {"estado": nuevo_estado}
+    campo_ts = _TICKET_TS_POR_ESTADO.get(nuevo_estado)
+    if campo_ts:
+        cambios[campo_ts] = datetime.now().isoformat(timespec="seconds")
+    get_client().collection("tickets_tienda").document(ticket_id).update(cambios)
+
+
+def update_ticket_tienda(ticket_id, **kwargs):
+    if kwargs:
+        get_client().collection("tickets_tienda").document(ticket_id).update(kwargs)
+
+
+def delete_ticket_tienda(ticket_id):
+    """Elimina un ticket por completo (no se puede deshacer)."""
+    get_client().collection("tickets_tienda").document(ticket_id).delete()
