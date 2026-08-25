@@ -955,6 +955,7 @@ _TICKET_TS_POR_ESTADO = {
     "En atención": "hora_inicio_atencion",
     "En elaboración": "hora_inicio_elaboracion",
     "Facturado": "hora_facturado",
+    "Abandono": "hora_abandono",
 }
 
 # Guatemala usa siempre UTC-6 (no tiene horario de verano), así que un
@@ -1003,6 +1004,7 @@ def create_ticket_tienda(tienda, nombre, telefono, servicio):
         "estado": "Esperando",
         "hora_ingreso": ahora_guatemala().isoformat(timespec="seconds"),
         "hora_inicio_atencion": None, "hora_inicio_elaboracion": None, "hora_facturado": None,
+        "hora_abandono": None, "motivo_abandono": None,
     })
     return {"id": doc_ref.id, "numero_ticket": numero}
 
@@ -1016,7 +1018,7 @@ def list_tickets_tienda(tienda=None, fecha=None, activos_solo=False):
     if fecha:
         rows = [r for r in rows if r.get("fecha") == fecha]
     if activos_solo:
-        rows = [r for r in rows if r.get("estado") != "Facturado"]
+        rows = [r for r in rows if r.get("estado") not in ("Facturado", "Abandono")]
     rows.sort(key=lambda r: r.get("hora_ingreso") or "", reverse=True)
     return rows
 
@@ -1035,6 +1037,16 @@ def avanzar_ticket_tienda(ticket_id, nuevo_estado):
     if campo_ts:
         cambios[campo_ts] = ahora_guatemala().isoformat(timespec="seconds")
     get_client().collection("tickets_tienda").document(ticket_id).update(cambios)
+
+
+def abandonar_ticket_tienda(ticket_id, motivo=None):
+    """Marca el ticket como 'Abandono' (el cliente no completó su proceso, por
+    la razón que sea) y guarda el motivo junto con la hora exacta."""
+    get_client().collection("tickets_tienda").document(ticket_id).update({
+        "estado": "Abandono",
+        "hora_abandono": ahora_guatemala().isoformat(timespec="seconds"),
+        "motivo_abandono": (motivo or "").strip() or None,
+    })
 
 
 def update_ticket_tienda(ticket_id, **kwargs):
