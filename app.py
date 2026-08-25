@@ -102,9 +102,10 @@ elif rol == "repartidor":
 elif rol in ("jefe_capacitacion", "asistente_capacitacion"):
     # Estos roles solo tienen acceso a la pestaña de Capacitación.
     pages = [capacitacion]
-elif rol in ("anfitriona", "jefe_tienda", "asesor_ventas", "cajero"):
+elif rol in ("anfitriona", "jefe_tienda", "subjefe_tienda", "asesor_ventas", "cajero"):
     # Estos roles solo tienen acceso al Sistema de Tickets — Tiendas (y solo
-    # ven la tienda asignada a su usuario).
+    # ven la tienda asignada a su usuario). El resto del personal de tienda
+    # (acabados, express) no tiene usuario propio.
     pages = [tickets_tienda]
 else:
     pages = [
