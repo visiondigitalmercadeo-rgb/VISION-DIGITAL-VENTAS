@@ -97,6 +97,9 @@ with tab_tablero:
 
     st.divider()
 
+    if not auth.can_edit():
+        st.caption("Tu rol es de solo vista: puedes consultar pero no editar llamadas.")
+
     if not rows:
         st.info("No hay llamadas registradas con estos filtros.")
     else:
@@ -110,17 +113,30 @@ with tab_tablero:
                     st.caption("Sin llamadas.")
                 for r in items_ordenados:
                     with st.container(border=True):
+                        lid = r["id"]
+                        editando_key = f"lla_editando_{lid}"
+                        puede_editar_este = auth.can_edit() and (
+                            user["rol"] != "vendedor" or r["vendedor_id"] == user["id"]
+                        )
+
                         nombre_vend = db.nombre_vendedor(r["vendedor_id"], vendedores)
                         av_bg = avatar_color_para(nombre_vend)
                         iniciales = iniciales_nombre(nombre_vend)
-                        st.markdown(
-                            "<div style='display:flex;align-items:center;gap:8px;margin-bottom:4px;'>"
-                            f"<span style='width:22px;height:22px;border-radius:50%;background:{av_bg};"
-                            "color:white;font-size:0.65rem;font-weight:700;display:flex;align-items:center;"
-                            f"justify-content:center;flex-shrink:0;' title='{nombre_vend}'>{iniciales}</span>"
-                            f"<span style='font-weight:600;'>{r['nombre_cliente']}</span></div>",
-                            unsafe_allow_html=True,
-                        )
+                        title_col, edit_col = st.columns([5, 1])
+                        with title_col:
+                            st.markdown(
+                                "<div style='display:flex;align-items:center;gap:8px;margin-bottom:4px;'>"
+                                f"<span style='width:22px;height:22px;border-radius:50%;background:{av_bg};"
+                                "color:white;font-size:0.65rem;font-weight:700;display:flex;align-items:center;"
+                                f"justify-content:center;flex-shrink:0;' title='{nombre_vend}'>{iniciales}</span>"
+                                f"<span style='font-weight:600;'>{r['nombre_cliente']}</span></div>",
+                                unsafe_allow_html=True,
+                            )
+                        with edit_col:
+                            if puede_editar_este:
+                                if st.button("✏️", key=f"lla_editar_{lid}", help="Editar esta llamada"):
+                                    st.session_state[editando_key] = not st.session_state.get(editando_key, False)
+                                    st.rerun()
                         st.caption(f"👤 Vendedor: {nombre_vend}")
                         if r.get("tipo_llamada"):
                             st.caption(f"📞 {r['tipo_llamada']}")
@@ -135,114 +151,110 @@ with tab_tablero:
                         if r.get("motivo_perdida"):
                             st.caption(f"❌ Motivo: {r['motivo_perdida']}")
 
-                        if auth.can_edit() and estado == "Prospecto":
-                            if st.button(
-                                "➡️ Mover a En negociación", key=f"lla_avanzar_{r['id']}", use_container_width=True,
-                            ):
-                                db.update_llamada(r["id"], estado="En negociación")
-                                st.rerun()
-                        elif auth.can_edit() and estado == "En negociación":
-                            perdiendo_key = f"lla_perdiendo_{r['id']}"
-                            if st.session_state.get(perdiendo_key):
-                                motivo = st.text_area(
-                                    "¿Por qué se perdió?", key=f"lla_motivo_{r['id']}", height=80,
+                        if puede_editar_este and st.session_state.get(editando_key):
+                            # ------------------------------------------------
+                            # Edición en línea (se abrió con el lápiz ✏️)
+                            # ------------------------------------------------
+                            with st.form(f"editar_llamada_{lid}"):
+                                c0a, c0b = st.columns(2)
+                                nombre_cliente_ed = c0a.text_input(
+                                    "Nombre del cliente / empresa", value=r["nombre_cliente"] or "",
                                 )
-                                cc1, cc2 = st.columns(2)
-                                if cc1.button(
-                                    "Confirmar", key=f"lla_confirmar_perdida_{r['id']}", use_container_width=True,
+                                nit_ed = c0b.text_input("NIT", value=r["nit"] or "")
+                                c1, c2 = st.columns(2)
+                                telefono_ed = c1.text_input("Teléfono", value=r["telefono"] or "")
+                                email_ed = c2.text_input("Email", value=r["email"] or "")
+                                direccion_ed = st.text_input("Dirección", value=r["direccion"] or "")
+                                c3, c4 = st.columns(2)
+                                tipo_llamada_ed = c3.selectbox(
+                                    "Tipo de llamada", TIPOS_LLAMADA,
+                                    index=TIPOS_LLAMADA.index(r["tipo_llamada"]) if r.get("tipo_llamada") in TIPOS_LLAMADA else 0,
+                                )
+                                estado_ed = c4.selectbox(
+                                    "Estado (columna del tablero)", ESTADOS_PROSPECTO,
+                                    index=ESTADOS_PROSPECTO.index(r["estado"]) if r["estado"] in ESTADOS_PROSPECTO else 0,
+                                )
+                                fecha_seg_ed = st.date_input(
+                                    "Próxima fecha de seguimiento",
+                                    value=date.fromisoformat(r["fecha_seguimiento"]) if r["fecha_seguimiento"] else date.today(),
+                                )
+                                recordatorio_ed = st.text_input("Recordatorio para el vendedor", value=r["recordatorio"] or "")
+                                notas_ed = st.text_area("Notas", value=r["notas"] or "")
+                                colg1, colg2 = st.columns(2)
+                                guardar = colg1.form_submit_button("💾 Guardar", use_container_width=True)
+                                cancelar = colg2.form_submit_button("Cancelar", use_container_width=True)
+                                if guardar:
+                                    if not nombre_cliente_ed.strip() or not nit_ed.strip():
+                                        st.error("Nombre del cliente y NIT son obligatorios.")
+                                    else:
+                                        db.update_llamada(
+                                            lid, nombre_cliente=nombre_cliente_ed.strip(), nit=nit_ed.strip(),
+                                            telefono=telefono_ed, email=email_ed, direccion=direccion_ed,
+                                            tipo_llamada=tipo_llamada_ed, estado=estado_ed,
+                                            fecha_seguimiento=str(fecha_seg_ed),
+                                            recordatorio=recordatorio_ed, notas=notas_ed,
+                                        )
+                                        st.session_state.pop(editando_key, None)
+                                        st.success("Llamada actualizada.")
+                                        st.rerun()
+                                if cancelar:
+                                    st.session_state.pop(editando_key, None)
+                                    st.rerun()
+
+                            with st.expander("🗑️ Eliminar esta llamada"):
+                                st.caption("Esto elimina el registro de la llamada por completo (no se puede deshacer).")
+                                confirmar_borrar = st.checkbox(
+                                    "Confirmo que deseo eliminar esta llamada", key=f"conf_del_llamada_{lid}",
+                                )
+                                if st.button(
+                                    "Eliminar llamada", key=f"btn_del_llamada_{lid}", disabled=not confirmar_borrar,
                                 ):
-                                    db.update_llamada(
-                                        r["id"], estado="Perdido", motivo_perdida=motivo.strip() or None,
+                                    db.delete_llamada(lid)
+                                    st.session_state.pop(editando_key, None)
+                                    st.success("Llamada eliminada.")
+                                    st.rerun()
+                        else:
+                            # ------------------------------------------------
+                            # Vista normal: acciones rápidas de la tarjeta
+                            # ------------------------------------------------
+                            if auth.can_edit() and estado == "Prospecto":
+                                if st.button(
+                                    "➡️ Mover a En negociación", key=f"lla_avanzar_{r['id']}", use_container_width=True,
+                                ):
+                                    db.update_llamada(r["id"], estado="En negociación")
+                                    st.rerun()
+                            elif auth.can_edit() and estado == "En negociación":
+                                perdiendo_key = f"lla_perdiendo_{r['id']}"
+                                if st.session_state.get(perdiendo_key):
+                                    motivo = st.text_area(
+                                        "¿Por qué se perdió?", key=f"lla_motivo_{r['id']}", height=80,
                                     )
-                                    st.session_state.pop(perdiendo_key, None)
-                                    st.rerun()
-                                if cc2.button(
-                                    "Cancelar", key=f"lla_cancelar_perdida_{r['id']}", use_container_width=True,
-                                ):
-                                    st.session_state.pop(perdiendo_key, None)
-                                    st.rerun()
-                            else:
-                                bc1, bc2 = st.columns(2)
-                                if bc1.button(
-                                    "✅ Ganado", key=f"lla_ganado_{r['id']}", use_container_width=True,
-                                ):
-                                    db.update_llamada(r["id"], estado="Cliente (Ganado)")
-                                    st.rerun()
-                                if bc2.button(
-                                    "❌ Perdido", key=f"lla_perdido_{r['id']}", use_container_width=True,
-                                ):
-                                    st.session_state[perdiendo_key] = True
-                                    st.rerun()
-
-    st.divider()
-
-    # ----------------------------------------------------------------------
-    # Gestionar una llamada (mover de columna / editar / eliminar)
-    # ----------------------------------------------------------------------
-    if auth.can_edit():
-        st.markdown("#### ✏️ Gestionar una llamada")
-        if user["rol"] == "vendedor":
-            gestionable = [r for r in rows if r["vendedor_id"] == user["id"]]
-        else:
-            gestionable = rows
-
-        if not gestionable:
-            st.caption("No hay llamadas para gestionar con estos filtros.")
-        else:
-            opciones = {
-                f"[{r['estado']}] {r['nombre_cliente']} — NIT {r['nit']}": r["id"] for r in gestionable
-            }
-            elegido = st.selectbox("Selecciona una llamada", ["—"] + list(opciones.keys()), key="lla_gestionar_select")
-            if elegido != "—":
-                lid = opciones[elegido]
-                l = db.get_llamada(lid)
-                if user["rol"] == "vendedor" and l["vendedor_id"] != user["id"]:
-                    st.warning("Esta llamada pertenece a otro vendedor; no puedes editarla.")
-                else:
-                    with st.form(f"editar_llamada_{lid}"):
-                        c0a, c0b = st.columns(2)
-                        nombre_cliente_ed = c0a.text_input("Nombre del cliente / empresa", value=l["nombre_cliente"] or "")
-                        nit_ed = c0b.text_input("NIT", value=l["nit"] or "")
-                        c1, c2 = st.columns(2)
-                        telefono = c1.text_input("Teléfono", value=l["telefono"] or "")
-                        email = c2.text_input("Email", value=l["email"] or "")
-                        direccion = st.text_input("Dirección", value=l["direccion"] or "")
-                        c3, c4 = st.columns(2)
-                        tipo_llamada_ed = c3.selectbox(
-                            "Tipo de llamada", TIPOS_LLAMADA,
-                            index=TIPOS_LLAMADA.index(l["tipo_llamada"]) if l.get("tipo_llamada") in TIPOS_LLAMADA else 0,
-                        )
-                        estado = c4.selectbox("Estado (columna del tablero)", ESTADOS_PROSPECTO,
-                                               index=ESTADOS_PROSPECTO.index(l["estado"]) if l["estado"] in ESTADOS_PROSPECTO else 0)
-                        fecha_seg = st.date_input(
-                            "Próxima fecha de seguimiento",
-                            value=date.fromisoformat(l["fecha_seguimiento"]) if l["fecha_seguimiento"] else date.today(),
-                        )
-                        recordatorio = st.text_input("Recordatorio para el vendedor", value=l["recordatorio"] or "")
-                        notas = st.text_area("Notas", value=l["notas"] or "")
-                        if st.form_submit_button("Guardar cambios", use_container_width=True):
-                            if not nombre_cliente_ed.strip() or not nit_ed.strip():
-                                st.error("Nombre del cliente y NIT son obligatorios.")
-                            else:
-                                db.update_llamada(
-                                    lid, nombre_cliente=nombre_cliente_ed.strip(), nit=nit_ed.strip(),
-                                    telefono=telefono, email=email, direccion=direccion,
-                                    tipo_llamada=tipo_llamada_ed, estado=estado,
-                                    fecha_seguimiento=str(fecha_seg),
-                                    recordatorio=recordatorio, notas=notas,
-                                )
-                                st.success("Llamada actualizada.")
-                                st.rerun()
-
-                    with st.expander("🗑️ Eliminar esta llamada"):
-                        st.caption("Esto elimina el registro de la llamada por completo (no se puede deshacer).")
-                        confirmar_borrar = st.checkbox("Confirmo que deseo eliminar esta llamada", key=f"conf_del_llamada_{lid}")
-                        if st.button("Eliminar llamada", key=f"btn_del_llamada_{lid}", disabled=not confirmar_borrar):
-                            db.delete_llamada(lid)
-                            st.success("Llamada eliminada.")
-                            st.rerun()
-    else:
-        st.caption("Tu rol es de solo vista: puedes consultar pero no editar llamadas.")
+                                    cc1, cc2 = st.columns(2)
+                                    if cc1.button(
+                                        "Confirmar", key=f"lla_confirmar_perdida_{r['id']}", use_container_width=True,
+                                    ):
+                                        db.update_llamada(
+                                            r["id"], estado="Perdido", motivo_perdida=motivo.strip() or None,
+                                        )
+                                        st.session_state.pop(perdiendo_key, None)
+                                        st.rerun()
+                                    if cc2.button(
+                                        "Cancelar", key=f"lla_cancelar_perdida_{r['id']}", use_container_width=True,
+                                    ):
+                                        st.session_state.pop(perdiendo_key, None)
+                                        st.rerun()
+                                else:
+                                    bc1, bc2 = st.columns(2)
+                                    if bc1.button(
+                                        "✅ Ganado", key=f"lla_ganado_{r['id']}", use_container_width=True,
+                                    ):
+                                        db.update_llamada(r["id"], estado="Cliente (Ganado)")
+                                        st.rerun()
+                                    if bc2.button(
+                                        "❌ Perdido", key=f"lla_perdido_{r['id']}", use_container_width=True,
+                                    ):
+                                        st.session_state[perdiendo_key] = True
+                                        st.rerun()
 
     # ----------------------------------------------------------------------
     # Ver también como tabla (para quienes prefieren la vista de lista)
