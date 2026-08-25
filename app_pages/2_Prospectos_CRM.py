@@ -91,6 +91,9 @@ with tab_tablero:
 
     st.divider()
 
+    if not auth.can_edit():
+        st.caption("Tu rol es de solo vista: puedes consultar pero no editar prospectos.")
+
     if not rows:
         st.info("No hay prospectos registrados con estos filtros.")
     else:
@@ -104,17 +107,30 @@ with tab_tablero:
                     st.caption("Sin prospectos.")
                 for r in items_ordenados:
                     with st.container(border=True):
+                        pid = r["id"]
+                        editando_key = f"crm_editando_{pid}"
+                        puede_editar_este = auth.can_edit() and (
+                            user["rol"] != "vendedor" or r["vendedor_id"] == user["id"]
+                        )
+
                         nombre_vend = db.nombre_vendedor(r["vendedor_id"], vendedores)
                         av_bg = avatar_color_para(nombre_vend)
                         iniciales = iniciales_nombre(nombre_vend)
-                        st.markdown(
-                            "<div style='display:flex;align-items:center;gap:8px;margin-bottom:4px;'>"
-                            f"<span style='width:22px;height:22px;border-radius:50%;background:{av_bg};"
-                            "color:white;font-size:0.65rem;font-weight:700;display:flex;align-items:center;"
-                            f"justify-content:center;flex-shrink:0;' title='{nombre_vend}'>{iniciales}</span>"
-                            f"<span style='font-weight:600;'>{r['nombre_cliente']}</span></div>",
-                            unsafe_allow_html=True,
-                        )
+                        title_col, edit_col = st.columns([5, 1])
+                        with title_col:
+                            st.markdown(
+                                "<div style='display:flex;align-items:center;gap:8px;margin-bottom:4px;'>"
+                                f"<span style='width:22px;height:22px;border-radius:50%;background:{av_bg};"
+                                "color:white;font-size:0.65rem;font-weight:700;display:flex;align-items:center;"
+                                f"justify-content:center;flex-shrink:0;' title='{nombre_vend}'>{iniciales}</span>"
+                                f"<span style='font-weight:600;'>{r['nombre_cliente']}</span></div>",
+                                unsafe_allow_html=True,
+                            )
+                        with edit_col:
+                            if puede_editar_este:
+                                if st.button("✏️", key=f"crm_editar_{pid}", help="Editar este prospecto"):
+                                    st.session_state[editando_key] = not st.session_state.get(editando_key, False)
+                                    st.rerun()
                         st.caption(f"👤 Vendedor: {nombre_vend}")
                         contacto = " · ".join(x for x in [r.get("telefono"), r.get("email")] if x)
                         if contacto:
@@ -127,162 +143,158 @@ with tab_tablero:
                         if r.get("motivo_perdida"):
                             st.caption(f"❌ Motivo: {r['motivo_perdida']}")
 
-                        if auth.can_edit() and estado == "Prospecto":
-                            if st.button(
-                                "💰 Crear cotización", key=f"crm_cotizar_{r['id']}", use_container_width=True,
-                            ):
-                                st.switch_page(
-                                    "app_pages/5_Cotizaciones.py",
-                                    query_params={"prospecto_id": r["id"]},
+                        if puede_editar_este and st.session_state.get(editando_key):
+                            # ------------------------------------------------
+                            # Edición en línea (se abrió con el lápiz ✏️)
+                            # ------------------------------------------------
+                            with st.form(f"editar_prospecto_{pid}"):
+                                c0a, c0b = st.columns(2)
+                                nombre_cliente_ed = c0a.text_input(
+                                    "Nombre del cliente / empresa", value=r["nombre_cliente"] or "",
                                 )
-                        elif auth.can_edit() and estado == "En negociación":
-                            perdiendo_key = f"crm_perdiendo_{r['id']}"
-                            if st.session_state.get(perdiendo_key):
-                                motivo = st.text_area(
-                                    "¿Por qué se perdió?", key=f"crm_motivo_{r['id']}", height=80,
+                                nit_ed = c0b.text_input("NIT", value=r["nit"] or "")
+                                c1, c2 = st.columns(2)
+                                telefono_ed = c1.text_input("Teléfono", value=r["telefono"] or "")
+                                email_ed = c2.text_input("Email", value=r["email"] or "")
+                                direccion_ed = st.text_input("Dirección", value=r["direccion"] or "")
+                                c3, c4 = st.columns(2)
+                                estado_ed = c3.selectbox(
+                                    "Estado (columna del tablero)", ESTADOS_PROSPECTO,
+                                    index=ESTADOS_PROSPECTO.index(r["estado"]) if r["estado"] in ESTADOS_PROSPECTO else 0,
                                 )
-                                cc1, cc2 = st.columns(2)
-                                if cc1.button(
-                                    "Confirmar", key=f"crm_confirmar_perdida_{r['id']}", use_container_width=True,
-                                ):
-                                    db.update_prospecto(
-                                        r["id"], estado="Perdido", motivo_perdida=motivo.strip() or None,
-                                    )
-                                    st.session_state.pop(perdiendo_key, None)
-                                    st.rerun()
-                                if cc2.button(
-                                    "Cancelar", key=f"crm_cancelar_perdida_{r['id']}", use_container_width=True,
-                                ):
-                                    st.session_state.pop(perdiendo_key, None)
-                                    st.rerun()
-                            else:
-                                bc1, bc2 = st.columns(2)
-                                if bc1.button(
-                                    "✅ Ganado", key=f"crm_ganado_{r['id']}", use_container_width=True,
-                                ):
-                                    db.update_prospecto(r["id"], estado="Cliente (Ganado)")
-                                    st.rerun()
-                                if bc2.button(
-                                    "❌ Perdido", key=f"crm_perdido_{r['id']}", use_container_width=True,
-                                ):
-                                    st.session_state[perdiendo_key] = True
-                                    st.rerun()
-
-    st.divider()
-
-    # ----------------------------------------------------------------------
-    # Gestionar un prospecto (mover de columna / editar / eliminar)
-    # ----------------------------------------------------------------------
-    if auth.can_edit():
-        st.markdown("#### ✏️ Gestionar un prospecto")
-        if user["rol"] == "vendedor":
-            gestionable = [r for r in rows if r["vendedor_id"] == user["id"]]
-        else:
-            gestionable = rows
-
-        if not gestionable:
-            st.caption("No hay prospectos para gestionar con estos filtros.")
-        else:
-            opciones = {
-                f"[{r['estado']}] {r['nombre_cliente']} — NIT {r['nit']}": r["id"] for r in gestionable
-            }
-            elegido = st.selectbox("Selecciona un prospecto", ["—"] + list(opciones.keys()), key="crm_gestionar_select")
-            if elegido != "—":
-                pid = opciones[elegido]
-                p = db.get_prospecto(pid)
-                if user["rol"] == "vendedor" and p["vendedor_id"] != user["id"]:
-                    st.warning("Este prospecto pertenece a otro vendedor; no puedes editarlo.")
-                else:
-                    with st.form(f"editar_prospecto_{pid}"):
-                        c0a, c0b = st.columns(2)
-                        nombre_cliente_ed = c0a.text_input("Nombre del cliente / empresa", value=p["nombre_cliente"] or "")
-                        nit_ed = c0b.text_input("NIT", value=p["nit"] or "")
-                        c1, c2 = st.columns(2)
-                        telefono = c1.text_input("Teléfono", value=p["telefono"] or "")
-                        email = c2.text_input("Email", value=p["email"] or "")
-                        direccion = st.text_input("Dirección", value=p["direccion"] or "")
-                        c3, c4 = st.columns(2)
-                        estado = c3.selectbox("Estado (columna del tablero)", ESTADOS_PROSPECTO,
-                                               index=ESTADOS_PROSPECTO.index(p["estado"]) if p["estado"] in ESTADOS_PROSPECTO else 0)
-                        fecha_seg = c4.date_input(
-                            "Próxima fecha de seguimiento",
-                            value=date.fromisoformat(p["fecha_seguimiento"]) if p["fecha_seguimiento"] else date.today(),
-                        )
-                        recordatorio = st.text_input("Recordatorio para el vendedor", value=p["recordatorio"] or "")
-                        notas = st.text_area("Notas", value=p["notas"] or "")
-                        if st.form_submit_button("Guardar cambios", use_container_width=True):
-                            if not nombre_cliente_ed.strip() or not nit_ed.strip():
-                                st.error("Nombre del cliente y NIT son obligatorios.")
-                            else:
-                                db.update_prospecto(
-                                    pid, nombre_cliente=nombre_cliente_ed.strip(), nit=nit_ed.strip(),
-                                    telefono=telefono, email=email, direccion=direccion,
-                                    estado=estado, fecha_seguimiento=str(fecha_seg),
-                                    recordatorio=recordatorio, notas=notas,
+                                fecha_seg_ed = c4.date_input(
+                                    "Próxima fecha de seguimiento",
+                                    value=date.fromisoformat(r["fecha_seguimiento"]) if r["fecha_seguimiento"] else date.today(),
                                 )
-                                st.success("Prospecto actualizado.")
-                                st.rerun()
-
-                    with st.expander("🗑️ Eliminar este prospecto"):
-                        st.caption(
-                            "Esto elimina el prospecto por completo (no se puede deshacer). Las citas, "
-                            "cotizaciones u otros registros que lo mencionen no se borran, solo dejan de "
-                            "estar vinculados a él."
-                        )
-                        confirmar_borrar = st.checkbox("Confirmo que deseo eliminar este prospecto", key=f"conf_del_prospecto_{pid}")
-                        if st.button("Eliminar prospecto", key=f"btn_del_prospecto_{pid}", disabled=not confirmar_borrar):
-                            db.delete_prospecto(pid)
-                            st.success("Prospecto eliminado.")
-                            st.rerun()
-
-                    st.markdown("##### 📇 Registros CF / NIT adicionales")
-                    st.caption(
-                        "Agrega tantos registros como necesites para este mismo cliente — por ejemplo, "
-                        "ventas facturadas a **Consumidor Final (CF)** u otras razones sociales/NIT "
-                        "asociadas a él. No hay límite de cantidad."
-                    )
-                    registros_cf = db.list_registros_cf(pid)
-                    if registros_cf:
-                        for reg in registros_cf:
-                            with st.container(border=True):
-                                rc1, rc2 = st.columns([6, 1])
-                                with rc1:
-                                    st.write(f"**{reg['nombre_cliente']}** — NIT/CF: {reg['nit_cf']}")
-                                    contacto_cf = " · ".join(
-                                        x for x in [reg.get("telefono"), reg.get("email")] if x
-                                    )
-                                    if contacto_cf:
-                                        st.caption(contacto_cf)
-                                    if reg.get("direccion"):
-                                        st.caption(f"📍 {reg['direccion']}")
-                                    st.caption(f"Registrado: {reg.get('fecha_registro') or '—'}")
-                                with rc2:
-                                    if st.button("🗑️", key=f"del_cf_{reg['id']}"):
-                                        db.delete_registro_cf(reg["id"])
+                                recordatorio_ed = st.text_input("Recordatorio para el vendedor", value=r["recordatorio"] or "")
+                                notas_ed = st.text_area("Notas", value=r["notas"] or "")
+                                colg1, colg2 = st.columns(2)
+                                guardar = colg1.form_submit_button("💾 Guardar", use_container_width=True)
+                                cancelar = colg2.form_submit_button("Cancelar", use_container_width=True)
+                                if guardar:
+                                    if not nombre_cliente_ed.strip() or not nit_ed.strip():
+                                        st.error("Nombre del cliente y NIT son obligatorios.")
+                                    else:
+                                        db.update_prospecto(
+                                            pid, nombre_cliente=nombre_cliente_ed.strip(), nit=nit_ed.strip(),
+                                            telefono=telefono_ed, email=email_ed, direccion=direccion_ed,
+                                            estado=estado_ed, fecha_seguimiento=str(fecha_seg_ed),
+                                            recordatorio=recordatorio_ed, notas=notas_ed,
+                                        )
+                                        st.session_state.pop(editando_key, None)
+                                        st.success("Prospecto actualizado.")
                                         st.rerun()
-                    else:
-                        st.caption("Sin registros CF adicionales todavía.")
+                                if cancelar:
+                                    st.session_state.pop(editando_key, None)
+                                    st.rerun()
 
-                    with st.form(f"nuevo_cf_{pid}", clear_on_submit=True):
-                        st.markdown("**Agregar nuevo registro CF**")
-                        cf1, cf2 = st.columns(2)
-                        cf_nombre = cf1.text_input("Nombre del cliente / empresa", key=f"cf_nombre_{pid}")
-                        cf_nit = cf2.text_input("NIT (o escribe 'CF' para Consumidor Final)", key=f"cf_nit_{pid}")
-                        cf3, cf4 = st.columns(2)
-                        cf_tel = cf3.text_input("Teléfono", key=f"cf_tel_{pid}")
-                        cf_email = cf4.text_input("Email", key=f"cf_email_{pid}")
-                        cf_dir = st.text_input("Dirección", key=f"cf_dir_{pid}")
-                        if st.form_submit_button("➕ Agregar registro CF", use_container_width=True):
-                            if not cf_nombre.strip() or not cf_nit.strip():
-                                st.error("Nombre del cliente y NIT/CF son obligatorios.")
-                            else:
-                                db.create_registro_cf(
-                                    pid, cf_nombre.strip(), cf_nit.strip(), cf_tel, cf_email, cf_dir,
+                            with st.expander("🗑️ Eliminar este prospecto"):
+                                st.caption(
+                                    "Esto elimina el prospecto por completo (no se puede deshacer). Las citas, "
+                                    "cotizaciones u otros registros que lo mencionen no se borran, solo dejan de "
+                                    "estar vinculados a él."
                                 )
-                                st.success("Registro CF agregado.")
-                                st.rerun()
-    else:
-        st.caption("Tu rol es de solo vista: puedes consultar pero no editar prospectos.")
+                                confirmar_borrar = st.checkbox(
+                                    "Confirmo que deseo eliminar este prospecto", key=f"conf_del_prospecto_{pid}",
+                                )
+                                if st.button(
+                                    "Eliminar prospecto", key=f"btn_del_prospecto_{pid}", disabled=not confirmar_borrar,
+                                ):
+                                    db.delete_prospecto(pid)
+                                    st.session_state.pop(editando_key, None)
+                                    st.success("Prospecto eliminado.")
+                                    st.rerun()
+
+                            st.markdown("##### 📇 Registros CF / NIT adicionales")
+                            st.caption(
+                                "Agrega tantos registros como necesites para este mismo cliente — por ejemplo, "
+                                "ventas facturadas a **Consumidor Final (CF)** u otras razones sociales/NIT "
+                                "asociadas a él. No hay límite de cantidad."
+                            )
+                            registros_cf = db.list_registros_cf(pid)
+                            if registros_cf:
+                                for reg in registros_cf:
+                                    with st.container(border=True):
+                                        rc1, rc2 = st.columns([6, 1])
+                                        with rc1:
+                                            st.write(f"**{reg['nombre_cliente']}** — NIT/CF: {reg['nit_cf']}")
+                                            contacto_cf = " · ".join(
+                                                x for x in [reg.get("telefono"), reg.get("email")] if x
+                                            )
+                                            if contacto_cf:
+                                                st.caption(contacto_cf)
+                                            if reg.get("direccion"):
+                                                st.caption(f"📍 {reg['direccion']}")
+                                            st.caption(f"Registrado: {reg.get('fecha_registro') or '—'}")
+                                        with rc2:
+                                            if st.button("🗑️", key=f"del_cf_{reg['id']}"):
+                                                db.delete_registro_cf(reg["id"])
+                                                st.rerun()
+                            else:
+                                st.caption("Sin registros CF adicionales todavía.")
+
+                            with st.form(f"nuevo_cf_{pid}", clear_on_submit=True):
+                                st.markdown("**Agregar nuevo registro CF**")
+                                cf1, cf2 = st.columns(2)
+                                cf_nombre = cf1.text_input("Nombre del cliente / empresa", key=f"cf_nombre_{pid}")
+                                cf_nit = cf2.text_input("NIT (o escribe 'CF' para Consumidor Final)", key=f"cf_nit_{pid}")
+                                cf3, cf4 = st.columns(2)
+                                cf_tel = cf3.text_input("Teléfono", key=f"cf_tel_{pid}")
+                                cf_email = cf4.text_input("Email", key=f"cf_email_{pid}")
+                                cf_dir = st.text_input("Dirección", key=f"cf_dir_{pid}")
+                                if st.form_submit_button("➕ Agregar registro CF", use_container_width=True):
+                                    if not cf_nombre.strip() or not cf_nit.strip():
+                                        st.error("Nombre del cliente y NIT/CF son obligatorios.")
+                                    else:
+                                        db.create_registro_cf(
+                                            pid, cf_nombre.strip(), cf_nit.strip(), cf_tel, cf_email, cf_dir,
+                                        )
+                                        st.success("Registro CF agregado.")
+                                        st.rerun()
+                        else:
+                            # ------------------------------------------------
+                            # Vista normal: acciones rápidas de la tarjeta
+                            # ------------------------------------------------
+                            if auth.can_edit() and estado == "Prospecto":
+                                if st.button(
+                                    "💰 Crear cotización", key=f"crm_cotizar_{r['id']}", use_container_width=True,
+                                ):
+                                    st.switch_page(
+                                        "app_pages/5_Cotizaciones.py",
+                                        query_params={"prospecto_id": r["id"]},
+                                    )
+                            elif auth.can_edit() and estado == "En negociación":
+                                perdiendo_key = f"crm_perdiendo_{r['id']}"
+                                if st.session_state.get(perdiendo_key):
+                                    motivo = st.text_area(
+                                        "¿Por qué se perdió?", key=f"crm_motivo_{r['id']}", height=80,
+                                    )
+                                    cc1, cc2 = st.columns(2)
+                                    if cc1.button(
+                                        "Confirmar", key=f"crm_confirmar_perdida_{r['id']}", use_container_width=True,
+                                    ):
+                                        db.update_prospecto(
+                                            r["id"], estado="Perdido", motivo_perdida=motivo.strip() or None,
+                                        )
+                                        st.session_state.pop(perdiendo_key, None)
+                                        st.rerun()
+                                    if cc2.button(
+                                        "Cancelar", key=f"crm_cancelar_perdida_{r['id']}", use_container_width=True,
+                                    ):
+                                        st.session_state.pop(perdiendo_key, None)
+                                        st.rerun()
+                                else:
+                                    bc1, bc2 = st.columns(2)
+                                    if bc1.button(
+                                        "✅ Ganado", key=f"crm_ganado_{r['id']}", use_container_width=True,
+                                    ):
+                                        db.update_prospecto(r["id"], estado="Cliente (Ganado)")
+                                        st.rerun()
+                                    if bc2.button(
+                                        "❌ Perdido", key=f"crm_perdido_{r['id']}", use_container_width=True,
+                                    ):
+                                        st.session_state[perdiendo_key] = True
+                                        st.rerun()
 
     # ----------------------------------------------------------------------
     # Ver también como tabla (para quienes prefieren la vista de lista)
