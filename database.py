@@ -25,7 +25,7 @@ import firebase_admin
 from firebase_admin import credentials, firestore
 
 import fake_firestore
-from config import BASE_DIR, CHECKLIST_DEFAULT
+from config import BASE_DIR, CHECKLIST_DEFAULT, LOGISTICA_VENDEDORES_INICIAL
 
 SERVICE_ACCOUNT_PATH = os.path.join(BASE_DIR, "serviceAccountKey.json")
 
@@ -111,6 +111,22 @@ def init_db(seed_demo: bool = True):
     usuarios = list(client.collection("usuarios").limit(1).stream())
     if not usuarios:
         _seed(client, seed_demo)
+    _seed_logistica_vendedores(client)
+
+
+def _seed_logistica_vendedores(client):
+    """Carga la lista inicial de LOGISTICA_VENDEDORES_INICIAL (config.py) en
+    la colección 'logistica_vendedores' la primera vez que arranca la app —
+    independiente de si ya hay usuarios, para que este agregado funcione
+    aunque la plataforma ya esté en uso."""
+    existentes = list(client.collection("logistica_vendedores").limit(1).stream())
+    if existentes:
+        return
+    for nombre in LOGISTICA_VENDEDORES_INICIAL:
+        client.collection("logistica_vendedores").document().set({
+            "nombre": nombre, "activo": True,
+            "creado_en": datetime.now().isoformat(timespec="seconds"),
+        })
 
 
 def _seed(client, seed_demo):
@@ -233,6 +249,34 @@ def list_vendedores(solo_activos=True):
         rows = [r for r in rows if r["activo"]]
     rows.sort(key=lambda r: r["nombre"])
     return rows
+
+
+def list_logistica_vendedores(solo_activos=True):
+    """Vendedores adicionales, sin usuario propio, que se pueden elegir como
+    'vendedor que hizo la venta' en un pedido de Logística (ver
+    LOGISTICA_VENDEDORES_INICIAL en config.py). Se combinan con
+    list_vendedores() en la pestaña de Logística."""
+    client = get_client()
+    rows = [_doc_to_dict(s) for s in client.collection("logistica_vendedores").stream()]
+    if solo_activos:
+        rows = [r for r in rows if r.get("activo", True)]
+    rows.sort(key=lambda r: r.get("nombre") or "")
+    return rows
+
+
+def create_logistica_vendedor(nombre):
+    get_client().collection("logistica_vendedores").document().set({
+        "nombre": nombre.strip(), "activo": True,
+        "creado_en": datetime.now().isoformat(timespec="seconds"),
+    })
+
+
+def set_logistica_vendedor_activo(vendedor_id, activo):
+    get_client().collection("logistica_vendedores").document(vendedor_id).update({"activo": bool(activo)})
+
+
+def delete_logistica_vendedor(vendedor_id):
+    get_client().collection("logistica_vendedores").document(vendedor_id).delete()
 
 
 def list_repartidores(solo_activos=True):
@@ -757,13 +801,13 @@ def get_pedido(pedido_id):
 
 def create_pedido(
     fecha, franja, cliente, direccion, zona, producto, numero_orden,
-    vendedor_id, repartidor_id, notas=None,
+    vendedor_id, repartidor_id, notas=None, tipo_ruta=None,
 ):
     get_client().collection("pedidos").document().set({
         "fecha": str(fecha), "franja": franja, "cliente": cliente, "direccion": direccion,
         "zona": zona, "producto": producto, "numero_orden": numero_orden,
         "vendedor_id": vendedor_id, "repartidor_id": repartidor_id,
-        "estado": "Pendiente", "notas": notas,
+        "estado": "Pendiente", "notas": notas, "tipo_ruta": tipo_ruta,
         "creado_en": datetime.now().isoformat(timespec="seconds"),
     })
 
