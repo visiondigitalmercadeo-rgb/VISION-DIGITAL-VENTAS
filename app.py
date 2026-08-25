@@ -71,6 +71,7 @@ ventas = st.Page("app_pages/7_Ventas_Diarias.py", title="Venta del día", icon="
 ventas_mes = st.Page("app_pages/15_Ventas_Por_Mes.py", title="Ventas por mes", icon="📅")
 capacitacion = st.Page("app_pages/16_Capacitacion.py", title="Capacitación", icon="🎓")
 tickets_tienda = st.Page("app_pages/17_Tickets_Tienda.py", title="Sistema Tickets Tiendas", icon="🎫")
+mantenimiento = st.Page("app_pages/18_Mantenimiento_Maquinaria.py", title="Mantenimiento de Maquinaria", icon="🔧")
 generales = st.Page("app_pages/8_Prospectos_Generales.py", title="Prospectos generales (todos)", icon="🌐")
 kpis = st.Page("app_pages/9_KPIs.py", title="KPIs", icon="📊")
 admin = st.Page("app_pages/10_Administracion.py", title="Administración de usuarios", icon="👥")
@@ -81,9 +82,10 @@ if rol == "mercadeo":
     # puede avanzar ni gestionar tickets, eso lo hace el personal de tienda).
     pages = [mercadeo, tickets_tienda]
 elif rol == "jefe_planta":
-    # El rol 'jefe_planta' solo tiene acceso a la pestaña de Reclamos
-    # (allí puede cambiar el estado de cada reclamo).
-    pages = [reclamos]
+    # El rol 'jefe_planta' tiene acceso a Reclamos (donde puede cambiar el
+    # estado de cada reclamo) y a Mantenimiento de Maquinaria (donde puede
+    # registrar máquinas y sus mantenimientos preventivos/correctivos).
+    pages = [reclamos, mantenimiento]
 elif rol == "disenador":
     # El rol 'disenador' solo tiene acceso al tablero de Diseño Gráfico - Nicolás.
     pages = [diseno]
@@ -108,7 +110,7 @@ else:
     pages = [
         inicio, prospectos, llamadas, citas, mercadeo, cotizaciones, reclamos,
         diseno, diseno_alvaro, logistica, ventas, ventas_mes, capacitacion, tickets_tienda,
-        generales, kpis,
+        mantenimiento, generales, kpis,
     ]
     if rol == "admin":
         pages.append(admin)
