@@ -6,7 +6,9 @@ import streamlit as st
 
 import auth
 import database as db
-from config import APP_URL, ESTADOS_TICKET, TICKET_SERVICIOS, TICKET_TIENDA_SLUG, TICKET_TIENDAS
+from config import (
+    APP_URL, ESTADOS_TICKET, INK_MUTED, STATUS, TICKET_SERVICIOS, TICKET_TIENDA_SLUG, TICKET_TIENDAS,
+)
 from utils import (
     download_excel_button, hora_legible, lineas_venta_display, minutos_entre, minutos_legible,
     sidebar_user_box,
@@ -23,8 +25,9 @@ st.caption(
 )
 
 puede_gestionar = auth.puede_gestionar_tickets_tienda()
+puede_configurar_kpis = auth.puede_configurar_kpis_tienda()
 tienda_usuario = auth.current_user_tienda()
-es_rol_de_tienda = user["rol"] in ("anfitriona", "jefe_tienda", "asesor_ventas")
+es_rol_de_tienda = user["rol"] in ("anfitriona", "jefe_tienda", "asesor_ventas", "cajero")
 
 if es_rol_de_tienda and not tienda_usuario:
     st.error(
@@ -99,6 +102,51 @@ def _render_asignar_form(ticket_id, tienda, asignando_key):
         st.rerun()
 
 
+# Etapas que se miden para los KPIs de tiempo: (estado, clave de la meta en
+# get_ticket_kpis/set_ticket_kpis, etiqueta, campo de hora de inicio, campo de
+# hora de fin). El promedio de cada una se calcula solo con los tickets de
+# hoy que ya completaron esa etapa (tienen ambas horas guardadas).
+_ETAPAS_KPI = [
+    ("Esperando", "meta_espera", "🕐 Ingresado → Atendido", "hora_ingreso", "hora_inicio_atencion"),
+    ("En atención", "meta_atencion", "🗣️ En espera → Elaboración", "hora_inicio_atencion", "hora_inicio_elaboracion"),
+    ("En elaboración", "meta_elaboracion", "🛠️ En elaboración → Facturado", "hora_inicio_elaboracion", "hora_facturado"),
+]
+
+
+def _promedio_minutos(tickets, campo_ini, campo_fin):
+    valores = [
+        minutos_entre(t.get(campo_ini), t.get(campo_fin))
+        for t in tickets if t.get(campo_ini) and t.get(campo_fin)
+    ]
+    return (sum(valores) / len(valores)) if valores else None
+
+
+def _render_kpis_tienda(tienda_nombre, tickets_tienda_hoy):
+    """Fila de tarjetas con el tiempo promedio de hoy en cada etapa para una
+    tienda, comparado contra su tiempo meta — en rojo si lo supera."""
+    metas = db.get_ticket_kpis(tienda_nombre)
+    cols_kpi = st.columns(len(_ETAPAS_KPI))
+    for col, (_estado, meta_key, etiqueta, campo_ini, campo_fin) in zip(cols_kpi, _ETAPAS_KPI):
+        with col:
+            st.caption(etiqueta)
+            promedio = _promedio_minutos(tickets_tienda_hoy, campo_ini, campo_fin)
+            meta = metas.get(meta_key)
+            if promedio is None:
+                st.markdown(f"<span style='color:{INK_MUTED};'>Sin datos hoy</span>", unsafe_allow_html=True)
+            else:
+                excede = meta is not None and promedio > meta
+                color = STATUS["critical"] if excede else (STATUS["good"] if meta is not None else INK_MUTED)
+                st.markdown(
+                    f"<span style='font-size:1.3rem; font-weight:700; color:{color};'>"
+                    f"{minutos_legible(round(promedio))}</span>",
+                    unsafe_allow_html=True,
+                )
+                if meta is not None:
+                    st.caption(f"{'⚠️ Meta' if excede else '✅ Meta'}: {minutos_legible(meta)}")
+                else:
+                    st.caption("Sin meta configurada")
+
+
 tab_tablero, tab_qr, tab_historial = st.tabs(
     ["🗂️ Tablero de hoy", "🔗 Código QR / Pantalla", "📋 Historial"]
 )
@@ -118,11 +166,10 @@ with tab_tablero:
 
     hoy = str(db.hoy_guatemala())
     if tienda_activa:
-        tickets_hoy = db.list_tickets_tienda(tienda=tienda_activa, fecha=hoy)
+        tickets_por_tienda = {tienda_activa: db.list_tickets_tienda(tienda=tienda_activa, fecha=hoy)}
     else:
-        tickets_hoy = [
-            t for tda in TICKET_TIENDAS for t in db.list_tickets_tienda(tienda=tda, fecha=hoy)
-        ]
+        tickets_por_tienda = {tda: db.list_tickets_tienda(tienda=tda, fecha=hoy) for tda in TICKET_TIENDAS}
+    tickets_hoy = [t for lista in tickets_por_tienda.values() for t in lista]
 
     k1, k2, k3, k4, k5, k6 = st.columns(6)
     k1.metric("Tickets hoy", len(tickets_hoy))
@@ -131,6 +178,52 @@ with tab_tablero:
     k4.metric("En elaboración", sum(1 for t in tickets_hoy if t["estado"] == "En elaboración"))
     k5.metric("Facturados", sum(1 for t in tickets_hoy if t["estado"] == "Facturado"))
     k6.metric("Abandono", sum(1 for t in tickets_hoy if t["estado"] == "Abandono"))
+
+    st.markdown("#### ⏱️ Tiempos promedio de hoy vs. meta")
+    st.caption(
+        "Promedio de hoy en cada etapa, por tienda. Se pone en rojo cuando supera el tiempo "
+        "meta configurado para esa tienda."
+    )
+    if tienda_activa:
+        _render_kpis_tienda(tienda_activa, tickets_por_tienda[tienda_activa])
+    else:
+        for tda in TICKET_TIENDAS:
+            st.markdown(f"**🏬 {tda}**")
+            _render_kpis_tienda(tda, tickets_por_tienda[tda])
+
+    if puede_configurar_kpis:
+        with st.expander("🎯 Configurar tiempos meta (KPIs) por tienda"):
+            st.caption(
+                "Tiempo meta, en minutos, para cada etapa — es lo que ven arriba en rojo "
+                "el asesor, el cajero y el jefe de tienda cuando el promedio de hoy se pasa. "
+                "Cada tienda tiene su propio tiempo meta."
+            )
+            tienda_kpi_ed = st.selectbox("Tienda", TICKET_TIENDAS, key="tt_kpi_tienda_sel")
+            metas_ed = db.get_ticket_kpis(tienda_kpi_ed)
+            with st.form(f"tt_kpi_form_{tienda_kpi_ed}"):
+                mk1, mk2, mk3 = st.columns(3)
+                meta_espera_ed = mk1.number_input(
+                    "Meta: Ingresado → Atendido (min)", min_value=0, step=1,
+                    value=int(metas_ed["meta_espera"]) if metas_ed["meta_espera"] is not None else 0,
+                )
+                meta_atencion_ed = mk2.number_input(
+                    "Meta: En espera → Elaboración (min)", min_value=0, step=1,
+                    value=int(metas_ed["meta_atencion"]) if metas_ed["meta_atencion"] is not None else 0,
+                )
+                meta_elaboracion_ed = mk3.number_input(
+                    "Meta: En elaboración → Facturado (min)", min_value=0, step=1,
+                    value=int(metas_ed["meta_elaboracion"]) if metas_ed["meta_elaboracion"] is not None else 0,
+                )
+                st.caption("Deja un campo en 0 si no quieres poner meta para esa etapa (no se marcará en rojo).")
+                if st.form_submit_button("💾 Guardar tiempos meta", use_container_width=True):
+                    db.set_ticket_kpis(
+                        tienda_kpi_ed,
+                        meta_espera_ed or None, meta_atencion_ed or None, meta_elaboracion_ed or None,
+                    )
+                    st.success(f"Tiempos meta de {tienda_kpi_ed} actualizados.")
+                    st.rerun()
+
+    st.divider()
 
     if puede_gestionar:
         with st.expander("➕ Agregar ticket manualmente (si el cliente no puede usar el QR)"):
