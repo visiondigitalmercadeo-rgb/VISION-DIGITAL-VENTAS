@@ -114,6 +114,46 @@ def hora_12_a_24(hora12, minuto, ampm):
     return f"{h:02d}:{minuto:02d}"
 
 
+def hora_legible(iso_ts):
+    """'2026-08-25T09:14:32' -> '09:14 a.m.'. Devuelve '—' si no hay valor."""
+    if not iso_ts:
+        return "—"
+    from datetime import datetime as _dt
+    try:
+        t = _dt.fromisoformat(iso_ts)
+    except (ValueError, TypeError):
+        return "—"
+    hora12 = t.hour % 12
+    hora12 = 12 if hora12 == 0 else hora12
+    ampm = "a.m." if t.hour < 12 else "p.m."
+    return f"{hora12:02d}:{t.minute:02d} {ampm}"
+
+
+def minutos_entre(inicio_iso, fin_iso=None):
+    """Minutos transcurridos entre dos timestamps ISO ('...T09:14:32'). Si no
+    hay fin_iso, usa la hora actual (para tickets todavía en curso). Devuelve
+    None si inicio_iso no existe todavía (esa etapa no ha comenzado)."""
+    if not inicio_iso:
+        return None
+    from datetime import datetime as _dt
+    try:
+        inicio = _dt.fromisoformat(inicio_iso)
+        fin = _dt.fromisoformat(fin_iso) if fin_iso else _dt.now()
+    except (ValueError, TypeError):
+        return None
+    return max(0, int((fin - inicio).total_seconds() // 60))
+
+
+def minutos_legible(minutos):
+    """int -> '7 min' o '1 h 12 min'. None -> '—'."""
+    if minutos is None:
+        return "—"
+    if minutos < 60:
+        return f"{minutos} min"
+    h, m = divmod(minutos, 60)
+    return f"{h} h {m} min"
+
+
 def selector_hora(label_prefix, key_prefix, hora12=12, minuto=0, ampm="AM"):
     """Muestra 3 selectores (Hora 1-12 / Minuto / AM-PM) y retorna el texto
     'HH:MM' en formato 24 horas, listo para guardar en la base de datos."""
