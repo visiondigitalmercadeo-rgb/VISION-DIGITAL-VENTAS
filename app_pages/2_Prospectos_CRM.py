@@ -234,6 +234,53 @@ with tab_tablero:
                             db.delete_prospecto(pid)
                             st.success("Prospecto eliminado.")
                             st.rerun()
+
+                    st.markdown("##### 📇 Registros CF / NIT adicionales")
+                    st.caption(
+                        "Agrega tantos registros como necesites para este mismo cliente — por ejemplo, "
+                        "ventas facturadas a **Consumidor Final (CF)** u otras razones sociales/NIT "
+                        "asociadas a él. No hay límite de cantidad."
+                    )
+                    registros_cf = db.list_registros_cf(pid)
+                    if registros_cf:
+                        for reg in registros_cf:
+                            with st.container(border=True):
+                                rc1, rc2 = st.columns([6, 1])
+                                with rc1:
+                                    st.write(f"**{reg['nombre_cliente']}** — NIT/CF: {reg['nit_cf']}")
+                                    contacto_cf = " · ".join(
+                                        x for x in [reg.get("telefono"), reg.get("email")] if x
+                                    )
+                                    if contacto_cf:
+                                        st.caption(contacto_cf)
+                                    if reg.get("direccion"):
+                                        st.caption(f"📍 {reg['direccion']}")
+                                    st.caption(f"Registrado: {reg.get('fecha_registro') or '—'}")
+                                with rc2:
+                                    if st.button("🗑️", key=f"del_cf_{reg['id']}"):
+                                        db.delete_registro_cf(reg["id"])
+                                        st.rerun()
+                    else:
+                        st.caption("Sin registros CF adicionales todavía.")
+
+                    with st.form(f"nuevo_cf_{pid}", clear_on_submit=True):
+                        st.markdown("**Agregar nuevo registro CF**")
+                        cf1, cf2 = st.columns(2)
+                        cf_nombre = cf1.text_input("Nombre del cliente / empresa", key=f"cf_nombre_{pid}")
+                        cf_nit = cf2.text_input("NIT (o escribe 'CF' para Consumidor Final)", key=f"cf_nit_{pid}")
+                        cf3, cf4 = st.columns(2)
+                        cf_tel = cf3.text_input("Teléfono", key=f"cf_tel_{pid}")
+                        cf_email = cf4.text_input("Email", key=f"cf_email_{pid}")
+                        cf_dir = st.text_input("Dirección", key=f"cf_dir_{pid}")
+                        if st.form_submit_button("➕ Agregar registro CF", use_container_width=True):
+                            if not cf_nombre.strip() or not cf_nit.strip():
+                                st.error("Nombre del cliente y NIT/CF son obligatorios.")
+                            else:
+                                db.create_registro_cf(
+                                    pid, cf_nombre.strip(), cf_nit.strip(), cf_tel, cf_email, cf_dir,
+                                )
+                                st.success("Registro CF agregado.")
+                                st.rerun()
     else:
         st.caption("Tu rol es de solo vista: puedes consultar pero no editar prospectos.")
 
