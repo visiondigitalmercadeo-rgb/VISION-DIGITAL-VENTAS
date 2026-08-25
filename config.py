@@ -177,6 +177,40 @@ TICKET_TIENDAS = CAPACITACION_TIENDAS  # se reutiliza la misma lista de tiendas
 
 ESTADOS_TICKET = ["Esperando", "En atención", "En elaboración", "Facturado"]
 
+# Catálogo de servicios/productos que el cliente puede seleccionar (varios a
+# la vez) al hacer check-in, ya sea desde el QR o registrado manualmente.
+TICKET_SERVICIOS = [
+    "BANNERS",
+    "BOTONES",
+    "CANVAS",
+    "COMPRA DE MATERIALES",
+    "CORTE RECTO",
+    "CORTE TROQUEL",
+    "COTIZACIÓN",
+    "DISEÑO",
+    "EMPLASTICADO",
+    "ENCUADERNADO",
+    "ESCANER",
+    "FOTOCOPIA",
+    "FOTOESTATICA",
+    "FOTOGRAFÍA VISA",
+    "FOTOGRAFÍAS",
+    "GAFETES PVC",
+    "GRABADO CD",
+    "IMPRESIÓN A COLOR PAPEL",
+    "IMPRESIÓN B/N PAPEL",
+    "IMPRESIÓN PVC",
+    "Laminado",
+    "LONA VINILICA",
+    "PLANOS",
+    "POSTERS",
+    "REDUCCION",
+    "STICKERS",
+    "TARJETAS DE PRESENTACIÓN",
+    "TROQUEL",
+    "USO DE COMPUTADORA",
+]
+
 # Slug corto (sin acentos/espacios) para usar en el enlace del código QR, por tienda.
 TICKET_TIENDA_SLUG = {
     "Cayalá": "cayala",
