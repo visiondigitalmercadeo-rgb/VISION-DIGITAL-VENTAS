@@ -1,10 +1,15 @@
+import re
+import unicodedata
+
 import pandas as pd
 import streamlit as st
 
 import auth
 import database as db
-from config import ROLES, ROLES_DE_TIENDA, ROLES_LABEL, TICKET_TIENDAS
-from utils import sidebar_user_box
+from config import (
+    PERSONAL_TIENDA_INICIAL, ROLES, ROLES_DE_TIENDA, ROLES_LABEL, TICKET_TIENDA_SLUG, TICKET_TIENDAS,
+)
+from utils import download_excel_button, sidebar_user_box
 
 user = auth.current_user()
 sidebar_user_box()
@@ -16,7 +21,9 @@ if not auth.is_admin():
 st.title("👥 Administración de usuarios")
 st.caption("Crear vendedores y usuarios de solo vista, activar/desactivar accesos y restablecer contraseñas.")
 
-tab_lista, tab_nueva = st.tabs(["📋 Usuarios", "➕ Nuevo usuario"])
+tab_lista, tab_nueva, tab_carga = st.tabs(
+    ["📋 Usuarios", "➕ Nuevo usuario", "📥 Carga inicial de personal"]
+)
 
 with tab_lista:
     usuarios = db.list_usuarios()
@@ -135,4 +142,172 @@ with tab_nueva:
                     tienda=None if tienda_nueva == "—" else tienda_nueva,
                 )
                 st.success(f"Usuario '{username}' creado como {ROLES_LABEL.get(rol, rol)}.")
+                st.rerun()
+
+
+def _slug_simple(texto):
+    """Quita acentos/símbolos y deja solo minúsculas y números — para armar
+    nombres de usuario a partir de un nombre completo."""
+    texto = unicodedata.normalize("NFKD", texto or "").encode("ascii", "ignore").decode("ascii")
+    return re.sub(r"[^a-z0-9]", "", texto.lower())
+
+
+def _generar_username(nombre, reservados):
+    """Genera un nombre de usuario nuevo que no esté en 'reservados': primero
+    intenta solo el primer nombre; si ya está reservado, agrega la inicial
+    del primer apellido; si sigue chocando, agrega un número. Reserva el
+    resultado antes de devolverlo."""
+    partes = (nombre or "").strip().split()
+    base = _slug_simple(partes[0]) if partes else "usuario"
+    candidato = base or "usuario"
+    if candidato in reservados and len(partes) > 1:
+        extra = _slug_simple(partes[1])[:1]
+        if extra:
+            candidato = base + extra
+    original = candidato
+    n = 1
+    while candidato in reservados:
+        n += 1
+        candidato = f"{original}{n}"
+    reservados.add(candidato)
+    return candidato
+
+
+# Roles de PERSONAL_TIENDA_INICIAL que además necesitan usuario/contraseña
+# para iniciar sesión (el resto — asesor_ventas / "Diseñador", acabados,
+# express — solo queda como nombre asignado a su tienda, sin acceso).
+ROLES_CON_ACCESO = {"jefe_tienda", "subjefe_tienda", "anfitriona", "cajero"}
+
+
+def _construir_plan_personal():
+    """Arma, una sola vez por ejecución, el plan de carga: TODAS las personas
+    de PERSONAL_TIENDA_INICIAL quedan como nombre asignado a su tienda (para
+    poder elegirlas como quien elabora un pedido); además, solo las que
+    tienen un rol de ROLES_CON_ACCESO reciben usuario/contraseña. Comparar
+    por nombre + tienda (y no solo por el usuario generado) contra lo que ya
+    existe en cada colección es lo que hace seguro volver a presionar el
+    botón: a quien ya esté cargado no se le vuelve a crear ni se le cambia
+    nada."""
+    todos_usuarios = db.list_usuarios()
+    reservados = {u["username"] for u in todos_usuarios}
+    todo_personal = db.list_personal_tiendas(solo_activos=False)
+    plan = []
+    for p in PERSONAL_TIENDA_INICIAL:
+        necesita_acceso = p["rol"] in ROLES_CON_ACCESO
+        ya_en_roster = any(
+            x.get("tienda") == p["tienda"]
+            and (x.get("nombre") or "").strip().lower() == p["nombre"].strip().lower()
+            for x in todo_personal
+        )
+        item = {**p, "ya_en_roster": ya_en_roster, "necesita_acceso": necesita_acceso}
+        if necesita_acceso:
+            existente_usuario = next(
+                (u for u in todos_usuarios if u.get("tienda") == p["tienda"]
+                 and (u.get("nombre") or "").strip().lower() == p["nombre"].strip().lower()),
+                None,
+            )
+            if existente_usuario:
+                item["username"] = existente_usuario["username"]
+                item["ya_existe_usuario"] = True
+            else:
+                item["username"] = _generar_username(p["nombre"], reservados)
+                item["ya_existe_usuario"] = False
+        else:
+            item["username"] = None
+            item["ya_existe_usuario"] = False
+        plan.append(item)
+    return plan
+
+
+with tab_carga:
+    st.caption(
+        "Personal de tienda que ya nos diste, para dejarlo asignado a su tienda y así poder "
+        "elegir quién elabora cada pedido en el Sistema de Tickets — Tiendas. Nota: en tu lista "
+        "original, el puesto 'Diseñador' corresponde al rol **Asesor de ventas** del sistema "
+        "(no se confunde con los diseñadores del tablero de Diseño Gráfico, que son otra cosa "
+        "aparte)."
+    )
+    st.caption(
+        "Solo Anfitriona, Jefe de tienda, Sub jefe de tienda y Cajero reciben usuario y "
+        "contraseña para iniciar sesión (la contraseña inicial es la misma para todos los de "
+        "una misma tienda, y se puede cambiar después desde 'Gestionar usuario' en la pestaña "
+        "'Usuarios'). El resto del personal (asesores de ventas / 'Diseñador', acabados, "
+        "express) queda solo como nombre asignado a su tienda, sin usuario. Es seguro presionar "
+        "el botón más de una vez: a quien ya esté cargado (se compara por nombre + tienda) no "
+        "se le vuelve a cargar ni se le cambia nada."
+    )
+
+    plan_personal = _construir_plan_personal()
+    filas_preview = [{
+        "Tienda": p["tienda"], "Nombre": p["nombre"], "Puesto": p["puesto_original"],
+        "Acceso al sistema": "Sí" if p["necesita_acceso"] else "No",
+        "Usuario": p["username"] or "—",
+        "Contraseña inicial": (
+            f"{TICKET_TIENDA_SLUG.get(p['tienda'], p['tienda'].lower())}2026"
+            if p["necesita_acceso"] else "—"
+        ),
+        "Estado": (
+            "Ya está" if p["ya_en_roster"] and (not p["necesita_acceso"] or p["ya_existe_usuario"])
+            else "Se creará"
+        ),
+    } for p in plan_personal]
+    df_preview = pd.DataFrame(filas_preview)
+    st.dataframe(df_preview, use_container_width=True, hide_index=True)
+    pendientes = sum(1 for f in filas_preview if f["Estado"] == "Se creará")
+    st.caption(f"{pendientes} persona(s) por cargar, de {len(plan_personal)} en total.")
+
+    if pendientes > 0 and st.button("👥 Cargar el personal pendiente", use_container_width=True):
+        creados_roster = 0
+        creados_usuarios = 0
+        for p in plan_personal:
+            if not p["ya_en_roster"]:
+                db.create_personal_tienda(p["nombre"], p["tienda"], p["puesto_original"])
+                creados_roster += 1
+            if p["necesita_acceso"] and not p["ya_existe_usuario"]:
+                password_p = f"{TICKET_TIENDA_SLUG.get(p['tienda'], p['tienda'].lower())}2026"
+                db.create_usuario(p["nombre"], p["username"], password_p, p["rol"], tienda=p["tienda"])
+                creados_usuarios += 1
+        st.success(
+            f"Se agregaron {creados_roster} persona(s) a la lista de personal de tienda y se "
+            f"crearon {creados_usuarios} usuario(s) nuevo(s) con acceso al sistema."
+        )
+        st.rerun()
+
+    download_excel_button(
+        df_preview, "personal_tiendas_credenciales.xlsx", key="admin_descargar_personal_credenciales",
+    )
+
+    # -----------------------------------------------------------------
+    # Limpieza: si esta lista se cargó antes (con una versión anterior de
+    # esta pestaña) creando usuario a TODOS, aquí se puede detectar y
+    # quitarle el acceso a quienes ya no deberían tenerlo, sin perder su
+    # nombre de la lista de personal.
+    # -----------------------------------------------------------------
+    nombres_sin_acceso = {
+        (p["nombre"].strip().lower(), p["tienda"])
+        for p in PERSONAL_TIENDA_INICIAL if p["rol"] not in ROLES_CON_ACCESO
+    }
+    usuarios_de_mas = [
+        u for u in db.list_usuarios()
+        if ((u.get("nombre") or "").strip().lower(), u.get("tienda")) in nombres_sin_acceso
+    ]
+    if usuarios_de_mas:
+        with st.expander(
+            f"🧹 Se encontraron {len(usuarios_de_mas)} usuario(s) que ya no deberían tener acceso"
+        ):
+            st.caption(
+                "Estas personas se habían creado como usuario, pero según la lista más reciente "
+                "solo necesitan quedar como nombre asignado a su tienda (sin iniciar sesión). "
+                "Puedes quitarles el acceso aquí — su nombre sigue disponible para asignarles "
+                "pedidos, solo se elimina su usuario y contraseña."
+            )
+            df_demas = pd.DataFrame([{
+                "Tienda": u.get("tienda") or "—", "Nombre": u["nombre"], "Usuario": u["username"],
+                "Rol actual": ROLES_LABEL.get(u["rol"], u["rol"]),
+            } for u in usuarios_de_mas])
+            st.dataframe(df_demas, use_container_width=True, hide_index=True)
+            if st.button("🗑️ Quitar el acceso a estas personas", use_container_width=True):
+                for u in usuarios_de_mas:
+                    db.delete_usuario(u["id"])
+                st.success(f"Se quitó el acceso de {len(usuarios_de_mas)} persona(s).")
                 st.rerun()
