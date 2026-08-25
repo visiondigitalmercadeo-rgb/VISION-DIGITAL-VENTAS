@@ -175,7 +175,7 @@ LINEAS_VENTA = [
 # ---------------------------------------------------------------------------
 TICKET_TIENDAS = CAPACITACION_TIENDAS  # se reutiliza la misma lista de tiendas
 
-ESTADOS_TICKET = ["Esperando", "En atención", "En elaboración", "Facturado"]
+ESTADOS_TICKET = ["Esperando", "En atención", "En elaboración", "Facturado", "Abandono"]
 
 # Catálogo de servicios/productos que el cliente puede seleccionar (varios a
 # la vez) al hacer check-in, ya sea desde el QR o registrado manualmente.
