@@ -155,6 +155,14 @@ def puede_gestionar_tickets_tienda():
     return u is not None and u["rol"] in ("admin", "anfitriona", "jefe_tienda", "asesor_ventas", "cajero")
 
 
+def puede_gestionar_mantenimiento():
+    """Admin y jefe de planta pueden registrar máquinas y mantenimientos; el
+    resto de roles que llegan a esta pestaña (vendedor, vista) solo pueden
+    consultar el historial."""
+    u = current_user()
+    return u is not None and u["rol"] in ("admin", "jefe_planta")
+
+
 def puede_configurar_kpis_tienda():
     """Admin y mercadeo son los únicos que pueden establecer los tiempos meta
     (KPIs) del Sistema de Tickets — Tiendas; el resto de roles de tienda
