@@ -7,7 +7,8 @@ import streamlit as st
 import auth
 import database as db
 from config import (
-    APP_URL, ESTADOS_TICKET, INK_MUTED, STATUS, TICKET_SERVICIOS, TICKET_TIENDA_SLUG, TICKET_TIENDAS,
+    APP_URL, ESTADOS_TICKET, INK_MUTED, ROLES_LABEL, STATUS, TICKET_SERVICIOS, TICKET_TIENDA_SLUG,
+    TICKET_TIENDAS,
 )
 from utils import (
     download_excel_button, hora_legible, lineas_venta_display, minutos_entre, minutos_legible,
@@ -27,7 +28,9 @@ st.caption(
 puede_gestionar = auth.puede_gestionar_tickets_tienda()
 puede_configurar_kpis = auth.puede_configurar_kpis_tienda()
 tienda_usuario = auth.current_user_tienda()
-es_rol_de_tienda = user["rol"] in ("anfitriona", "jefe_tienda", "asesor_ventas", "cajero")
+es_rol_de_tienda = user["rol"] in (
+    "anfitriona", "jefe_tienda", "subjefe_tienda", "asesor_ventas", "cajero",
+)
 
 if es_rol_de_tienda and not tienda_usuario:
     st.error(
@@ -72,12 +75,14 @@ def _render_abandono_form(ticket_id, abandonando_key):
 
 
 def _render_asignar_form(ticket_id, tienda, asignando_key):
-    """Caja para elegir qué asesor de ventas va a elaborar el pedido antes de
+    """Caja para elegir quién de la tienda va a elaborar el pedido antes de
     pasar el ticket a 'En elaboración' — mismo patrón de 'Confirmar/Cancelar'
-    que _render_abandono_form."""
-    asesores = db.list_asesores_tienda(tienda)
-    opciones_as = {a["nombre"]: a["id"] for a in asesores}
-    if asesores:
+    que _render_abandono_form. La lista sale del personal de la tienda
+    (colección "personal_tiendas"), no de los usuarios con acceso al
+    sistema, porque la mayoría de quienes elaboran pedidos no tienen usuario."""
+    personal = db.list_personal_tiendas(tienda=tienda, solo_activos=True)
+    opciones_as = {a["nombre"]: a["id"] for a in personal}
+    if personal:
         elegido_as = st.selectbox(
             "¿Quién va a elaborar este pedido?", ["—"] + list(opciones_as.keys()),
             key=f"tt_asesor_sel_{ticket_id}",
@@ -85,13 +90,13 @@ def _render_asignar_form(ticket_id, tienda, asignando_key):
     else:
         elegido_as = "—"
         st.caption(
-            "No hay asesores de ventas registrados para esta tienda todavía. Puedes "
-            "continuar sin asignar uno, o pedirle a un administrador que cree ese usuario "
-            "desde 'Administración de usuarios'."
+            "No hay personal registrado para esta tienda todavía. Puedes continuar sin "
+            "asignar a nadie, o pedirle a un administrador que lo agregue desde "
+            "'Administración de usuarios' → 'Carga inicial de personal'."
         )
     cc1, cc2 = st.columns(2)
     if cc1.button("Confirmar", key=f"tt_confirmar_as_{ticket_id}", use_container_width=True):
-        if asesores and elegido_as == "—":
+        if personal and elegido_as == "—":
             st.error("Selecciona quién va a elaborar el pedido.")
         else:
             db.avanzar_ticket_tienda(ticket_id, "En elaboración", asesor_id=opciones_as.get(elegido_as))
@@ -147,8 +152,8 @@ def _render_kpis_tienda(tienda_nombre, tickets_tienda_hoy):
                     st.caption("Sin meta configurada")
 
 
-tab_tablero, tab_qr, tab_historial = st.tabs(
-    ["🗂️ Tablero de hoy", "🔗 Código QR / Pantalla", "📋 Historial"]
+tab_tablero, tab_qr, tab_historial, tab_personal = st.tabs(
+    ["🗂️ Tablero de hoy", "🔗 Código QR / Pantalla", "📋 Historial", "👥 Personal de la tienda"]
 )
 
 # ---------------------------------------------------------------------------
@@ -250,7 +255,7 @@ with tab_tablero:
 
     st.divider()
 
-    usuarios_todos = db.list_usuarios()
+    personal_todos = db.list_personal_tiendas(solo_activos=False)
 
     cols = st.columns(len(ESTADOS_TICKET))
     for col, estado in zip(cols, ESTADOS_TICKET):
@@ -320,7 +325,7 @@ with tab_tablero:
                     elif estado == "En elaboración":
                         en_elaboracion = minutos_entre(t.get("hora_inicio_elaboracion"))
                         st.caption(f"🛠️ En elaboración hace {minutos_legible(en_elaboracion)}")
-                        st.caption(f"👤 Asignado a: {db.nombre_vendedor(t.get('asesor_id'), usuarios_todos)}")
+                        st.caption(f"👤 Asignado a: {db.nombre_personal_tienda(t.get('asesor_id'), personal_todos)}")
                         if puede_gestionar:
                             if st.session_state.get(abandonando_key):
                                 _render_abandono_form(t["id"], abandonando_key)
@@ -342,7 +347,7 @@ with tab_tablero:
                         st.caption(f"✅ Facturado: {hora_legible(t.get('hora_facturado'))}")
                         st.caption(f"⏱️ Tiempo total: {minutos_legible(total)}")
                         if t.get("asesor_id"):
-                            st.caption(f"👤 Elaborado por: {db.nombre_vendedor(t['asesor_id'], usuarios_todos)}")
+                            st.caption(f"👤 Elaborado por: {db.nombre_personal_tienda(t['asesor_id'], personal_todos)}")
                     elif estado == "Abandono":
                         total = minutos_entre(t.get("hora_ingreso"), t.get("hora_abandono"))
                         st.caption(f"🚫 Abandonó: {hora_legible(t.get('hora_abandono'))}")
@@ -386,18 +391,18 @@ with tab_tablero:
                             index=ESTADOS_TICKET.index(tk["estado"]) if tk.get("estado") in ESTADOS_TICKET else 0,
                             format_func=lambda e: ESTADO_TITULO_COLUMNA.get(e, e),
                         )
-                        asesores_ed = db.list_asesores_tienda(tk.get("tienda"))
+                        personal_ed = db.list_personal_tiendas(tienda=tk.get("tienda"), solo_activos=True)
                         opciones_as_ed = {"(sin asignar)": None}
-                        opciones_as_ed.update({a["nombre"]: a["id"] for a in asesores_ed})
-                        nombre_as_actual = db.nombre_vendedor(tk.get("asesor_id"))
+                        opciones_as_ed.update({a["nombre"]: a["id"] for a in personal_ed})
+                        nombre_as_actual = db.nombre_personal_tienda(tk.get("asesor_id"))
                         valores_as_ed = list(opciones_as_ed.keys())
                         if nombre_as_actual not in valores_as_ed and nombre_as_actual != "—":
-                            # El asesor asignado ya no está activo/en esta tienda, pero lo
+                            # La persona asignada ya no está activa/en esta tienda, pero la
                             # dejamos como opción para no perder el dato al guardar.
                             valores_as_ed.append(nombre_as_actual)
                             opciones_as_ed[nombre_as_actual] = tk.get("asesor_id")
                         asesor_ed = st.selectbox(
-                            "Asesor asignado (elaboración)", valores_as_ed,
+                            "Asignado a (elaboración)", valores_as_ed,
                             index=valores_as_ed.index(nombre_as_actual) if nombre_as_actual in valores_as_ed else 0,
                         )
                         motivo_ab_ed = st.text_input(
@@ -552,12 +557,12 @@ with tab_historial:
     tickets_hist.sort(key=lambda t: t.get("numero_ticket") or 0)
 
     if tickets_hist:
-        usuarios_hist = db.list_usuarios()
+        personal_hist = db.list_personal_tiendas(solo_activos=False)
         df = pd.DataFrame([{
             "N° ticket": t["numero_ticket"], "Tienda": t["tienda"], "Cliente": t["nombre"],
             "Teléfono": t.get("telefono") or "—", "Servicio/producto": lineas_venta_display(t.get("servicio")),
             "Estado": ESTADO_TITULO_COLUMNA.get(t["estado"], t["estado"]),
-            "Asesor asignado": db.nombre_vendedor(t.get("asesor_id"), usuarios_hist),
+            "Asignado a": db.nombre_personal_tienda(t.get("asesor_id"), personal_hist),
             "Ingresó": hora_legible(t.get("hora_ingreso")),
             "Espera (min)": minutos_entre(t.get("hora_ingreso"), t.get("hora_inicio_atencion")),
             "Atención (min)": minutos_entre(t.get("hora_inicio_atencion"), t.get("hora_inicio_elaboracion")),
@@ -570,3 +575,69 @@ with tab_historial:
         download_excel_button(df, "tickets_tienda.xlsx", key="tt_descargar_historial")
     else:
         st.info("No hay tickets registrados con este filtro.")
+
+# ---------------------------------------------------------------------------
+# Personal de la tienda: todo el equipo asignado a cada tienda (jefe, sub
+# jefe, anfitriona, cajero, asesores de ventas / "Diseñador", acabados,
+# express), venga de la colección "personal_tiendas" (solo nombre, sin
+# acceso al sistema) o de "usuarios" (con usuario/contraseña — solo
+# anfitriona, jefe de tienda, sub jefe de tienda y cajero).
+# ---------------------------------------------------------------------------
+with tab_personal:
+    if es_rol_de_tienda:
+        tienda_personal = tienda_usuario
+        st.caption(f"Tienda: **{tienda_personal}**")
+    else:
+        filtro_tienda_personal = st.selectbox(
+            "Tienda", ["Todas"] + TICKET_TIENDAS, key="tt_personal_tienda"
+        )
+        tienda_personal = None if filtro_tienda_personal == "Todas" else filtro_tienda_personal
+
+    personal_lista = db.list_personal_tiendas(tienda=tienda_personal, solo_activos=False)
+    usuarios_tienda = [
+        u for u in db.list_usuarios()
+        if u.get("tienda") and (not tienda_personal or u["tienda"] == tienda_personal)
+    ]
+    # Se cruzan las dos listas por (nombre, tienda) para saber quién de la
+    # lista de personal además tiene usuario con acceso al sistema.
+    acceso_por_persona = {
+        ((u.get("nombre") or "").strip().lower(), u.get("tienda")): u for u in usuarios_tienda
+    }
+
+    if not personal_lista and not usuarios_tienda:
+        st.info("No hay personal de tienda registrado todavía con este filtro.")
+    else:
+        filas = []
+        vistos = set()
+        for p in personal_lista:
+            clave = ((p.get("nombre") or "").strip().lower(), p.get("tienda"))
+            vistos.add(clave)
+            u_match = acceso_por_persona.get(clave)
+            filas.append({
+                "Tienda": p["tienda"], "Nombre": p["nombre"], "Puesto": p.get("puesto") or "—",
+                "Acceso al sistema": "Sí" if u_match else "No",
+                "Usuario": u_match["username"] if u_match else "—",
+                "Activo": "Sí" if p.get("activo", True) else "No",
+            })
+        # Por si algún usuario se creó a mano y todavía no tiene su
+        # contraparte en la lista de personal, también se muestra.
+        for u in usuarios_tienda:
+            clave = ((u.get("nombre") or "").strip().lower(), u.get("tienda"))
+            if clave in vistos:
+                continue
+            filas.append({
+                "Tienda": u["tienda"], "Nombre": u["nombre"], "Puesto": ROLES_LABEL.get(u["rol"], u["rol"]),
+                "Acceso al sistema": "Sí", "Usuario": u["username"],
+                "Activo": "Sí" if u.get("activo", True) else "No",
+            })
+
+        df_personal = pd.DataFrame(filas).sort_values(["Tienda", "Nombre"])
+        st.dataframe(df_personal, use_container_width=True, hide_index=True)
+        download_excel_button(df_personal, "personal_tiendas.xlsx", key="tt_descargar_personal")
+        n_con_acceso = sum(1 for f in filas if f["Acceso al sistema"] == "Sí")
+        st.caption(f"👤 {len(filas)} persona(s) en este filtro — {n_con_acceso} con acceso al sistema.")
+        if not es_rol_de_tienda:
+            st.caption(
+                "Para agregar o corregir personal, ve a 'Administración de usuarios' → "
+                "'Carga inicial de personal' o 'Nuevo usuario'."
+            )
