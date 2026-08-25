@@ -37,7 +37,7 @@ SURFACE = "#fcfcfb"
 ROLES = [
     "admin", "vendedor", "vista", "mercadeo", "jefe_planta", "disenador", "disenador_alvaro",
     "jefe_logistica", "repartidor", "jefe_capacitacion", "asistente_capacitacion",
-    "anfitriona", "jefe_tienda", "asesor_ventas", "cajero",
+    "anfitriona", "jefe_tienda", "subjefe_tienda", "asesor_ventas", "cajero",
 ]
 ROLES_LABEL = {
     "admin": "Administrador",
@@ -53,13 +53,85 @@ ROLES_LABEL = {
     "asistente_capacitacion": "Asistente de capacitación",
     "anfitriona": "Anfitriona (tienda)",
     "jefe_tienda": "Jefe de tienda",
+    "subjefe_tienda": "Sub jefe de tienda",
     "asesor_ventas": "Asesor de ventas",
     "cajero": "Cajero",
 }
 
 # Roles que pertenecen a una tienda específica (necesitan el campo "tienda"
-# en su usuario) para el Sistema de Tickets — Tiendas.
-ROLES_DE_TIENDA = ["anfitriona", "jefe_tienda", "asesor_ventas", "cajero"]
+# en su usuario) para el Sistema de Tickets — Tiendas. Son los ÚNICOS roles
+# de tienda que tienen usuario/contraseña para iniciar sesión — el resto del
+# personal de tienda (asesores de ventas / "Diseñador", acabados, express)
+# solo queda como nombre asignado a su tienda (ver PERSONAL_TIENDA_INICIAL y
+# la colección "personal_tiendas"), sin acceso al sistema.
+ROLES_DE_TIENDA = ["anfitriona", "jefe_tienda", "subjefe_tienda", "asesor_ventas", "cajero"]
+
+# ---------------------------------------------------------------------------
+# Personal inicial de cada tienda, proporcionado por Steven, para la carga
+# masiva desde 'Administración de usuarios' → 'Carga inicial de personal'.
+# TODAS estas personas quedan como nombre asignado a su tienda (colección
+# "personal_tiendas") para poder elegir quién elabora cada pedido; SOLO las
+# que tienen rol 'jefe_tienda', 'subjefe_tienda', 'anfitriona' o 'cajero'
+# (ver ROLES_DE_TIENDA) además reciben un usuario/contraseña para iniciar
+# sesión — el resto (asesor_ventas / "Diseñador", acabados, express) no
+# necesita usuario. Nota: en la lista original, el puesto "Diseñador" en
+# tienda corresponde al rol 'asesor_ventas' del sistema (no confundir con
+# los roles 'disenador' / 'disenador_alvaro', que son del tablero de Diseño
+# Gráfico); los valores "acabados"/"express" en "rol" son solo etiquetas
+# descriptivas para agrupar en la carga inicial, ya no son roles reales de
+# ROLES/ROLES_LABEL.
+# ---------------------------------------------------------------------------
+PERSONAL_TIENDA_INICIAL = [
+    # Cayalá
+    {"nombre": "Hemerson Hernandez", "puesto_original": "Jefe de tienda", "rol": "jefe_tienda", "tienda": "Cayalá"},
+    {"nombre": "Josseline Santizo", "puesto_original": "Sub jefe", "rol": "subjefe_tienda", "tienda": "Cayalá"},
+    {"nombre": "Dafne Perez", "puesto_original": "Diseñador", "rol": "asesor_ventas", "tienda": "Cayalá"},
+    {"nombre": "Otto Garcia", "puesto_original": "Diseñador", "rol": "asesor_ventas", "tienda": "Cayalá"},
+    {"nombre": "Melanie Duque", "puesto_original": "Diseñador", "rol": "asesor_ventas", "tienda": "Cayalá"},
+    {"nombre": "William Alvarez", "puesto_original": "Diseñador", "rol": "asesor_ventas", "tienda": "Cayalá"},
+    {"nombre": "Jefereson Flores", "puesto_original": "Diseñador", "rol": "asesor_ventas", "tienda": "Cayalá"},
+    {"nombre": "Edwin Liska", "puesto_original": "Diseñador", "rol": "asesor_ventas", "tienda": "Cayalá"},
+    {"nombre": "Jose Valentin", "puesto_original": "Diseñador", "rol": "asesor_ventas", "tienda": "Cayalá"},
+    {"nombre": "Alexander Carvajal", "puesto_original": "Diseñador", "rol": "asesor_ventas", "tienda": "Cayalá"},
+    {"nombre": "Karla Ruiz", "puesto_original": "Diseñador", "rol": "asesor_ventas", "tienda": "Cayalá"},
+    {"nombre": "Angie Guadalupe", "puesto_original": "Diseñador", "rol": "asesor_ventas", "tienda": "Cayalá"},
+    {"nombre": "Ana Muñoz", "puesto_original": "Anfitriona", "rol": "anfitriona", "tienda": "Cayalá"},
+    {"nombre": "Lesly Orellana", "puesto_original": "Cajera", "rol": "cajero", "tienda": "Cayalá"},
+    {"nombre": "Brandos Barillas", "puesto_original": "Acabados", "rol": "acabados", "tienda": "Cayalá"},
+    {"nombre": "Mauricio", "puesto_original": "Express", "rol": "express", "tienda": "Cayalá"},
+    {"nombre": "Leonel Santizo", "puesto_original": "Diseñador", "rol": "asesor_ventas", "tienda": "Cayalá"},
+    # Vista Hermosa
+    {"nombre": "Brenda Rodas", "puesto_original": "Diseñador", "rol": "asesor_ventas", "tienda": "Vista Hermosa"},
+    {"nombre": "Jorge Leal", "puesto_original": "Subjefe de tienda", "rol": "subjefe_tienda", "tienda": "Vista Hermosa"},
+    {"nombre": "David Sapon", "puesto_original": "Diseñador", "rol": "asesor_ventas", "tienda": "Vista Hermosa"},
+    {"nombre": "Christian Cruz", "puesto_original": "Diseñador", "rol": "asesor_ventas", "tienda": "Vista Hermosa"},
+    {"nombre": "Rodrigo Velasques", "puesto_original": "Diseñador", "rol": "asesor_ventas", "tienda": "Vista Hermosa"},
+    {"nombre": "Madolin Esquizabal", "puesto_original": "Diseñador", "rol": "asesor_ventas", "tienda": "Vista Hermosa"},
+    {"nombre": "Jennifer Hernandez", "puesto_original": "Diseñador", "rol": "asesor_ventas", "tienda": "Vista Hermosa"},
+    {"nombre": "Catherine Montenegro", "puesto_original": "Diseñador", "rol": "asesor_ventas", "tienda": "Vista Hermosa"},
+    {"nombre": "Andrea Sandoval", "puesto_original": "Cajera", "rol": "cajero", "tienda": "Vista Hermosa"},
+    {"nombre": "Fernando Lopez", "puesto_original": "Acabados", "rol": "acabados", "tienda": "Vista Hermosa"},
+    # Majadas
+    {"nombre": "Luis Crespin", "puesto_original": "Jefe", "rol": "jefe_tienda", "tienda": "Majadas"},
+    {"nombre": "Carlos Subuyuj", "puesto_original": "Diseñador", "rol": "asesor_ventas", "tienda": "Majadas"},
+    {"nombre": "Cinthia Flores", "puesto_original": "Diseñador", "rol": "asesor_ventas", "tienda": "Majadas"},
+    {"nombre": "Pedro Cuxil", "puesto_original": "Diseñador", "rol": "asesor_ventas", "tienda": "Majadas"},
+    {"nombre": "Lourdes Marroquin", "puesto_original": "Cajero", "rol": "cajero", "tienda": "Majadas"},
+    {"nombre": "Hugo Yuman", "puesto_original": "Acabados", "rol": "acabados", "tienda": "Majadas"},
+    # CAES
+    {"nombre": "Paola Sandoval", "puesto_original": "Jefe tienda", "rol": "jefe_tienda", "tienda": "CAES"},
+    {"nombre": "Benjamin Reneau", "puesto_original": "Sub jefe tienda", "rol": "subjefe_tienda", "tienda": "CAES"},
+    {"nombre": "Cristobal Rodas", "puesto_original": "Diseñador", "rol": "asesor_ventas", "tienda": "CAES"},
+    {"nombre": "Amalia Gaitán", "puesto_original": "Diseñador", "rol": "asesor_ventas", "tienda": "CAES"},
+    {"nombre": "Carlos Cruz", "puesto_original": "Diseñador", "rol": "asesor_ventas", "tienda": "CAES"},
+    {"nombre": "Andrea Bolaños", "puesto_original": "Diseñador", "rol": "asesor_ventas", "tienda": "CAES"},
+    {"nombre": "Paula Alvizures", "puesto_original": "Diseñador", "rol": "asesor_ventas", "tienda": "CAES"},
+    {"nombre": "Gabriela Del Aguila", "puesto_original": "Diseñador", "rol": "asesor_ventas", "tienda": "CAES"},
+    {"nombre": "Andrea Lemus", "puesto_original": "Anfitriona", "rol": "anfitriona", "tienda": "CAES"},
+    {"nombre": "Adriana Choquic", "puesto_original": "Cajera", "rol": "cajero", "tienda": "CAES"},
+    {"nombre": "Hector Vasquez", "puesto_original": "Cajero", "rol": "cajero", "tienda": "CAES"},
+    {"nombre": "Cristian Gonzalez", "puesto_original": "Acabados", "rol": "acabados", "tienda": "CAES"},
+]
 
 PLANTAS = ["Offset", "Digital", "Valloy", "Colorado"]
 
