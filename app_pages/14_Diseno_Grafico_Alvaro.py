@@ -113,6 +113,9 @@ with tab_tablero:
 
     st.divider()
 
+    if not (puede_crear or puede_mover):
+        st.caption("Tu rol es de solo vista para este tablero.")
+
     cols = st.columns(len(ESTADOS_DISENO))
     for col, estado in zip(cols, ESTADOS_DISENO):
         items = [r for r in rows if r.get("estado") == estado]
@@ -122,11 +125,23 @@ with tab_tablero:
                 st.caption("Sin solicitudes.")
             for r in items:
                 with st.container(border=True):
-                    if estado in COLUMNAS_CON_SEMAFORO:
-                        semaforo = "🔴" if r.get("detenido_emergencia") else "🟢"
-                        st.markdown(f"{semaforo} **{r.get('cliente') or 'Sin cliente'}**")
-                    else:
-                        st.markdown(f"**{r.get('cliente') or 'Sin cliente'}**")
+                    did = r["id"]
+                    editando_key = f"disA_editando_{did}"
+                    puede_editar_esta = puede_crear and (user["rol"] == "admin" or r["vendedor_id"] == user["id"])
+                    puede_editar_este = puede_editar_esta or puede_mover
+
+                    title_col, edit_col = st.columns([5, 1])
+                    with title_col:
+                        if estado in COLUMNAS_CON_SEMAFORO:
+                            semaforo = "🔴" if r.get("detenido_emergencia") else "🟢"
+                            st.markdown(f"{semaforo} **{r.get('cliente') or 'Sin cliente'}**")
+                        else:
+                            st.markdown(f"**{r.get('cliente') or 'Sin cliente'}**")
+                    with edit_col:
+                        if puede_editar_este:
+                            if st.button("✏️", key=f"disA_editar_{did}", help="Editar esta solicitud"):
+                                st.session_state[editando_key] = not st.session_state.get(editando_key, False)
+                                st.rerun()
                     st.caption(r.get("producto") or "—")
                     st.caption(f"Vendedor: {db.nombre_vendedor(r['vendedor_id'], vendedores)}")
                     if r.get("fecha_necesaria"):
@@ -149,138 +164,124 @@ with tab_tablero:
                             use_container_width=True, key=f"disA_file_{r['id']}_{i}",
                         )
 
-    st.divider()
-
-    # ----------------------------------------------------------------------
-    # Gestionar una solicitud
-    # ----------------------------------------------------------------------
-    if puede_crear or puede_mover:
-        st.markdown("#### ✏️ Gestionar una solicitud")
-        if user["rol"] == "vendedor":
-            gestionable = [r for r in rows if r["vendedor_id"] == user["id"]]
-        else:
-            gestionable = rows
-
-        if not gestionable:
-            st.caption("No hay solicitudes para gestionar con estos filtros.")
-        else:
-            opciones = {
-                f"[{r['estado']}] {r.get('cliente') or 'Sin cliente'} — {r.get('producto') or ''}": r["id"]
-                for r in gestionable
-            }
-            elegido = st.selectbox("Selecciona una solicitud", ["—"] + list(opciones.keys()), key="disA_gestionar_select")
-            if elegido != "—":
-                did = opciones[elegido]
-                d = db.get_diseno_alvaro(did)
-                puede_editar_esta = puede_crear and (user["rol"] == "admin" or d["vendedor_id"] == user["id"])
-
-                with st.form(f"gestionar_disA_{did}"):
-                    if puede_editar_esta:
-                        cliente_ed = st.text_input("Nombre del cliente", value=d.get("cliente") or "")
-                        c1, c2 = st.columns(2)
-                        producto_ed = c1.selectbox(
-                            "¿Qué producto es?", LINEAS_VENTA,
-                            index=LINEAS_VENTA.index(d["producto"]) if d.get("producto") in LINEAS_VENTA else 0,
-                        )
-                        material_ed = c2.text_input("¿Qué material es?", value=d.get("material") or "")
-                        c3, c4 = st.columns(2)
-                        acabado_ed = c3.text_input("¿Qué acabado lleva?", value=d.get("acabado") or "")
-                        medida_ed = c4.text_input("Medida del material", value=d.get("medida") or "")
-                        fecha_necesaria_ed = st.date_input(
-                            "Fecha en que se necesita",
-                            value=date.fromisoformat(d["fecha_necesaria"]) if d.get("fecha_necesaria") else date.today(),
-                        )
-                        cambios_necesarios_ed = st.text_area(
-                            "Cambios necesarios",
-                            value=d.get("cambios_necesarios") or "",
-                            help="Qué hay que ajustar en el diseño (por ejemplo, después de la revisión del cliente).",
-                        )
-                        archivos_actuales = diseno_archivos_lista(d)
-                        st.caption(
-                            f"Archivos actuales: {', '.join(a['nombre'] for a in archivos_actuales)}"
-                            if archivos_actuales else "Archivos actuales: ninguno."
-                        )
-                        nuevos_archivos = st.file_uploader(
-                            f"Reemplazar archivos adjuntos (opcional, máximo {DISENO_ARCHIVOS_MAX})",
-                            type=["pdf", "png", "jpg", "jpeg"], accept_multiple_files=True,
-                            key=f"disA_archivo_ed_{did}",
-                            help="Si subes archivos aquí, reemplazan a TODOS los actuales. Déjalo vacío para no cambiarlos.",
-                        )
-                        st.caption(f"Tamaño máximo por archivo: {DISENO_ARCHIVO_MAX_BYTES // 1000} KB.")
-                    else:
-                        st.caption(f"Cliente: **{d.get('cliente') or '—'}**")
-                        st.caption(
-                            f"Producto: {d.get('producto') or '—'} · Material: {d.get('material') or '—'} · "
-                            f"Acabado: {d.get('acabado') or '—'}"
-                        )
-                        st.caption(
-                            f"Medida: {d.get('medida') or '—'} · Necesita para: {d.get('fecha_necesaria') or '—'}"
-                        )
-                        st.caption(f"Cambios necesarios: {d.get('cambios_necesarios') or '—'}")
-
-                    if puede_mover:
-                        estado_ed = st.selectbox(
-                            "Estado (columna del tablero)", ESTADOS_DISENO,
-                            index=ESTADOS_DISENO.index(d["estado"]) if d.get("estado") in ESTADOS_DISENO else 0,
-                        )
-                        opciones_semaforo = ["🟢 Sigue en proceso", "🔴 Parado por trabajo de emergencia"]
-                        semaforo_ed = st.radio(
-                            "Semáforo (se muestra en las columnas En proceso, Cambios y Entregado)",
-                            opciones_semaforo,
-                            index=1 if d.get("detenido_emergencia") else 0,
-                            horizontal=True,
-                        )
-                    else:
-                        estado_ed = d.get("estado")
-                        st.caption(f"Estado actual: **{estado_ed}** — solo el diseñador o el administrador lo pueden mover.")
-                        if d.get("estado") in COLUMNAS_CON_SEMAFORO:
-                            st.caption(
-                                "🔴 Parado por trabajo de emergencia" if d.get("detenido_emergencia")
-                                else "🟢 Sigue en proceso"
-                            )
-
-                    if puede_editar_esta:
-                        colf1, colf2 = st.columns(2)
-                        guardar = colf1.form_submit_button("Guardar cambios", use_container_width=True)
-                        eliminar = colf2.form_submit_button("Eliminar solicitud", use_container_width=True)
-                    else:
-                        guardar = st.form_submit_button("Guardar estado", use_container_width=True)
-                        eliminar = False
-
-                    if guardar:
-                        error_msg = None
-                        update_kwargs = {"estado": estado_ed}
-                        if puede_mover:
-                            update_kwargs["detenido_emergencia"] = semaforo_ed.startswith("🔴")
-                        if puede_editar_esta:
-                            if not cliente_ed.strip():
-                                error_msg = "El nombre del cliente es obligatorio."
-                            else:
-                                update_kwargs.update(
-                                    cliente=cliente_ed.strip(), producto=producto_ed,
-                                    material=material_ed.strip(), acabado=acabado_ed.strip(),
-                                    medida=medida_ed.strip(), fecha_necesaria=str(fecha_necesaria_ed),
-                                    cambios_necesarios=cambios_necesarios_ed.strip() or None,
+                    if puede_editar_este and st.session_state.get(editando_key):
+                        # ----------------------------------------------------
+                        # Edición en línea (se abrió con el lápiz ✏️)
+                        # ----------------------------------------------------
+                        with st.form(f"gestionar_disA_{did}"):
+                            if puede_editar_esta:
+                                cliente_ed = st.text_input("Nombre del cliente", value=r.get("cliente") or "")
+                                c1, c2 = st.columns(2)
+                                producto_ed = c1.selectbox(
+                                    "¿Qué producto es?", LINEAS_VENTA,
+                                    index=LINEAS_VENTA.index(r["producto"]) if r.get("producto") in LINEAS_VENTA else 0,
                                 )
-                                if nuevos_archivos:
-                                    try:
-                                        update_kwargs["archivos"] = archivos_a_b64_lista(
-                                            nuevos_archivos, DISENO_ARCHIVO_MAX_BYTES, DISENO_ARCHIVOS_MAX,
+                                material_ed = c2.text_input("¿Qué material es?", value=r.get("material") or "")
+                                c3, c4 = st.columns(2)
+                                acabado_ed = c3.text_input("¿Qué acabado lleva?", value=r.get("acabado") or "")
+                                medida_ed = c4.text_input("Medida del material", value=r.get("medida") or "")
+                                fecha_necesaria_ed = st.date_input(
+                                    "Fecha en que se necesita",
+                                    value=date.fromisoformat(r["fecha_necesaria"]) if r.get("fecha_necesaria") else date.today(),
+                                )
+                                cambios_necesarios_ed = st.text_area(
+                                    "Cambios necesarios",
+                                    value=r.get("cambios_necesarios") or "",
+                                    help="Qué hay que ajustar en el diseño (por ejemplo, después de la revisión del cliente).",
+                                )
+                                archivos_actuales = diseno_archivos_lista(r)
+                                st.caption(
+                                    f"Archivos actuales: {', '.join(a['nombre'] for a in archivos_actuales)}"
+                                    if archivos_actuales else "Archivos actuales: ninguno."
+                                )
+                                nuevos_archivos = st.file_uploader(
+                                    f"Reemplazar archivos adjuntos (opcional, máximo {DISENO_ARCHIVOS_MAX})",
+                                    type=["pdf", "png", "jpg", "jpeg"], accept_multiple_files=True,
+                                    key=f"disA_archivo_ed_{did}",
+                                    help="Si subes archivos aquí, reemplazan a TODOS los actuales. Déjalo vacío para no cambiarlos.",
+                                )
+                                st.caption(f"Tamaño máximo por archivo: {DISENO_ARCHIVO_MAX_BYTES // 1000} KB.")
+                            else:
+                                nuevos_archivos = None
+                                st.caption(f"Cliente: **{r.get('cliente') or '—'}**")
+                                st.caption(
+                                    f"Producto: {r.get('producto') or '—'} · Material: {r.get('material') or '—'} · "
+                                    f"Acabado: {r.get('acabado') or '—'}"
+                                )
+                                st.caption(
+                                    f"Medida: {r.get('medida') or '—'} · Necesita para: {r.get('fecha_necesaria') or '—'}"
+                                )
+                                st.caption(f"Cambios necesarios: {r.get('cambios_necesarios') or '—'}")
+
+                            if puede_mover:
+                                estado_ed = st.selectbox(
+                                    "Estado (columna del tablero)", ESTADOS_DISENO,
+                                    index=ESTADOS_DISENO.index(r["estado"]) if r.get("estado") in ESTADOS_DISENO else 0,
+                                )
+                                opciones_semaforo = ["🟢 Sigue en proceso", "🔴 Parado por trabajo de emergencia"]
+                                semaforo_ed = st.radio(
+                                    "Semáforo (se muestra en las columnas En proceso, Cambios y Entregado)",
+                                    opciones_semaforo,
+                                    index=1 if r.get("detenido_emergencia") else 0,
+                                    horizontal=True,
+                                )
+                            else:
+                                estado_ed = r.get("estado")
+                                st.caption(f"Estado actual: **{estado_ed}** — solo el diseñador o el administrador lo pueden mover.")
+                                if r.get("estado") in COLUMNAS_CON_SEMAFORO:
+                                    st.caption(
+                                        "🔴 Parado por trabajo de emergencia" if r.get("detenido_emergencia")
+                                        else "🟢 Sigue en proceso"
+                                    )
+
+                            if puede_editar_esta:
+                                colf1, colf2, colf3 = st.columns(3)
+                                guardar = colf1.form_submit_button("💾 Guardar", use_container_width=True)
+                                eliminar = colf2.form_submit_button("Eliminar", use_container_width=True)
+                                cancelar = colf3.form_submit_button("Cancelar", use_container_width=True)
+                            else:
+                                colf1, colf2 = st.columns(2)
+                                guardar = colf1.form_submit_button("Guardar estado", use_container_width=True)
+                                eliminar = False
+                                cancelar = colf2.form_submit_button("Cancelar", use_container_width=True)
+
+                            if guardar:
+                                error_msg = None
+                                update_kwargs = {"estado": estado_ed}
+                                if puede_mover:
+                                    update_kwargs["detenido_emergencia"] = semaforo_ed.startswith("🔴")
+                                if puede_editar_esta:
+                                    if not cliente_ed.strip():
+                                        error_msg = "El nombre del cliente es obligatorio."
+                                    else:
+                                        update_kwargs.update(
+                                            cliente=cliente_ed.strip(), producto=producto_ed,
+                                            material=material_ed.strip(), acabado=acabado_ed.strip(),
+                                            medida=medida_ed.strip(), fecha_necesaria=str(fecha_necesaria_ed),
+                                            cambios_necesarios=cambios_necesarios_ed.strip() or None,
                                         )
-                                    except ValueError as e:
-                                        error_msg = str(e)
-                        if error_msg:
-                            st.error(error_msg)
-                        else:
-                            db.update_diseno_alvaro(did, **update_kwargs)
-                            st.success("Solicitud actualizada.")
-                            st.rerun()
-                    if eliminar:
-                        db.delete_diseno_alvaro(did)
-                        st.success("Solicitud eliminada.")
-                        st.rerun()
-    else:
-        st.caption("Tu rol es de solo vista para este tablero.")
+                                        if nuevos_archivos:
+                                            try:
+                                                update_kwargs["archivos"] = archivos_a_b64_lista(
+                                                    nuevos_archivos, DISENO_ARCHIVO_MAX_BYTES, DISENO_ARCHIVOS_MAX,
+                                                )
+                                            except ValueError as e:
+                                                error_msg = str(e)
+                                if error_msg:
+                                    st.error(error_msg)
+                                else:
+                                    db.update_diseno_alvaro(did, **update_kwargs)
+                                    st.session_state.pop(editando_key, None)
+                                    st.success("Solicitud actualizada.")
+                                    st.rerun()
+                            if eliminar:
+                                db.delete_diseno_alvaro(did)
+                                st.session_state.pop(editando_key, None)
+                                st.success("Solicitud eliminada.")
+                                st.rerun()
+                            if cancelar:
+                                st.session_state.pop(editando_key, None)
+                                st.rerun()
 
 # --------------------------------------------------------------------------
 # Nueva solicitud
