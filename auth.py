@@ -15,6 +15,7 @@ def do_login(username: str, password: str) -> bool:
         "nombre": user["nombre"],
         "username": user["username"],
         "rol": user["rol"],
+        "tienda": user.get("tienda"),
     }
     return True
 
@@ -123,6 +124,37 @@ def puede_editar_capacitacion():
     módulos, submódulos, personal y calificaciones)."""
     u = current_user()
     return u is not None and u["rol"] in ("admin", "jefe_capacitacion", "asistente_capacitacion")
+
+
+def is_anfitriona():
+    u = current_user()
+    return u is not None and u["rol"] == "anfitriona"
+
+
+def is_jefe_tienda():
+    u = current_user()
+    return u is not None and u["rol"] == "jefe_tienda"
+
+
+def is_asesor_ventas():
+    u = current_user()
+    return u is not None and u["rol"] == "asesor_ventas"
+
+
+def puede_gestionar_tickets_tienda():
+    """Admin, anfitriona, jefe de tienda y asesor de ventas tienen el mismo
+    nivel de permiso dentro del Sistema de Tickets — Tiendas (ver y avanzar
+    los tickets de la fila), igual que se hizo con capacitación."""
+    u = current_user()
+    return u is not None and u["rol"] in ("admin", "anfitriona", "jefe_tienda", "asesor_ventas")
+
+
+def current_user_tienda():
+    """Tienda asignada al usuario en sesión (solo aplica a los roles de
+    tienda: anfitriona, jefe_tienda, asesor_ventas). None para admin u otros
+    roles, que ven todas las tiendas."""
+    u = current_user()
+    return u.get("tienda") if u else None
 
 
 def can_edit():
