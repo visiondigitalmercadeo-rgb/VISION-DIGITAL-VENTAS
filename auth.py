@@ -141,12 +141,26 @@ def is_asesor_ventas():
     return u is not None and u["rol"] == "asesor_ventas"
 
 
-def puede_gestionar_tickets_tienda():
-    """Admin, anfitriona, jefe de tienda y asesor de ventas tienen el mismo
-    nivel de permiso dentro del Sistema de Tickets — Tiendas (ver y avanzar
-    los tickets de la fila), igual que se hizo con capacitación."""
+def is_cajero():
     u = current_user()
-    return u is not None and u["rol"] in ("admin", "anfitriona", "jefe_tienda", "asesor_ventas")
+    return u is not None and u["rol"] == "cajero"
+
+
+def puede_gestionar_tickets_tienda():
+    """Admin, anfitriona, jefe de tienda, asesor de ventas y cajero tienen el
+    mismo nivel de permiso dentro del Sistema de Tickets — Tiendas (ver y
+    avanzar los tickets de la fila, incluyendo marcarlos como Facturado),
+    igual que se hizo con capacitación."""
+    u = current_user()
+    return u is not None and u["rol"] in ("admin", "anfitriona", "jefe_tienda", "asesor_ventas", "cajero")
+
+
+def puede_configurar_kpis_tienda():
+    """Admin y mercadeo son los únicos que pueden establecer los tiempos meta
+    (KPIs) del Sistema de Tickets — Tiendas; el resto de roles de tienda
+    (asesor, cajero, jefe de tienda) solo pueden verlos."""
+    u = current_user()
+    return u is not None and u["rol"] in ("admin", "mercadeo")
 
 
 def current_user_tienda():
