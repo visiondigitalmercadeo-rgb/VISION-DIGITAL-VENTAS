@@ -1140,3 +1140,94 @@ def delete_ticket_tienda(ticket_id):
     auditoría; esta función queda disponible para una limpieza manual de
     datos si algún día hace falta."""
     get_client().collection("tickets_tienda").document(ticket_id).delete()
+
+
+# ---------------------------------------------------------------------------
+# Mantenimiento de Maquinaria (por planta): cada máquina/impresora es un
+# registro en "maquinas"; sus mantenimientos (preventivos y correctivos) son
+# registros en "mantenimientos_maquinas", ligados por "maquina_id".
+# ---------------------------------------------------------------------------
+def list_maquinas(planta=None, solo_activas=False):
+    client = get_client()
+    query = client.collection("maquinas")
+    if planta:
+        query = query.where("planta", "==", planta)
+    rows = [_doc_to_dict(s) for s in query.stream()]
+    if solo_activas:
+        rows = [r for r in rows if r.get("activa", True)]
+    rows.sort(key=lambda r: r.get("nombre") or "")
+    return rows
+
+
+def get_maquina(maquina_id):
+    snap = get_client().collection("maquinas").document(maquina_id).get()
+    return _doc_to_dict(snap) if snap.exists else None
+
+
+def create_maquina(nombre, tipo_maquina, planta, numero_serie=None, notas=None):
+    doc_ref = get_client().collection("maquinas").document()
+    doc_ref.set({
+        "nombre": nombre.strip(), "tipo_maquina": (tipo_maquina or "").strip() or None,
+        "planta": planta, "numero_serie": (numero_serie or "").strip() or None,
+        "notas": (notas or "").strip() or None, "activa": True,
+        "creado_en": ahora_guatemala().isoformat(timespec="seconds"),
+    })
+    return doc_ref.id
+
+
+def update_maquina(maquina_id, **kwargs):
+    if kwargs:
+        get_client().collection("maquinas").document(maquina_id).update(kwargs)
+
+
+def delete_maquina(maquina_id):
+    """Elimina la máquina junto con todo su historial de mantenimientos
+    (preventivos y correctivos), para no dejar registros huérfanos."""
+    client = get_client()
+    for m in list_mantenimientos_maquina(maquina_id):
+        client.collection("mantenimientos_maquinas").document(m["id"]).delete()
+    client.collection("maquinas").document(maquina_id).delete()
+
+
+def list_mantenimientos_maquina(maquina_id, tipo=None):
+    """Historial de mantenimientos de una máquina (preventivos y
+    correctivos juntos, o solo uno de los dos tipos si se especifica
+    'tipo'), más recientes primero."""
+    client = get_client()
+    rows = [
+        _doc_to_dict(s)
+        for s in client.collection("mantenimientos_maquinas").where("maquina_id", "==", maquina_id).stream()
+    ]
+    if tipo:
+        rows = [r for r in rows if r.get("tipo") == tipo]
+    rows.sort(key=lambda r: r.get("fecha") or "", reverse=True)
+    return rows
+
+
+def get_mantenimiento(mantenimiento_id):
+    snap = get_client().collection("mantenimientos_maquinas").document(mantenimiento_id).get()
+    return _doc_to_dict(snap) if snap.exists else None
+
+
+def create_mantenimiento(maquina_id, tipo, **campos):
+    """Crea un registro de mantenimiento ('Preventivo' o 'Correctivo') para
+    una máquina. 'campos' admite: fecha, proveedor, costo, repuesto_cambiado,
+    tiempo_garantia, numero_factura, notas, factura_nombre/tipo/b64,
+    foto_repuesto_nombre/tipo/b64."""
+    doc_ref = get_client().collection("mantenimientos_maquinas").document()
+    data = {
+        "maquina_id": maquina_id, "tipo": tipo,
+        "creado_en": ahora_guatemala().isoformat(timespec="seconds"),
+    }
+    data.update(campos)
+    doc_ref.set(data)
+    return doc_ref.id
+
+
+def update_mantenimiento(mantenimiento_id, **kwargs):
+    if kwargs:
+        get_client().collection("mantenimientos_maquinas").document(mantenimiento_id).update(kwargs)
+
+
+def delete_mantenimiento(mantenimiento_id):
+    get_client().collection("mantenimientos_maquinas").document(mantenimiento_id).delete()
