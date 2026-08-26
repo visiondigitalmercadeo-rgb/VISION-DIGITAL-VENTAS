@@ -40,8 +40,7 @@ if es_rol_de_tienda and not tienda_usuario:
     st.stop()
 
 ESTADO_EMOJI = {
-    "Esperando": "🕐",
-    "En atención": "🗣️",
+    "En atención": "🕐",
     "En elaboración": "🛠️",
     "Facturado": "✅",
     "Abandono": "🚫",
@@ -49,8 +48,8 @@ ESTADO_EMOJI = {
 
 # Títulos que ve el equipo en cada columna del tablero (el valor interno de
 # "estado" que se guarda en la base de datos no cambia, solo cómo se muestra).
+# Ya no existe la columna "Ingresado": el ticket entra directo a "En espera".
 ESTADO_TITULO_COLUMNA = {
-    "Esperando": "Ingresado",
     "En atención": "En espera",
     "En elaboración": "En elaboración",
     "Facturado": "Facturado",
@@ -111,9 +110,10 @@ def _render_asignar_form(ticket_id, tienda, asignando_key):
 # get_ticket_kpis/set_ticket_kpis, etiqueta, campo de hora de inicio, campo de
 # hora de fin). El promedio de cada una se calcula solo con los tickets de
 # hoy que ya completaron esa etapa (tienen ambas horas guardadas).
+# Ya no se mide "Ingresado → Atendido" — esa etapa desapareció, el ticket
+# entra directo a "En espera".
 _ETAPAS_KPI = [
-    ("Esperando", "meta_espera", "🕐 Ingresado → Atendido", "hora_ingreso", "hora_inicio_atencion"),
-    ("En atención", "meta_atencion", "🗣️ En espera → Elaboración", "hora_inicio_atencion", "hora_inicio_elaboracion"),
+    ("En atención", "meta_atencion", "🕐 En espera → Elaboración", "hora_inicio_atencion", "hora_inicio_elaboracion"),
     ("En elaboración", "meta_elaboracion", "🛠️ En elaboración → Facturado", "hora_inicio_elaboracion", "hora_facturado"),
 ]
 
@@ -176,13 +176,12 @@ with tab_tablero:
         tickets_por_tienda = {tda: db.list_tickets_tienda(tienda=tda, fecha=hoy) for tda in TICKET_TIENDAS}
     tickets_hoy = [t for lista in tickets_por_tienda.values() for t in lista]
 
-    k1, k2, k3, k4, k5, k6 = st.columns(6)
+    k1, k2, k3, k4, k5 = st.columns(5)
     k1.metric("Tickets hoy", len(tickets_hoy))
-    k2.metric("Ingresado", sum(1 for t in tickets_hoy if t["estado"] == "Esperando"))
-    k3.metric("En espera", sum(1 for t in tickets_hoy if t["estado"] == "En atención"))
-    k4.metric("En elaboración", sum(1 for t in tickets_hoy if t["estado"] == "En elaboración"))
-    k5.metric("Facturados", sum(1 for t in tickets_hoy if t["estado"] == "Facturado"))
-    k6.metric("Abandono", sum(1 for t in tickets_hoy if t["estado"] == "Abandono"))
+    k2.metric("En espera", sum(1 for t in tickets_hoy if t["estado"] == "En atención"))
+    k3.metric("En elaboración", sum(1 for t in tickets_hoy if t["estado"] == "En elaboración"))
+    k4.metric("Facturados", sum(1 for t in tickets_hoy if t["estado"] == "Facturado"))
+    k5.metric("Abandono", sum(1 for t in tickets_hoy if t["estado"] == "Abandono"))
 
     st.markdown("#### ⏱️ Tiempos promedio de hoy vs. meta")
     st.caption(
@@ -206,11 +205,7 @@ with tab_tablero:
             tienda_kpi_ed = st.selectbox("Tienda", TICKET_TIENDAS, key="tt_kpi_tienda_sel")
             metas_ed = db.get_ticket_kpis(tienda_kpi_ed)
             with st.form(f"tt_kpi_form_{tienda_kpi_ed}"):
-                mk1, mk2, mk3 = st.columns(3)
-                meta_espera_ed = mk1.number_input(
-                    "Meta: Ingresado → Atendido (min)", min_value=0, step=1,
-                    value=int(metas_ed["meta_espera"]) if metas_ed["meta_espera"] is not None else 0,
-                )
+                mk2, mk3 = st.columns(2)
                 meta_atencion_ed = mk2.number_input(
                     "Meta: En espera → Elaboración (min)", min_value=0, step=1,
                     value=int(metas_ed["meta_atencion"]) if metas_ed["meta_atencion"] is not None else 0,
@@ -223,7 +218,7 @@ with tab_tablero:
                 if st.form_submit_button("💾 Guardar tiempos meta", use_container_width=True):
                     db.set_ticket_kpis(
                         tienda_kpi_ed,
-                        meta_espera_ed or None, meta_atencion_ed or None, meta_elaboracion_ed or None,
+                        None, meta_atencion_ed or None, meta_elaboracion_ed or None,
                     )
                     st.success(f"Tiempos meta de {tienda_kpi_ed} actualizados.")
                     st.rerun()
@@ -279,30 +274,9 @@ with tab_tablero:
 
                     abandonando_key = f"tt_abandonando_{t['id']}"
 
-                    if estado == "Esperando":
-                        espera = minutos_entre(t.get("hora_ingreso"))
-                        st.caption(f"⏱️ Esperando hace {minutos_legible(espera)}")
-                        if puede_gestionar:
-                            if st.session_state.get(abandonando_key):
-                                _render_abandono_form(t["id"], abandonando_key)
-                            else:
-                                bc1, bc2 = st.columns(2)
-                                if bc1.button(
-                                    "➡️ Atender", key=f"tt_atender_{t['id']}", use_container_width=True,
-                                ):
-                                    db.avanzar_ticket_tienda(t["id"], "En atención")
-                                    st.rerun()
-                                if bc2.button(
-                                    "🚫", key=f"tt_abandono_{t['id']}", use_container_width=True,
-                                    help="Marcar como Abandono",
-                                ):
-                                    st.session_state[abandonando_key] = True
-                                    st.rerun()
-                    elif estado == "En atención":
-                        espera = minutos_entre(t.get("hora_ingreso"), t.get("hora_inicio_atencion"))
+                    if estado == "En atención":
                         en_atencion = minutos_entre(t.get("hora_inicio_atencion"))
-                        st.caption(f"⏱️ Esperó {minutos_legible(espera)}")
-                        st.caption(f"🗣️ En esta etapa hace {minutos_legible(en_atencion)}")
+                        st.caption(f"⏱️ En espera hace {minutos_legible(en_atencion)}")
                         if puede_gestionar:
                             asignando_key = f"tt_asignando_{t['id']}"
                             if st.session_state.get(abandonando_key):
