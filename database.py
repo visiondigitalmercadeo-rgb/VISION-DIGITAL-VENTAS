@@ -858,6 +858,46 @@ def delete_pedido(pedido_id):
 
 
 # ---------------------------------------------------------------------------
+# Rutas extra de Logística: Compras, Trámites y Papelería — versión sencilla
+# de "pedido" (sin cliente/zona/franja/productos), usada para mandados del
+# repartidor que no son un envío de mercadería. Las 3 comparten la misma
+# colección ("rutas_extra"), diferenciadas por el campo "tipo".
+# ---------------------------------------------------------------------------
+def list_rutas_extra(tipo=None, repartidor_id=None):
+    client = get_client()
+    query = client.collection("rutas_extra")
+    if tipo:
+        query = query.where("tipo", "==", tipo)
+    if repartidor_id:
+        query = query.where("repartidor_id", "==", repartidor_id)
+    rows = [_doc_to_dict(s) for s in query.stream()]
+    rows.sort(key=lambda r: r.get("fecha") or "", reverse=True)
+    return rows
+
+
+def get_ruta_extra(ruta_id):
+    snap = get_client().collection("rutas_extra").document(ruta_id).get()
+    return _doc_to_dict(snap) if snap.exists else None
+
+
+def create_ruta_extra(tipo, fecha, empresa, descripcion, repartidor_id):
+    get_client().collection("rutas_extra").document().set({
+        "tipo": tipo, "fecha": str(fecha), "empresa": empresa, "descripcion": descripcion,
+        "repartidor_id": repartidor_id, "estado": "Pendiente",
+        "creado_en": datetime.now().isoformat(timespec="seconds"),
+    })
+
+
+def update_ruta_extra(ruta_id, **kwargs):
+    if kwargs:
+        get_client().collection("rutas_extra").document(ruta_id).update(kwargs)
+
+
+def delete_ruta_extra(ruta_id):
+    get_client().collection("rutas_extra").document(ruta_id).delete()
+
+
+# ---------------------------------------------------------------------------
 # Capacitación — personal por tienda
 # ---------------------------------------------------------------------------
 def list_personal_tiendas(tienda=None, solo_activos=True):
