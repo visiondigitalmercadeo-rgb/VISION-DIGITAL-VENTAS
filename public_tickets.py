@@ -85,9 +85,14 @@ def render_pantalla(slug):
     hoy = str(db.hoy_guatemala())
     tickets_hoy = db.list_tickets_tienda(tienda=tienda, fecha=hoy)
 
-    en_curso = [t for t in tickets_hoy if t["estado"] in ("En atención", "En elaboración")]
+    # Ya no existe la etapa "Esperando"/"Ingresado": el ticket entra directo a
+    # "En atención" ("En espera" en el tablero). Así que "ahora atendiendo"
+    # muestra solo lo que de verdad se está elaborando ("En elaboración"), y
+    # "siguen en la fila" muestra a quienes todavía esperan su turno
+    # ("En atención").
+    en_curso = [t for t in tickets_hoy if t["estado"] == "En elaboración"]
     en_curso.sort(key=lambda t: t.get("numero_ticket") or 0)
-    en_espera = [t for t in tickets_hoy if t["estado"] == "Esperando"]
+    en_espera = [t for t in tickets_hoy if t["estado"] == "En atención"]
     en_espera.sort(key=lambda t: t.get("numero_ticket") or 0)
 
     st.markdown(
