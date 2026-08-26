@@ -65,14 +65,23 @@ def sidebar_user_box():
 
 
 def base_layout(fig: go.Figure, title=None, height=380):
+    # El título usa yref="container" (relativo a toda la figura) por defecto
+    # en Plotly, mientras que la leyenda por defecto usa yref="paper"
+    # (relativo solo al área de la gráfica) — con poco margen superior, esas
+    # dos referencias distintas terminaban superponiéndose visualmente. Aquí
+    # se fija la leyenda también a yref="container" y se coloca explícitamente
+    # debajo del título, con margen de sobra para ambos.
     fig.update_layout(
-        title=title,
+        title=dict(text=title, x=0, xanchor="left", y=0.97, yanchor="top", font=dict(size=16)) if title else None,
         height=height,
         plot_bgcolor=SURFACE,
         paper_bgcolor=SURFACE,
         font=dict(color=INK_PRIMARY, family="system-ui, -apple-system, Segoe UI, sans-serif"),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
-        margin=dict(l=10, r=10, t=50 if title else 20, b=10),
+        legend=dict(
+            orientation="h", yref="container", yanchor="top",
+            y=0.84 if title else 0.97, xanchor="left", x=0,
+        ),
+        margin=dict(l=10, r=10, t=95 if title else 40, b=10),
         colorway=CATEGORICAL,
     )
     fig.update_xaxes(showgrid=False, linecolor=GRIDLINE, tickfont=dict(color=INK_MUTED))
