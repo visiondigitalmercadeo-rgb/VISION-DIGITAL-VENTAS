@@ -10,6 +10,10 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 # ---------------------------------------------------------------------------
 EMPRESA_NOMBRE = "Visión Digital"
 EMPRESA_LEMA = "Tu punto de impresión"
+# Dirección física de la empresa — se usa en el encabezado del PDF de envío
+# de Logística (formato "ENVÍO No.", igual al de la libreta física impresa).
+EMPRESA_DIRECCION_LINEA1 = '2da. Calle 34-92 "A"'
+EMPRESA_DIRECCION_LINEA2 = "Calzada Mateo Flores Zona 7"
 LOGO_PATH = os.path.join(BASE_DIR, "assets", "logo.png")
 # Ícono cuadrado (los 4 puntos, fondo azul marino) que se ve en la pestaña del
 # navegador — el logo completo (LOGO_PATH) no es cuadrado, así que para esto
