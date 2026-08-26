@@ -45,6 +45,15 @@ def vendedor_filter_selector(label="Vendedor", key="vendedor_filter"):
 def sidebar_user_box():
     u = auth.current_user()
     with st.sidebar:
+        # Botón de refrescar datos, justo debajo del logo. Solo vuelve a
+        # ejecutar la página actual (st.rerun) — NO recarga el navegador, así
+        # que la sesión (usuario ya logueado) se mantiene y no manda de
+        # regreso a la pantalla de credenciales.
+        _, col_refrescar = st.columns([5, 1])
+        with col_refrescar:
+            if st.button("🔄", key="btn_refrescar_datos", help="Actualizar datos (no cierra tu sesión)"):
+                st.rerun()
+
         st.markdown("---")
         st.caption(f"Sesión: **{u['nombre']}**  \nRol: *{ROLES_LABEL.get(u['rol'], u['rol'])}*")
         if st.button("Cerrar sesión", use_container_width=True):
