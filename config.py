@@ -11,6 +11,10 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 EMPRESA_NOMBRE = "Visión Digital"
 EMPRESA_LEMA = "Tu punto de impresión"
 LOGO_PATH = os.path.join(BASE_DIR, "assets", "logo.png")
+# Ícono cuadrado (los 4 puntos, fondo azul marino) que se ve en la pestaña del
+# navegador — el logo completo (LOGO_PATH) no es cuadrado, así que para esto
+# se usa una versión aparte.
+FAVICON_PATH = os.path.join(BASE_DIR, "assets", "favicon.png")
 BRAND_PINK = "#FF0C82"  # color de marca — solo para chrome de la interfaz (botones, acentos),
                          # NO se usa en las gráficas: ahí se mantiene la paleta validada abajo.
 
