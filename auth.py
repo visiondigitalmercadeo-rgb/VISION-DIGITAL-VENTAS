@@ -196,3 +196,20 @@ def can_edit():
     aparte, más limitado, definido directamente en la página de Reclamos."""
     u = current_user()
     return u is not None and u["rol"] in ("admin", "vendedor", "mercadeo")
+
+
+def puede_gestionar_litografia():
+    """Quién puede crear, editar y eliminar cotizaciones técnicas en el
+    cotizador de Litografía — admin y vendedor, que son quienes cotizan
+    trabajos con clientes. El rol 'vista' solo puede consultar."""
+    u = current_user()
+    return u is not None and u["rol"] in ("admin", "vendedor")
+
+
+def puede_administrar_catalogos_litografia():
+    """Solo admin puede agregar, editar o desactivar máquinas y tipos de
+    papel del catálogo de Litografía — ahí viven los precios y capacidades
+    técnicas que usa el cálculo de costo, así que se restringe más que la
+    creación de cotizaciones."""
+    u = current_user()
+    return u is not None and u["rol"] == "admin"
