@@ -1042,12 +1042,16 @@ def create_ticket_tienda(tienda, nombre, telefono, servicio):
         servicio_lista = [servicio.strip()] if servicio and servicio.strip() else []
     numero = _siguiente_numero_ticket(tienda)
     doc_ref = get_client().collection("tickets_tienda").document()
+    # El ticket entra directo a "En atención" (columna "En espera" del
+    # tablero) — ya no existe la etapa intermedia "Esperando"/"Ingresado",
+    # así que hora_inicio_atencion queda igual a hora_ingreso.
+    ahora = ahora_guatemala().isoformat(timespec="seconds")
     doc_ref.set({
         "tienda": tienda, "fecha": str(hoy_guatemala()), "numero_ticket": numero,
         "nombre": nombre.strip(), "telefono": telefono.strip(), "servicio": servicio_lista,
-        "estado": "Esperando",
-        "hora_ingreso": ahora_guatemala().isoformat(timespec="seconds"),
-        "hora_inicio_atencion": None, "hora_inicio_elaboracion": None, "hora_facturado": None,
+        "estado": "En atención",
+        "hora_ingreso": ahora,
+        "hora_inicio_atencion": ahora, "hora_inicio_elaboracion": None, "hora_facturado": None,
         "hora_abandono": None, "motivo_abandono": None, "asesor_id": None,
     })
     return {"id": doc_ref.id, "numero_ticket": numero}
@@ -1139,12 +1143,14 @@ _TICKET_KPI_DEFAULT = {"meta_espera": None, "meta_atencion": None, "meta_elabora
 
 
 def get_ticket_kpis(tienda):
-    """Tiempos meta (en minutos) configurados para una tienda, uno por cada
-    etapa del Sistema de Tickets — Tiendas: 'meta_espera' (Ingresado, antes
-    de que lo atiendan), 'meta_atencion' (En espera, antes de pasar a
-    elaboración) y 'meta_elaboracion' (En elaboración, antes de facturar).
-    Si todavía no se ha configurado nada para esa tienda, los tres valores
-    vienen en None (sin meta) y no se pinta nada en rojo."""
+    """Tiempos meta (en minutos) configurados para una tienda, para cada
+    etapa del Sistema de Tickets — Tiendas: 'meta_atencion' (En espera, antes
+    de pasar a elaboración) y 'meta_elaboracion' (En elaboración, antes de
+    facturar). 'meta_espera' ya no se usa (existía para la etapa
+    "Ingresado", que se eliminó) — se deja en el registro solo por
+    compatibilidad con datos antiguos. Si todavía no se ha configurado nada
+    para esa tienda, los valores vienen en None (sin meta) y no se pinta
+    nada en rojo."""
     snap = get_client().collection("tickets_kpis_metas").document(tienda).get()
     if not snap.exists:
         return dict(_TICKET_KPI_DEFAULT)
