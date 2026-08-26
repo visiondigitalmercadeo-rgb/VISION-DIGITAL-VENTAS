@@ -7,7 +7,7 @@ import streamlit as st
 import auth
 import database as db
 from config import ESTADOS_PEDIDO, FRANJAS_PEDIDO, PEDIDO_FOTO_ENTREGA_MAX_BYTES, TIPOS_RUTA_PEDIDO, ZONAS_CAPITAL
-from utils import archivo_a_b64, download_excel_button, sidebar_user_box
+from utils import archivo_a_b64, download_excel_button, pedido_pdf_bytes, sidebar_user_box
 
 user = auth.current_user()
 rol = user["rol"]
@@ -57,6 +57,48 @@ def _mostrar_foto_entrega(p):
         st.image(base64.b64decode(b64), width=220)
     except Exception:
         st.caption("(no se pudo mostrar la foto — el archivo podría estar dañado)")
+
+
+def _productos_column_config():
+    return {
+        "Cantidad": st.column_config.TextColumn("Cantidad", width="small"),
+        "Descripción": st.column_config.TextColumn("Descripción", width="large"),
+    }
+
+
+def _productos_df_inicial(p):
+    """DataFrame inicial para la tabla de productos (cantidad + descripción)
+    al abrir el formulario de edición — usa la lista 'productos' si el
+    pedido ya la tiene, o arma una sola fila a partir del campo 'producto'
+    (texto simple, forma antigua) para no perder datos de pedidos viejos."""
+    productos = p.get("productos") or []
+    if productos:
+        return pd.DataFrame([
+            {"Cantidad": it.get("cantidad") or "", "Descripción": it.get("descripcion") or ""}
+            for it in productos
+        ])
+    if p.get("producto"):
+        return pd.DataFrame([{"Cantidad": "", "Descripción": p["producto"]}])
+    return pd.DataFrame([{"Cantidad": "", "Descripción": ""}])
+
+
+def _productos_desde_editor(df):
+    """Convierte la tabla editada (columnas 'Cantidad' y 'Descripción') a
+    (lista_productos, resumen_en_una_línea) — la lista completa se guarda
+    para el PDF de envío (varias filas), y el resumen es lo que siguen
+    mostrando las tarjetas y el reporte Excel (una sola línea por pedido)."""
+    productos = []
+    for _, fila in df.iterrows():
+        cantidad = str(fila.get("Cantidad") or "").strip()
+        descripcion = str(fila.get("Descripción") or "").strip()
+        if cantidad or descripcion:
+            productos.append({"cantidad": cantidad, "descripcion": descripcion})
+    resumen = "; ".join(
+        f"{it['cantidad']} x {it['descripcion']}" if it["cantidad"] and it["descripcion"]
+        else (it["descripcion"] or it["cantidad"])
+        for it in productos
+    )
+    return productos, (resumen or None)
 
 
 def _render_confirmar_entrega(p, siguiente, cancelar_key):
@@ -111,16 +153,16 @@ def _render_pedido_edit_form(p, editando_key, vendedores_op, repartidores_op, lo
         cliente_ed = c1.text_input("Nombre del cliente", value=p.get("cliente") or "")
         direccion_ed = c2.text_input("Área/Departamento", value=p.get("direccion") or "")
         c3, c4 = st.columns(2)
-        zona_ed = c3.selectbox(
+        atencion_a_ed = c3.text_input("Atención a (opcional)", value=p.get("atencion_a") or "")
+        zona_ed = c4.selectbox(
             "Zona", ZONAS_CAPITAL,
             index=ZONAS_CAPITAL.index(p["zona"]) if p.get("zona") in ZONAS_CAPITAL else 0,
         )
-        franja_ed = c4.selectbox(
+        c5, c6 = st.columns(2)
+        franja_ed = c5.selectbox(
             "Franja", FRANJAS_PEDIDO,
             index=FRANJAS_PEDIDO.index(p["franja"]) if p.get("franja") in FRANJAS_PEDIDO else 0,
         )
-        c5, c6 = st.columns(2)
-        producto_ed = c5.text_input("Producto / descripción", value=p.get("producto") or "")
         numero_orden_ed = c6.text_input("N° orden/factura", value=p.get("numero_orden") or "")
         fecha_ed = st.date_input(
             "Fecha de entrega",
@@ -129,6 +171,11 @@ def _render_pedido_edit_form(p, editando_key, vendedores_op, repartidores_op, lo
         tipo_ruta_ed = st.selectbox(
             "Tipo de ruta", TIPOS_RUTA_PEDIDO,
             index=TIPOS_RUTA_PEDIDO.index(p["tipo_ruta"]) if p.get("tipo_ruta") in TIPOS_RUTA_PEDIDO else 0,
+        )
+        st.caption("Productos del envío (cantidad + descripción) — agrega o quita filas con el ➕ / 🗑️ de la tabla.")
+        productos_df_ed = st.data_editor(
+            _productos_df_inicial(p), num_rows="dynamic", use_container_width=True, hide_index=True,
+            column_config=_productos_column_config(), key=f"log_productos_ed_{pid}",
         )
         nombre_vendedor_actual = db.nombre_vendedor(p.get("vendedor_id"), lookup_vendedores)
         c7, c8 = st.columns(2)
@@ -154,9 +201,11 @@ def _render_pedido_edit_form(p, editando_key, vendedores_op, repartidores_op, lo
             if not cliente_ed.strip() or not direccion_ed.strip():
                 st.error("El nombre del cliente y el área/departamento son obligatorios.")
             else:
+                productos_ed, resumen_ed = _productos_desde_editor(productos_df_ed)
                 db.update_pedido(
                     pid, cliente=cliente_ed.strip(), direccion=direccion_ed.strip(),
-                    zona=zona_ed, franja=franja_ed, producto=producto_ed.strip(),
+                    atencion_a=atencion_a_ed.strip() or None,
+                    zona=zona_ed, franja=franja_ed, producto=resumen_ed, productos=productos_ed,
                     numero_orden=numero_orden_ed.strip(), fecha=str(fecha_ed),
                     tipo_ruta=tipo_ruta_ed,
                     vendedor_id=vendedores_op.get(vendedor_nombre_ed),
@@ -253,6 +302,8 @@ with tab_vista:
                                 st.rerun()
 
                     st.caption(f"📍 {p.get('direccion') or '—'} · {p.get('zona') or '—'}")
+                    if p.get("atencion_a"):
+                        st.caption(f"🙋 Atención a: {p['atencion_a']}")
                     if p.get("producto"):
                         st.caption(f"📦 {p['producto']}")
                     if p.get("numero_orden"):
@@ -265,6 +316,11 @@ with tab_vista:
                     if p.get("notas"):
                         st.caption(f"📝 {p['notas']}")
                     _mostrar_foto_entrega(p)
+                    st.download_button(
+                        "📄 PDF de envío", data=pedido_pdf_bytes(p),
+                        file_name=f"envio_{p.get('numero_envio') or pid}.pdf", mime="application/pdf",
+                        use_container_width=True, key=f"log_pdf_{pid}",
+                    )
 
                     confirmando_key = f"log_confirmando_entrega_{pid}"
                     if puede_crear and st.session_state.get(editando_key):
@@ -368,16 +424,26 @@ with tab_nueva:
                 franja = c2.radio("Franja", FRANJAS_PEDIDO, horizontal=True)
 
                 cliente = st.text_input("Nombre del cliente")
-                direccion = st.text_input("Área/Departamento")
                 c3, c4 = st.columns(2)
-                zona = c3.selectbox("Zona de la capital", ZONAS_CAPITAL)
-                numero_orden = c4.text_input("N° de orden o factura (opcional)")
-                producto = st.text_input("Producto / descripción del pedido (opcional)")
+                direccion = c3.text_input("Área/Departamento")
+                atencion_a = c4.text_input("Atención a (opcional)")
+                c5, c6 = st.columns(2)
+                zona = c5.selectbox("Zona de la capital", ZONAS_CAPITAL)
+                numero_orden = c6.text_input("N° de orden o factura (opcional)")
                 tipo_ruta_sel = st.selectbox("Tipo de ruta", TIPOS_RUTA_PEDIDO)
 
-                c5, c6 = st.columns(2)
-                vendedor_nombre_sel = c5.selectbox("Vendedor que hizo la venta", [v["nombre"] for v in vendedores_disp])
-                repartidor_nombre_sel = c6.selectbox("Repartidor asignado", [r["nombre"] for r in repartidores_disp])
+                st.caption(
+                    "Productos del envío (cantidad + descripción, opcional) — agrega o quita filas con el ➕ / 🗑️."
+                )
+                productos_df_nuevo = st.data_editor(
+                    pd.DataFrame([{"Cantidad": "", "Descripción": ""}]),
+                    num_rows="dynamic", use_container_width=True, hide_index=True,
+                    column_config=_productos_column_config(), key="log_productos_nuevo",
+                )
+
+                c7, c8 = st.columns(2)
+                vendedor_nombre_sel = c7.selectbox("Vendedor que hizo la venta", [v["nombre"] for v in vendedores_disp])
+                repartidor_nombre_sel = c8.selectbox("Repartidor asignado", [r["nombre"] for r in repartidores_disp])
 
                 notas = st.text_area("Notas (opcional)")
 
@@ -387,11 +453,13 @@ with tab_nueva:
                     else:
                         vendedor_id = next(v["id"] for v in vendedores_disp if v["nombre"] == vendedor_nombre_sel)
                         repartidor_id = next(r["id"] for r in repartidores_disp if r["nombre"] == repartidor_nombre_sel)
+                        productos_nuevo, resumen_nuevo = _productos_desde_editor(productos_df_nuevo)
                         db.create_pedido(
                             fecha, franja, cliente.strip(), direccion.strip(), zona,
-                            producto.strip() or None, numero_orden.strip() or None,
+                            resumen_nuevo, numero_orden.strip() or None,
                             vendedor_id, repartidor_id, notas=notas.strip() or None,
-                            tipo_ruta=tipo_ruta_sel,
+                            tipo_ruta=tipo_ruta_sel, atencion_a=atencion_a.strip() or None,
+                            productos=productos_nuevo,
                         )
                         st.success(f"Pedido registrado en {franja} del {fecha}.")
                         st.rerun()
