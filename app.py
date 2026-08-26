@@ -3,9 +3,9 @@ import streamlit as st
 import auth
 import database as db
 import public_tickets
-from config import EMPRESA_NOMBRE, LOGO_PATH
+from config import EMPRESA_NOMBRE, FAVICON_PATH, LOGO_PATH
 
-st.set_page_config(page_title=f"{EMPRESA_NOMBRE} — Plataforma Comercial", page_icon=LOGO_PATH, layout="wide")
+st.set_page_config(page_title=f"{EMPRESA_NOMBRE} — Plataforma Comercial", page_icon=FAVICON_PATH, layout="wide")
 
 try:
     st.logo(LOGO_PATH, size="large")
