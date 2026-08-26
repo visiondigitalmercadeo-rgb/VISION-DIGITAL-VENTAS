@@ -7,7 +7,7 @@ import streamlit as st
 
 import auth
 import database as db
-from config import CATEGORICAL, MANTENIMIENTO_ARCHIVO_MAX_BYTES, PLANTAS_MAQUINARIA
+from config import CATEGORICAL, MANTENIMIENTO_ARCHIVO_MAX_BYTES, MOTIVOS_CAMBIO_PIEZA, PLANTAS_MAQUINARIA
 from utils import archivo_a_b64, base_layout, download_excel_button, sidebar_user_box
 
 user = auth.current_user()
@@ -118,6 +118,20 @@ def _construir_kpi_mensual(mantenimientos, hoy_str, n_meses=6):
     return pd.DataFrame(filas)
 
 
+def _label_motivos(motivos, detalle_otro):
+    """Texto legible de los motivos de cambio de pieza seleccionados — si
+    incluye 'Otro', muestra el detalle específico en vez de la palabra sola."""
+    if not motivos:
+        return None
+    partes = []
+    for m in motivos:
+        if m == "Otro" and detalle_otro:
+            partes.append(f"Otro: {detalle_otro}")
+        else:
+            partes.append(m)
+    return ", ".join(partes)
+
+
 def _render_form_nuevo_mantenimiento(maquina_id, tipo):
     es_preventivo = tipo == "Preventivo"
     with st.form(f"nuevo_mant_{tipo}_{maquina_id}", clear_on_submit=True):
@@ -126,12 +140,43 @@ def _render_form_nuevo_mantenimiento(maquina_id, tipo):
         )
         c1, c2 = st.columns(2)
         proveedor_m = c1.text_input("Proveedor")
-        costo_m = c2.number_input("Costo (Q)", min_value=0.0, step=0.01, format="%.2f")
-        repuesto_m = st.text_input("¿Qué repuesto se cambió? (opcional)")
-        garantia_m = st.text_input("Tiempo de garantía (ej. '6 meses', '1 año')")
-        numero_factura_m = st.text_input(
+        tecnico_m = c2.text_input("Técnico responsable")
+
+        st.markdown("###### 🧾 Factura")
+        f1, f2 = st.columns(2)
+        serie_factura_m = f1.text_input("Serie de la factura")
+        numero_factura_m = f2.text_input(
             "Número de factura" + ("" if not es_preventivo else " (opcional)"),
         )
+
+        st.markdown("###### 🔩 Repuesto")
+        r1, r2 = st.columns(2)
+        repuesto_m = r1.text_input("¿Qué repuesto se cambió? (opcional)")
+        codigo_repuesto_m = r2.text_input("Código de repuesto (opcional)")
+        r3, r4 = st.columns(2)
+        cantidad_repuestos_m = r3.number_input("Cantidad de repuestos", min_value=0, value=0, step=1)
+        garantia_m = r4.text_input("Tiempo de garantía (ej. '6 meses', '1 año')")
+        motivo_m = st.multiselect(
+            "Motivo de cambio de pieza", MOTIVOS_CAMBIO_PIEZA,
+            key=f"mant_motivo_{tipo}_{maquina_id}",
+        )
+        motivo_otro_m = st.text_input(
+            "Si el motivo es 'Otro', especifica cuál",
+            key=f"mant_motivo_otro_{tipo}_{maquina_id}",
+        )
+
+        st.markdown("###### 💵 Costo")
+        co1, co2 = st.columns(2)
+        costo_repuestos_m = co1.number_input(
+            "Costo de repuestos (Q)", min_value=0.0, step=0.01, format="%.2f",
+            key=f"mant_costo_rep_{tipo}_{maquina_id}",
+        )
+        costo_mano_obra_m = co2.number_input(
+            "Costo de mano de obra (Q)", min_value=0.0, step=0.01, format="%.2f",
+            key=f"mant_costo_mo_{tipo}_{maquina_id}",
+        )
+        st.caption(f"**Total del gasto: Q{costo_repuestos_m + costo_mano_obra_m:,.2f}**")
+
         factura_m = st.file_uploader(
             "Foto de la factura (PDF o JPEG)", type=["pdf", "jpg", "jpeg", "png"],
             key=f"mant_factura_{tipo}_{maquina_id}",
@@ -167,9 +212,15 @@ def _render_form_nuevo_mantenimiento(maquina_id, tipo):
                 else:
                     db.create_mantenimiento(
                         maquina_id, tipo,
-                        fecha=str(fecha_m), proveedor=proveedor_m.strip(), costo=costo_m,
+                        fecha=str(fecha_m), proveedor=proveedor_m.strip(), tecnico_responsable=tecnico_m.strip() or None,
+                        costo=costo_repuestos_m + costo_mano_obra_m,
+                        costo_repuestos=costo_repuestos_m, costo_mano_obra=costo_mano_obra_m,
                         repuesto_cambiado=repuesto_m.strip() or None,
+                        codigo_repuesto=codigo_repuesto_m.strip() or None,
+                        cantidad_repuestos=int(cantidad_repuestos_m) or None,
+                        motivo_cambio_pieza=motivo_m or [], motivo_otro_detalle=motivo_otro_m.strip() or None,
                         tiempo_garantia=garantia_m.strip() or None,
+                        serie_factura=serie_factura_m.strip() or None,
                         numero_factura=numero_factura_m.strip() or None,
                         factura_nombre=factura_nombre, factura_tipo=factura_tipo, factura_b64=factura_b64,
                         foto_repuesto_nombre=foto_nombre, foto_repuesto_tipo=foto_tipo,
@@ -188,15 +239,49 @@ def _render_editar_mantenimiento(r, es_preventivo, editando_key):
         )
         c1, c2 = st.columns(2)
         proveedor_ed = c1.text_input("Proveedor", value=r.get("proveedor") or "")
-        costo_ed = c2.number_input(
-            "Costo (Q)", min_value=0.0, step=0.01, format="%.2f", value=float(r.get("costo") or 0),
-        )
-        repuesto_ed = st.text_input("¿Qué repuesto se cambió?", value=r.get("repuesto_cambiado") or "")
-        garantia_ed = st.text_input("Tiempo de garantía", value=r.get("tiempo_garantia") or "")
-        numero_factura_ed = st.text_input(
+        tecnico_ed = c2.text_input("Técnico responsable", value=r.get("tecnico_responsable") or "")
+
+        st.markdown("###### 🧾 Factura")
+        f1, f2 = st.columns(2)
+        serie_factura_ed = f1.text_input("Serie de la factura", value=r.get("serie_factura") or "")
+        numero_factura_ed = f2.text_input(
             "Número de factura" + ("" if not es_preventivo else " (opcional)"),
             value=r.get("numero_factura") or "",
         )
+
+        st.markdown("###### 🔩 Repuesto")
+        r1, r2 = st.columns(2)
+        repuesto_ed = r1.text_input("¿Qué repuesto se cambió?", value=r.get("repuesto_cambiado") or "")
+        codigo_repuesto_ed = r2.text_input("Código de repuesto", value=r.get("codigo_repuesto") or "")
+        r3, r4 = st.columns(2)
+        cantidad_repuestos_ed = r3.number_input(
+            "Cantidad de repuestos", min_value=0, step=1, value=int(r.get("cantidad_repuestos") or 0),
+        )
+        garantia_ed = r4.text_input("Tiempo de garantía", value=r.get("tiempo_garantia") or "")
+        motivo_ed = st.multiselect(
+            "Motivo de cambio de pieza", MOTIVOS_CAMBIO_PIEZA,
+            default=[m for m in (r.get("motivo_cambio_pieza") or []) if m in MOTIVOS_CAMBIO_PIEZA],
+            key=f"mant_ed_motivo_{r['id']}",
+        )
+        motivo_otro_ed = st.text_input(
+            "Si el motivo es 'Otro', especifica cuál", value=r.get("motivo_otro_detalle") or "",
+            key=f"mant_ed_motivo_otro_{r['id']}",
+        )
+
+        st.markdown("###### 💵 Costo")
+        # Registros creados antes de este desglose solo tienen "costo" (total)
+        # — por defecto se muestra completo en "repuestos" para no perder el
+        # dato; se puede repartir manualmente al editar.
+        costo_rep_default = float(r["costo_repuestos"]) if r.get("costo_repuestos") is not None else float(r.get("costo") or 0)
+        costo_mo_default = float(r.get("costo_mano_obra") or 0)
+        co1, co2 = st.columns(2)
+        costo_repuestos_ed = co1.number_input(
+            "Costo de repuestos (Q)", min_value=0.0, step=0.01, format="%.2f", value=costo_rep_default,
+        )
+        costo_mano_obra_ed = co2.number_input(
+            "Costo de mano de obra (Q)", min_value=0.0, step=0.01, format="%.2f", value=costo_mo_default,
+        )
+        st.caption(f"**Total del gasto: Q{costo_repuestos_ed + costo_mano_obra_ed:,.2f}**")
         st.caption(
             f"Factura actual: {r.get('factura_nombre') or 'ninguna'} · "
             f"Foto de repuesto actual: {r.get('foto_repuesto_nombre') or 'ninguna'}"
@@ -228,9 +313,17 @@ def _render_editar_mantenimiento(r, es_preventivo, editando_key):
             else:
                 try:
                     update_kwargs = {
-                        "fecha": str(fecha_ed), "proveedor": proveedor_ed.strip(), "costo": costo_ed,
+                        "fecha": str(fecha_ed), "proveedor": proveedor_ed.strip(),
+                        "tecnico_responsable": tecnico_ed.strip() or None,
+                        "costo": costo_repuestos_ed + costo_mano_obra_ed,
+                        "costo_repuestos": costo_repuestos_ed, "costo_mano_obra": costo_mano_obra_ed,
                         "repuesto_cambiado": repuesto_ed.strip() or None,
+                        "codigo_repuesto": codigo_repuesto_ed.strip() or None,
+                        "cantidad_repuestos": int(cantidad_repuestos_ed) or None,
+                        "motivo_cambio_pieza": motivo_ed or [],
+                        "motivo_otro_detalle": motivo_otro_ed.strip() or None,
                         "tiempo_garantia": garantia_ed.strip() or None,
+                        "serie_factura": serie_factura_ed.strip() or None,
                         "numero_factura": numero_factura_ed.strip() or None,
                         "notas": notas_ed.strip() or None,
                     }
@@ -254,6 +347,41 @@ def _render_editar_mantenimiento(r, es_preventivo, editando_key):
             st.session_state.pop(editando_key, None)
             st.success("Registro eliminado.")
             st.rerun()
+
+
+def _render_detalle_mantenimiento(r):
+    """Bloque de texto (st.caption) con todos los datos de un registro de
+    mantenimiento — compartido entre la tarjeta de la lista y el detalle del
+    historial, para no repetir la lógica en dos lugares."""
+    costo_rep = r.get("costo_repuestos")
+    costo_mo = r.get("costo_mano_obra")
+    if costo_rep is not None or costo_mo is not None:
+        st.caption(
+            f"Proveedor: {r.get('proveedor') or '—'} · Técnico responsable: {r.get('tecnico_responsable') or '—'}  \n"
+            f"💵 Repuestos: Q{costo_rep or 0:,.2f} · Mano de obra: Q{costo_mo or 0:,.2f} · "
+            f"**Total: Q{r.get('costo') or 0:,.2f}**"
+        )
+    else:
+        st.caption(
+            f"Proveedor: {r.get('proveedor') or '—'} · Técnico responsable: {r.get('tecnico_responsable') or '—'} · "
+            f"Costo: Q{r.get('costo') or 0:,.2f}"
+        )
+    if r.get("repuesto_cambiado"):
+        detalle_repuesto = f"🔩 Repuesto cambiado: {r['repuesto_cambiado']}"
+        if r.get("codigo_repuesto"):
+            detalle_repuesto += f" (código: {r['codigo_repuesto']})"
+        if r.get("cantidad_repuestos"):
+            detalle_repuesto += f" · Cantidad: {r['cantidad_repuestos']}"
+        st.caption(detalle_repuesto)
+    motivo_txt = _label_motivos(r.get("motivo_cambio_pieza"), r.get("motivo_otro_detalle"))
+    if motivo_txt:
+        st.caption(f"❓ Motivo de cambio: {motivo_txt}")
+    if r.get("tiempo_garantia"):
+        st.caption(f"🛡️ Garantía: {r['tiempo_garantia']}")
+    if r.get("numero_factura") or r.get("serie_factura"):
+        st.caption(f"🧾 Factura — Serie: {r.get('serie_factura') or '—'} · N°: {r.get('numero_factura') or '—'}")
+    if r.get("notas"):
+        st.caption(f"📝 {r['notas']}")
 
 
 def _render_seccion_mantenimiento(maquina_id, tipo):
@@ -285,15 +413,7 @@ def _render_seccion_mantenimiento(maquina_id, tipo):
                     estado_txt = " · 🗓️ Programado"
                     marcar_realizado = True
             st.markdown(f"**📅 {r.get('fecha') or '—'}**{estado_txt}")
-            st.caption(f"Proveedor: {r.get('proveedor') or '—'} · Costo: Q{r.get('costo') or 0:,.2f}")
-            if r.get("repuesto_cambiado"):
-                st.caption(f"🔩 Repuesto cambiado: {r['repuesto_cambiado']}")
-            if r.get("tiempo_garantia"):
-                st.caption(f"🛡️ Garantía: {r['tiempo_garantia']}")
-            if r.get("numero_factura"):
-                st.caption(f"🧾 N° factura: {r['numero_factura']}")
-            if r.get("notas"):
-                st.caption(f"📝 {r['notas']}")
+            _render_detalle_mantenimiento(r)
 
             fc1, fc2 = st.columns(2)
             with fc1:
@@ -331,8 +451,14 @@ def _render_historial(maquina_id):
         return
     df = pd.DataFrame([{
         "Tipo": r["tipo"], "Fecha": r.get("fecha") or "—", "Proveedor": r.get("proveedor") or "—",
-        "Costo (Q)": r.get("costo") or 0, "Repuesto cambiado": r.get("repuesto_cambiado") or "—",
-        "Garantía": r.get("tiempo_garantia") or "—", "N° factura": r.get("numero_factura") or "—",
+        "Técnico responsable": r.get("tecnico_responsable") or "—",
+        "Costo repuestos (Q)": r.get("costo_repuestos") or 0, "Costo mano de obra (Q)": r.get("costo_mano_obra") or 0,
+        "Costo total (Q)": r.get("costo") or 0,
+        "Repuesto cambiado": r.get("repuesto_cambiado") or "—", "Código de repuesto": r.get("codigo_repuesto") or "—",
+        "Cantidad de repuestos": r.get("cantidad_repuestos") or 0,
+        "Motivo de cambio": _label_motivos(r.get("motivo_cambio_pieza"), r.get("motivo_otro_detalle")) or "—",
+        "Garantía": r.get("tiempo_garantia") or "—",
+        "Serie de factura": r.get("serie_factura") or "—", "N° factura": r.get("numero_factura") or "—",
         "Notas": r.get("notas") or "—",
     } for r in registros])
     st.dataframe(df, use_container_width=True, hide_index=True)
@@ -366,15 +492,7 @@ def _render_historial(maquina_id):
                     else:
                         estado_txt = " · 🗓️ Programado"
                 st.markdown(f"**{r['tipo']} · 📅 {r.get('fecha') or '—'}**{estado_txt}")
-                st.caption(f"Proveedor: {r.get('proveedor') or '—'} · Costo: Q{r.get('costo') or 0:,.2f}")
-                if r.get("repuesto_cambiado"):
-                    st.caption(f"🔩 Repuesto cambiado: {r['repuesto_cambiado']}")
-                if r.get("tiempo_garantia"):
-                    st.caption(f"🛡️ Garantía: {r['tiempo_garantia']}")
-                if r.get("numero_factura"):
-                    st.caption(f"🧾 N° factura: {r['numero_factura']}")
-                if r.get("notas"):
-                    st.caption(f"📝 {r['notas']}")
+                _render_detalle_mantenimiento(r)
                 fc1, fc2 = st.columns(2)
                 with fc1:
                     _mostrar_adjunto(
