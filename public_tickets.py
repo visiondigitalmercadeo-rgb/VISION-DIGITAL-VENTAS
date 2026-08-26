@@ -7,7 +7,7 @@ desde app.py ANTES de auth.require_login()."""
 import streamlit as st
 
 import database as db
-from config import EMPRESA_NOMBRE, LOGO_PATH, TICKET_SERVICIOS, TICKET_SLUG_TIENDA
+from config import BRAND_PINK, EMPRESA_NOMBRE, LOGO_PATH, TICKET_SERVICIOS, TICKET_SLUG_TIENDA
 
 
 def _tienda_desde_slug(slug):
@@ -116,11 +116,28 @@ def render_pantalla(slug):
 
     st.markdown("<h3 style='text-align:center;margin-top:2rem;'>Siguen en la fila</h3>", unsafe_allow_html=True)
     if en_espera:
-        numeros = "  ·  ".join(f"#{t['numero_ticket']}" for t in en_espera)
+        # Se muestran los siguientes 5 en orden de llegada (número + nombre),
+        # para que sepan que ya casi les toca.
+        siguientes = en_espera[:5]
+        filas_html = "".join(
+            "<div style='display:flex;align-items:center;justify-content:center;gap:1rem;"
+            "padding:0.6rem 0;border-bottom:1px solid #e1e0d9;font-size:1.35rem;'>"
+            f"<span style='font-weight:800;color:{BRAND_PINK};min-width:3.5rem;text-align:right;'>"
+            f"#{t['numero_ticket']}</span>"
+            f"<span style='text-align:left;flex:1;max-width:280px;'>{t['nombre']}</span></div>"
+            for t in siguientes
+        )
         st.markdown(
-            f"<p style='text-align:center;font-size:1.6rem;'>{numeros}</p>",
+            f"<div style='max-width:420px;margin:0 auto;'>{filas_html}</div>",
             unsafe_allow_html=True,
         )
+        restantes = len(en_espera) - len(siguientes)
+        if restantes > 0:
+            st.markdown(
+                f"<p style='text-align:center;color:#898781;margin-top:0.75rem;'>"
+                f"y {restantes} persona{'s' if restantes != 1 else ''} más en espera</p>",
+                unsafe_allow_html=True,
+            )
     else:
         st.markdown(
             "<p style='text-align:center;color:#898781;'>No hay nadie esperando ahora mismo.</p>",
