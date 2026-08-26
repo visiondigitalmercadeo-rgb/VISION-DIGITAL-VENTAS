@@ -6,7 +6,10 @@ import streamlit as st
 
 import auth
 import database as db
-from config import ESTADOS_PEDIDO, FRANJAS_PEDIDO, PEDIDO_FOTO_ENTREGA_MAX_BYTES, TIPOS_RUTA_PEDIDO, ZONAS_CAPITAL
+from config import (
+    ESTADOS_PEDIDO, ESTADOS_RUTA_EXTRA, FRANJAS_PEDIDO, PEDIDO_FOTO_ENTREGA_MAX_BYTES, TIPOS_RUTA_PEDIDO,
+    ZONAS_CAPITAL,
+)
 from utils import archivo_a_b64, download_excel_button, pedido_pdf_bytes, sidebar_user_box
 
 user = auth.current_user()
@@ -34,6 +37,19 @@ def _label_mes(mes_iso):
         return mes_iso or "—"
     y, m = mes_iso.split("-")
     return f"{_MESES_LABEL.get(m, m)} {y}"
+
+
+RUTA_EXTRA_CONFIG = {
+    "Compras": {
+        "icono": "🛒", "label_empresa": "Empresa que visitan", "label_desc": "Descripción de la compra",
+    },
+    "Trámites": {
+        "icono": "📋", "label_empresa": "Empresa que visita", "label_desc": "Descripción del trámite",
+    },
+    "Papelería": {
+        "icono": "📨", "label_empresa": "Departamento o empresa", "label_desc": "Descripción de qué se envió",
+    },
+}
 
 
 def _combinar_vendedores(*listas):
@@ -241,6 +257,139 @@ def _render_pedido_edit_form(p, editando_key, vendedores_op, repartidores_op, lo
             st.success("Pedido eliminado.")
             st.rerun()
 
+
+def _render_editar_ruta_extra(r, cfg, editando_key):
+    """Formulario de edición en línea (lápiz ✏️) de un registro de Compras/
+    Trámites/Papelería — mismo patrón que el resto de Logística. Solo se
+    llama para jefe de logística y admin (puede_crear)."""
+    rid = r["id"]
+    with st.form(f"editar_ruta_extra_{rid}"):
+        fecha_ed = st.date_input(
+            "Fecha", value=date.fromisoformat(r["fecha"]) if r.get("fecha") else date.today(),
+        )
+        empresa_ed = st.text_input(cfg["label_empresa"], value=r.get("empresa") or "")
+        descripcion_ed = st.text_area(cfg["label_desc"], value=r.get("descripcion") or "")
+        repartidores_op_re = {rp["nombre"]: rp["id"] for rp in db.list_repartidores(solo_activos=False)}
+        nombre_actual_re = db.nombre_vendedor(r.get("repartidor_id"), todos_usuarios)
+        repartidor_nombre_ed = st.selectbox(
+            "Repartidor asignado", list(repartidores_op_re.keys()),
+            index=list(repartidores_op_re.keys()).index(nombre_actual_re)
+            if nombre_actual_re in repartidores_op_re else 0,
+        )
+        estado_ed = st.selectbox(
+            "Estado", ESTADOS_RUTA_EXTRA,
+            index=ESTADOS_RUTA_EXTRA.index(r["estado"]) if r.get("estado") in ESTADOS_RUTA_EXTRA else 0,
+        )
+        colg1, colg2 = st.columns(2)
+        guardar = colg1.form_submit_button("💾 Guardar", use_container_width=True)
+        cancelar = colg2.form_submit_button("Cancelar", use_container_width=True)
+        if guardar:
+            if not empresa_ed.strip() or not descripcion_ed.strip():
+                st.error(f"{cfg['label_empresa']} y la descripción son obligatorios.")
+            else:
+                db.update_ruta_extra(
+                    rid, fecha=str(fecha_ed), empresa=empresa_ed.strip(), descripcion=descripcion_ed.strip(),
+                    repartidor_id=repartidores_op_re.get(repartidor_nombre_ed), estado=estado_ed,
+                )
+                st.session_state.pop(editando_key, None)
+                st.success("Registro actualizado.")
+                st.rerun()
+        if cancelar:
+            st.session_state.pop(editando_key, None)
+            st.rerun()
+
+    with st.expander("🗑️ Eliminar este registro"):
+        st.caption("Esto elimina el registro por completo (no se puede deshacer).")
+        confirmar_borrar_re = st.checkbox(
+            "Confirmo que deseo eliminar este registro", key=f"re_conf_del_{rid}",
+        )
+        if st.button("Eliminar registro", key=f"re_btn_del_{rid}", disabled=not confirmar_borrar_re):
+            db.delete_ruta_extra(rid)
+            st.session_state.pop(editando_key, None)
+            st.success("Registro eliminado.")
+            st.rerun()
+
+
+def _render_ruta_extra_tab(tipo):
+    """Pestaña sencilla de Compras/Trámites/Papelería: formulario de alta
+    (empresa/departamento + descripción + repartidor, con fecha) y la lista
+    de registros, con filtro por repartidor y un botón rápido para marcar
+    cada uno como 'Hecho'."""
+    cfg = RUTA_EXTRA_CONFIG[tipo]
+
+    if puede_crear:
+        with st.expander(f"➕ Registrar {tipo.lower()}"):
+            with st.form(f"nueva_ruta_extra_{tipo}", clear_on_submit=True):
+                fecha_re = st.date_input("Fecha", value=hoy, key=f"re_fecha_{tipo}")
+                empresa_re = st.text_input(cfg["label_empresa"], key=f"re_empresa_{tipo}")
+                descripcion_re = st.text_area(cfg["label_desc"], key=f"re_desc_{tipo}")
+                repartidores_disp_re = db.list_repartidores(solo_activos=True)
+                repartidor_nombre_re = None
+                if not repartidores_disp_re:
+                    st.warning(
+                        "Todavía no hay ningún usuario con rol 'Repartidor'. Crea uno primero en "
+                        "Administración de usuarios (Rol → Repartidor)."
+                    )
+                else:
+                    repartidor_nombre_re = st.selectbox(
+                        "Repartidor asignado", [r["nombre"] for r in repartidores_disp_re], key=f"re_rep_{tipo}",
+                    )
+                if st.form_submit_button(f"Registrar {tipo.lower()}", use_container_width=True):
+                    if not repartidores_disp_re:
+                        st.error("Registra primero un usuario con rol 'Repartidor'.")
+                    elif not empresa_re.strip() or not descripcion_re.strip():
+                        st.error(f"{cfg['label_empresa']} y la descripción son obligatorios.")
+                    else:
+                        repartidor_id_re = next(
+                            r["id"] for r in repartidores_disp_re if r["nombre"] == repartidor_nombre_re
+                        )
+                        db.create_ruta_extra(
+                            tipo, fecha_re, empresa_re.strip(), descripcion_re.strip(), repartidor_id_re,
+                        )
+                        st.success(f"{tipo} registrado.")
+                        st.rerun()
+
+    st.divider()
+
+    if rol == "repartidor":
+        filtro_rep_re = user["id"]
+    else:
+        repartidores_filtro_re = db.list_repartidores(solo_activos=False)
+        opciones_rep_re = {"Todos": None}
+        opciones_rep_re.update({r["nombre"]: r["id"] for r in repartidores_filtro_re})
+        elegido_rep_re = st.selectbox(
+            "Filtrar por repartidor", list(opciones_rep_re.keys()), key=f"re_filtro_rep_{tipo}",
+        )
+        filtro_rep_re = opciones_rep_re[elegido_rep_re]
+
+    rutas = db.list_rutas_extra(tipo=tipo, repartidor_id=filtro_rep_re)
+    if not rutas:
+        st.caption(f"No hay rutas de {tipo.lower()} registradas con este filtro.")
+        return
+
+    for r in rutas:
+        with st.container(border=True):
+            estado_txt = "✅ Hecho" if r.get("estado") == "Hecho" else "⚪ Pendiente"
+            st.markdown(f"**{cfg['icono']} {r.get('empresa') or 'Sin nombre'}** · {estado_txt}")
+            st.caption(f"📅 {r.get('fecha') or '—'}")
+            if r.get("descripcion"):
+                st.caption(r["descripcion"])
+            st.caption(f"🚚 Repartidor: {db.nombre_vendedor(r.get('repartidor_id'), todos_usuarios)}")
+
+            if puede_cambiar_estado and r.get("estado") != "Hecho":
+                if st.button("✅ Marcar como hecho", key=f"re_marcar_{r['id']}", use_container_width=True):
+                    db.update_ruta_extra(r["id"], estado="Hecho")
+                    st.rerun()
+
+            if puede_crear:
+                editando_key_re = f"re_editando_{r['id']}"
+                if st.button("✏️ Editar / eliminar", key=f"re_toggle_{r['id']}", use_container_width=True):
+                    st.session_state[editando_key_re] = not st.session_state.get(editando_key_re, False)
+                    st.rerun()
+                if st.session_state.get(editando_key_re):
+                    _render_editar_ruta_extra(r, cfg, editando_key_re)
+
+
 # --------------------------------------------------------------------------
 # Datos compartidos entre pestañas.
 # --------------------------------------------------------------------------
@@ -277,8 +426,8 @@ with kcol3:
 
 st.divider()
 
-tab_vista, tab_historial, tab_nueva = st.tabs(
-    ["🗺️ Vista de la ruta", "📜 Historial", "➕ Nuevo pedido"]
+tab_vista, tab_compras, tab_tramites, tab_papeleria, tab_historial, tab_nueva = st.tabs(
+    ["🗺️ Vista de la ruta", "🛒 Compras", "📋 Trámites", "📨 Papelería", "📜 Historial", "➕ Nuevo pedido"]
 )
 
 # --------------------------------------------------------------------------
@@ -439,6 +588,17 @@ with tab_vista:
                         st.rerun()
     elif not puede_cambiar_estado:
         st.caption("Tu rol es de solo vista para la ruta de reparto.")
+
+# --------------------------------------------------------------------------
+# Compras / Trámites / Papelería: rutas sencillas del repartidor que no son
+# un envío de mercadería.
+# --------------------------------------------------------------------------
+with tab_compras:
+    _render_ruta_extra_tab("Compras")
+with tab_tramites:
+    _render_ruta_extra_tab("Trámites")
+with tab_papeleria:
+    _render_ruta_extra_tab("Papelería")
 
 # --------------------------------------------------------------------------
 # Historial: todos los pedidos ya entregados (de cualquier fecha), con
