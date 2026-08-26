@@ -824,15 +824,26 @@ def get_pedido(pedido_id):
     return _doc_to_dict(snap) if snap.exists else None
 
 
+def _siguiente_numero_envio():
+    """Numeración corrida (no reinicia por día), empezando en 1 — el 'ENVÍO
+    No.' que aparece impreso en el PDF de cada pedido, igual que la libreta
+    física de envíos que se usaba en papel."""
+    rows = [_doc_to_dict(s) for s in get_client().collection("pedidos").stream()]
+    numeros = [r.get("numero_envio") for r in rows if isinstance(r.get("numero_envio"), int)]
+    return (max(numeros, default=0)) + 1
+
+
 def create_pedido(
     fecha, franja, cliente, direccion, zona, producto, numero_orden,
-    vendedor_id, repartidor_id, notas=None, tipo_ruta=None,
+    vendedor_id, repartidor_id, notas=None, tipo_ruta=None, atencion_a=None, productos=None,
 ):
     get_client().collection("pedidos").document().set({
         "fecha": str(fecha), "franja": franja, "cliente": cliente, "direccion": direccion,
         "zona": zona, "producto": producto, "numero_orden": numero_orden,
         "vendedor_id": vendedor_id, "repartidor_id": repartidor_id,
         "estado": "Pendiente", "notas": notas, "tipo_ruta": tipo_ruta,
+        "atencion_a": atencion_a, "productos": productos or [],
+        "numero_envio": _siguiente_numero_envio(),
         "creado_en": datetime.now().isoformat(timespec="seconds"),
     })
 
