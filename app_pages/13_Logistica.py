@@ -13,6 +13,9 @@ user = auth.current_user()
 rol = user["rol"]
 sidebar_user_box()
 
+hoy = date.today()
+manana = hoy + timedelta(days=1)
+
 st.title("🚚 Logística — Ruta de reparto")
 st.caption(
     "El jefe de logística ingresa los pedidos AM/PM de cada día y asigna un repartidor. "
@@ -20,6 +23,17 @@ st.caption(
 )
 
 ESTADO_EMOJI = {"Pendiente": "⚪", "En ruta": "🔵", "Entregado": "🟢", "No entregado": "🔴"}
+_MESES_LABEL = {
+    "01": "Ene", "02": "Feb", "03": "Mar", "04": "Abr", "05": "May", "06": "Jun",
+    "07": "Jul", "08": "Ago", "09": "Sep", "10": "Oct", "11": "Nov", "12": "Dic",
+}
+
+
+def _label_mes(mes_iso):
+    if not mes_iso or "-" not in mes_iso:
+        return mes_iso or "—"
+    y, m = mes_iso.split("-")
+    return f"{_MESES_LABEL.get(m, m)} {y}"
 
 
 def _combinar_vendedores(*listas):
@@ -42,9 +56,6 @@ def _combinar_vendedores(*listas):
 
 puede_crear = rol in ("admin", "jefe_logistica")
 puede_cambiar_estado = rol in ("admin", "jefe_logistica", "repartidor")
-
-hoy = date.today()
-manana = hoy + timedelta(days=1)
 
 
 def _mostrar_foto_entrega(p):
@@ -230,7 +241,45 @@ def _render_pedido_edit_form(p, editando_key, vendedores_op, repartidores_op, lo
             st.success("Pedido eliminado.")
             st.rerun()
 
-tab_vista, tab_nueva = st.tabs(["🗺️ Vista de la ruta", "➕ Nuevo pedido"])
+# --------------------------------------------------------------------------
+# Datos compartidos entre pestañas.
+# --------------------------------------------------------------------------
+todos_usuarios = db.list_usuarios()
+# El "vendedor que hizo la venta" puede ser un usuario con rol 'vendedor' o
+# alguien de la lista adicional de Logística (sin usuario propio) — se
+# combinan las dos listas (sin duplicar nombres) para poder mostrar el
+# nombre correcto.
+lookup_vendedores = _combinar_vendedores(todos_usuarios, db.list_logistica_vendedores(solo_activos=False))
+
+# --------------------------------------------------------------------------
+# KPIs rápidos de hoy.
+# --------------------------------------------------------------------------
+kpi_hoy_am = db.list_pedidos(fecha=hoy, franja="AM")
+kpi_hoy_pm = db.list_pedidos(fecha=hoy, franja="PM")
+kcol1, kcol2, kcol3 = st.columns([1, 1, 2])
+kcol1.metric("🌅 Rutas hoy AM", len(kpi_hoy_am))
+kcol2.metric("🌇 Rutas hoy PM", len(kpi_hoy_pm))
+with kcol3:
+    st.caption("🚚 Rutas de hoy por repartidor")
+    conteo_por_repartidor_id = {}
+    for pedido_kpi in kpi_hoy_am + kpi_hoy_pm:
+        rid = pedido_kpi.get("repartidor_id")
+        conteo_por_repartidor_id[rid] = conteo_por_repartidor_id.get(rid, 0) + 1
+    filas_rep_kpi = [
+        {"Repartidor": r["nombre"], "Rutas hoy": conteo_por_repartidor_id.get(r["id"], 0)}
+        for r in db.list_repartidores(solo_activos=True)
+    ]
+    if filas_rep_kpi:
+        filas_rep_kpi.sort(key=lambda f: (-f["Rutas hoy"], f["Repartidor"]))
+        st.dataframe(pd.DataFrame(filas_rep_kpi), hide_index=True, use_container_width=True, height=140)
+    else:
+        st.caption("Todavía no hay repartidores activos registrados.")
+
+st.divider()
+
+tab_vista, tab_historial, tab_nueva = st.tabs(
+    ["🗺️ Vista de la ruta", "📜 Historial", "➕ Nuevo pedido"]
+)
 
 # --------------------------------------------------------------------------
 # Vista de la ruta: Hoy AM, Hoy PM, Mañana AM
@@ -248,12 +297,6 @@ with tab_vista:
     hoy_am = db.list_pedidos(fecha=hoy, franja="AM", repartidor_id=filtro_repartidor)
     hoy_pm = db.list_pedidos(fecha=hoy, franja="PM", repartidor_id=filtro_repartidor)
     manana_am = db.list_pedidos(fecha=manana, franja="AM", repartidor_id=filtro_repartidor)
-    todos_usuarios = db.list_usuarios()
-    # El "vendedor que hizo la venta" puede ser un usuario con rol 'vendedor'
-    # o alguien de la lista adicional de Logística (sin usuario propio) — se
-    # combinan las dos listas (sin duplicar nombres) para poder mostrar el
-    # nombre correcto.
-    lookup_vendedores = _combinar_vendedores(todos_usuarios, db.list_logistica_vendedores(solo_activos=False))
     # Opciones para el formulario de edición en línea (lápiz ✏️) de cada tarjeta.
     vendedores_op_todos = {
         v["nombre"]: v["id"] for v in
@@ -396,6 +439,55 @@ with tab_vista:
                         st.rerun()
     elif not puede_cambiar_estado:
         st.caption("Tu rol es de solo vista para la ruta de reparto.")
+
+# --------------------------------------------------------------------------
+# Historial: todos los pedidos ya entregados (de cualquier fecha), con
+# filtro por repartidor y una tabla de frecuencia de entregas por cliente.
+# --------------------------------------------------------------------------
+with tab_historial:
+    st.caption("Historial de todos los pedidos que ya se marcaron como «Entregado».")
+
+    repartidores_hist = db.list_repartidores(solo_activos=False)
+    opciones_rep_hist = {"Todos": None}
+    opciones_rep_hist.update({r["nombre"]: r["id"] for r in repartidores_hist})
+    elegido_rep_hist = st.selectbox(
+        "Filtrar por repartidor", list(opciones_rep_hist.keys()), key="log_hist_filtro_repartidor",
+    )
+    filtro_rep_hist = opciones_rep_hist[elegido_rep_hist]
+
+    pedidos_hist = db.list_pedidos(repartidor_id=filtro_rep_hist)
+    entregados = [p for p in pedidos_hist if p.get("estado") == "Entregado"]
+    entregados.sort(key=lambda p: p.get("fecha") or "", reverse=True)
+
+    if not entregados:
+        st.caption("Todavía no hay pedidos entregados con este filtro.")
+    else:
+        df_hist = pd.DataFrame([{
+            "Fecha": p.get("fecha"), "Franja": p.get("franja"), "Cliente": p.get("cliente") or "—",
+            "Área/Departamento": p.get("direccion") or "—", "Zona": p.get("zona") or "—",
+            "Producto": p.get("producto") or "—",
+            "Vendedor": db.nombre_vendedor(p.get("vendedor_id"), lookup_vendedores),
+            "Repartidor": db.nombre_vendedor(p.get("repartidor_id"), todos_usuarios),
+            "N° envío": p.get("numero_envio") or "—",
+        } for p in entregados])
+        st.markdown(f"##### 📦 {len(entregados)} pedido(s) entregado(s)")
+        st.dataframe(df_hist, use_container_width=True, hide_index=True)
+        download_excel_button(
+            df_hist, "historial_pedidos_entregados.xlsx", key="log_hist_descargar_excel",
+        )
+
+        st.divider()
+        st.markdown("##### 📊 Frecuencia de entregas por cliente")
+        st.caption("Cantidad de pedidos entregados por cliente — total y desglosado por mes.")
+        df_freq = pd.DataFrame([{
+            "Cliente": p.get("cliente") or "Sin cliente", "Mes": (p.get("fecha") or "")[:7],
+        } for p in entregados])
+        tabla_freq = pd.crosstab(df_freq["Cliente"], df_freq["Mes"])
+        tabla_freq = tabla_freq.reindex(sorted(tabla_freq.columns), axis=1)
+        tabla_freq.columns = [_label_mes(c) for c in tabla_freq.columns]
+        tabla_freq["Total"] = tabla_freq.sum(axis=1)
+        tabla_freq = tabla_freq.sort_values("Total", ascending=False)
+        st.dataframe(tabla_freq, use_container_width=True)
 
 # --------------------------------------------------------------------------
 # Nuevo pedido
