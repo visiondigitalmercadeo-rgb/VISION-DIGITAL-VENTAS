@@ -56,6 +56,11 @@ ESTADO_TITULO_COLUMNA = {
     "Abandono": "Abandono",
 }
 
+# "Facturado" ya no es una columna del tablero — los tickets facturados se
+# muestran en una lista aparte (más compacta) para que no estorben junto a
+# los tickets que todavía se están trabajando.
+ESTADOS_TICKET_TABLERO = [e for e in ESTADOS_TICKET if e != "Facturado"]
+
 def _render_abandono_form(ticket_id, abandonando_key):
     """Caja para capturar el motivo antes de marcar un ticket como Abandono —
     mismo patrón de 'Confirmar/Cancelar' que ya se usa en Llamadas para
@@ -104,6 +109,90 @@ def _render_asignar_form(ticket_id, tienda, asignando_key):
     if cc2.button("Cancelar", key=f"tt_cancelar_as_{ticket_id}", use_container_width=True):
         st.session_state.pop(asignando_key, None)
         st.rerun()
+
+
+def _render_ticket_edit_form(tk, editando_key):
+    """Formulario de edición en línea de un ticket — se abre con el lápiz ✏️
+    de la tarjeta (o de la lista de facturados), mismo patrón que Prospectos
+    y Logística. Permite corregir nombre, teléfono, servicio, estado y quién
+    lo elabora, o eliminar el ticket por completo."""
+    tid = tk["id"]
+    with st.form(f"tt_editar_form_{tid}"):
+        ge1, ge2 = st.columns(2)
+        nombre_ed = ge1.text_input("Nombre", value=tk.get("nombre") or "")
+        telefono_ed = ge2.text_input("Teléfono", value=tk.get("telefono") or "")
+        servicio_ed = st.multiselect(
+            "Servicio/producto",
+            TICKET_SERVICIOS,
+            default=[s for s in (tk.get("servicio") or []) if s in TICKET_SERVICIOS],
+        )
+        estado_ed = st.selectbox(
+            "Estado", ESTADOS_TICKET,
+            index=ESTADOS_TICKET.index(tk["estado"]) if tk.get("estado") in ESTADOS_TICKET else 0,
+            format_func=lambda e: ESTADO_TITULO_COLUMNA.get(e, e),
+        )
+        personal_ed = db.list_personal_tiendas(tienda=tk.get("tienda"), solo_activos=True)
+        opciones_as_ed = {"(sin asignar)": None}
+        opciones_as_ed.update({a["nombre"]: a["id"] for a in personal_ed})
+        nombre_as_actual = db.nombre_personal_tienda(tk.get("asesor_id"))
+        valores_as_ed = list(opciones_as_ed.keys())
+        if nombre_as_actual not in valores_as_ed and nombre_as_actual != "—":
+            # La persona asignada ya no está activa/en esta tienda, pero la
+            # dejamos como opción para no perder el dato al guardar.
+            valores_as_ed.append(nombre_as_actual)
+            opciones_as_ed[nombre_as_actual] = tk.get("asesor_id")
+        asesor_ed = st.selectbox(
+            "Asignado a (elaboración)", valores_as_ed,
+            index=valores_as_ed.index(nombre_as_actual) if nombre_as_actual in valores_as_ed else 0,
+        )
+        motivo_ab_ed = st.text_input(
+            "Motivo de abandono (solo aplica si el estado es Abandono)",
+            value=tk.get("motivo_abandono") or "",
+        )
+        colg1, colg2 = st.columns(2)
+        guardar = colg1.form_submit_button("💾 Guardar cambios", use_container_width=True)
+        cancelar = colg2.form_submit_button("Cancelar", use_container_width=True)
+        if guardar:
+            if not nombre_ed.strip() or not servicio_ed:
+                st.error("Nombre y servicio/producto son obligatorios.")
+            else:
+                if estado_ed != tk.get("estado"):
+                    # avanzar_ticket_tienda registra también la hora de la
+                    # nueva etapa (si aplica), igual que los botones del tablero.
+                    db.avanzar_ticket_tienda(tid, estado_ed)
+                db.update_ticket_tienda(
+                    tid, nombre=nombre_ed.strip(), telefono=telefono_ed.strip(),
+                    servicio=[s for s in servicio_ed if s],
+                    motivo_abandono=motivo_ab_ed.strip() or None,
+                    asesor_id=opciones_as_ed.get(asesor_ed),
+                )
+                st.session_state.pop(editando_key, None)
+                st.success("Ticket actualizado.")
+                st.rerun()
+        if cancelar:
+            st.session_state.pop(editando_key, None)
+            st.rerun()
+
+    with st.expander("🗑️ Eliminar este ticket"):
+        st.caption(
+            "El ticket deja de aparecer en el tablero y en el historial, pero queda guardado "
+            "en el listado de 'Tickets eliminados' de más abajo, junto con el motivo y quién "
+            "lo eliminó."
+        )
+        motivo_el = st.text_area(
+            "¿Por qué se elimina este ticket?", key=f"tt_motivo_el_{tid}", height=80,
+        )
+        confirmar_borrar = st.checkbox(
+            "Confirmo que quiero eliminar este ticket", key=f"tt_conf_del_{tid}",
+        )
+        if st.button("Eliminar ticket", key=f"tt_btn_del_{tid}", disabled=not confirmar_borrar):
+            if not motivo_el.strip():
+                st.error("Escribe el motivo antes de confirmar.")
+            else:
+                db.eliminar_ticket_tienda(tid, motivo_el, eliminado_por=user["nombre"])
+                st.session_state.pop(editando_key, None)
+                st.success("Ticket eliminado.")
+                st.rerun()
 
 
 # Etapas que se miden para los KPIs de tiempo: (estado, clave de la meta en
@@ -252,8 +341,8 @@ with tab_tablero:
 
     personal_todos = db.list_personal_tiendas(solo_activos=False)
 
-    cols = st.columns(len(ESTADOS_TICKET))
-    for col, estado in zip(cols, ESTADOS_TICKET):
+    cols = st.columns(len(ESTADOS_TICKET_TABLERO))
+    for col, estado in zip(cols, ESTADOS_TICKET_TABLERO):
         with col:
             st.markdown(f"**{ESTADO_EMOJI.get(estado, '')} {ESTADO_TITULO_COLUMNA.get(estado, estado)}**")
             en_este_estado = sorted(
@@ -264,7 +353,18 @@ with tab_tablero:
                 st.caption("Sin tickets.")
             for t in en_este_estado:
                 with st.container(border=True):
-                    st.write(f"**#{t['numero_ticket']} — {t['nombre']}**")
+                    tid = t["id"]
+                    editando_key = f"tt_editando_{tid}"
+
+                    title_col, edit_col = st.columns([5, 1])
+                    with title_col:
+                        st.write(f"**#{t['numero_ticket']} — {t['nombre']}**")
+                    with edit_col:
+                        if puede_gestionar:
+                            if st.button("✏️", key=f"tt_editar_{tid}", help="Editar este ticket"):
+                                st.session_state[editando_key] = not st.session_state.get(editando_key, False)
+                                st.rerun()
+
                     if not tienda_activa:
                         st.caption(f"🏬 {t['tienda']}")
                     if t.get("telefono"):
@@ -272,56 +372,15 @@ with tab_tablero:
                     st.caption(f"🧾 {lineas_venta_display(t.get('servicio'))}")
                     st.caption(f"Ingresó: {hora_legible(t.get('hora_ingreso'))}")
 
-                    abandonando_key = f"tt_abandonando_{t['id']}"
+                    abandonando_key = f"tt_abandonando_{tid}"
 
                     if estado == "En atención":
                         en_atencion = minutos_entre(t.get("hora_inicio_atencion"))
                         st.caption(f"⏱️ En espera hace {minutos_legible(en_atencion)}")
-                        if puede_gestionar:
-                            asignando_key = f"tt_asignando_{t['id']}"
-                            if st.session_state.get(abandonando_key):
-                                _render_abandono_form(t["id"], abandonando_key)
-                            elif st.session_state.get(asignando_key):
-                                _render_asignar_form(t["id"], t["tienda"], asignando_key)
-                            else:
-                                bc1, bc2 = st.columns(2)
-                                if bc1.button(
-                                    "➡️ Elaborar", key=f"tt_elabora_{t['id']}", use_container_width=True,
-                                ):
-                                    st.session_state[asignando_key] = True
-                                    st.rerun()
-                                if bc2.button(
-                                    "🚫", key=f"tt_abandono_{t['id']}", use_container_width=True,
-                                    help="Marcar como Abandono",
-                                ):
-                                    st.session_state[abandonando_key] = True
-                                    st.rerun()
                     elif estado == "En elaboración":
                         en_elaboracion = minutos_entre(t.get("hora_inicio_elaboracion"))
                         st.caption(f"🛠️ En elaboración hace {minutos_legible(en_elaboracion)}")
                         st.caption(f"👤 Asignado a: {db.nombre_personal_tienda(t.get('asesor_id'), personal_todos)}")
-                        if puede_gestionar:
-                            if st.session_state.get(abandonando_key):
-                                _render_abandono_form(t["id"], abandonando_key)
-                            else:
-                                bc1, bc2 = st.columns(2)
-                                if bc1.button(
-                                    "➡️ Facturar", key=f"tt_facturar_{t['id']}", use_container_width=True,
-                                ):
-                                    db.avanzar_ticket_tienda(t["id"], "Facturado")
-                                    st.rerun()
-                                if bc2.button(
-                                    "🚫", key=f"tt_abandono_{t['id']}", use_container_width=True,
-                                    help="Marcar como Abandono",
-                                ):
-                                    st.session_state[abandonando_key] = True
-                                    st.rerun()
-                    elif estado == "Facturado":
-                        total = minutos_entre(t.get("hora_ingreso"), t.get("hora_facturado"))
-                        st.caption(f"✅ Facturado: {hora_legible(t.get('hora_facturado'))}")
-                        st.caption(f"⏱️ Tiempo total: {minutos_legible(total)}")
-                        if t.get("asesor_id"):
-                            st.caption(f"👤 Elaborado por: {db.nombre_personal_tienda(t['asesor_id'], personal_todos)}")
                     elif estado == "Abandono":
                         total = minutos_entre(t.get("hora_ingreso"), t.get("hora_abandono"))
                         st.caption(f"🚫 Abandonó: {hora_legible(t.get('hora_abandono'))}")
@@ -329,108 +388,80 @@ with tab_tablero:
                         if t.get("motivo_abandono"):
                             st.caption(f"📝 Motivo: {t['motivo_abandono']}")
 
-    if puede_gestionar:
-        st.divider()
-        st.markdown("#### ✏️ Gestionar o eliminar un ticket")
-        st.caption(
-            "Corrige el nombre, teléfono, servicio o estado de un ticket, o elimínalo por "
-            "completo — por ejemplo si un cliente lo registró dos veces por error."
-        )
-        if not tickets_hoy:
-            st.caption("No hay tickets registrados hoy todavía.")
-        else:
-            opciones_tk = {
-                f"#{t['numero_ticket']} — {t['nombre']} "
-                f"({t['tienda']}, {ESTADO_TITULO_COLUMNA.get(t['estado'], t['estado'])})": t["id"]
-                for t in sorted(tickets_hoy, key=lambda t: t.get("numero_ticket") or 0)
-            }
-            elegido_tk = st.selectbox(
-                "Selecciona un ticket", ["—"] + list(opciones_tk.keys()), key="tt_gestionar_sel"
-            )
-            if elegido_tk != "—":
-                tid = opciones_tk[elegido_tk]
-                tk = db.get_ticket_tienda(tid)
-                if tk:
-                    with st.form(f"tt_editar_form_{tid}"):
-                        ge1, ge2 = st.columns(2)
-                        nombre_ed = ge1.text_input("Nombre", value=tk.get("nombre") or "")
-                        telefono_ed = ge2.text_input("Teléfono", value=tk.get("telefono") or "")
-                        servicio_ed = st.multiselect(
-                            "Servicio/producto",
-                            TICKET_SERVICIOS,
-                            default=[s for s in (tk.get("servicio") or []) if s in TICKET_SERVICIOS],
-                        )
-                        estado_ed = st.selectbox(
-                            "Estado", ESTADOS_TICKET,
-                            index=ESTADOS_TICKET.index(tk["estado"]) if tk.get("estado") in ESTADOS_TICKET else 0,
-                            format_func=lambda e: ESTADO_TITULO_COLUMNA.get(e, e),
-                        )
-                        personal_ed = db.list_personal_tiendas(tienda=tk.get("tienda"), solo_activos=True)
-                        opciones_as_ed = {"(sin asignar)": None}
-                        opciones_as_ed.update({a["nombre"]: a["id"] for a in personal_ed})
-                        nombre_as_actual = db.nombre_personal_tienda(tk.get("asesor_id"))
-                        valores_as_ed = list(opciones_as_ed.keys())
-                        if nombre_as_actual not in valores_as_ed and nombre_as_actual != "—":
-                            # La persona asignada ya no está activa/en esta tienda, pero la
-                            # dejamos como opción para no perder el dato al guardar.
-                            valores_as_ed.append(nombre_as_actual)
-                            opciones_as_ed[nombre_as_actual] = tk.get("asesor_id")
-                        asesor_ed = st.selectbox(
-                            "Asignado a (elaboración)", valores_as_ed,
-                            index=valores_as_ed.index(nombre_as_actual) if nombre_as_actual in valores_as_ed else 0,
-                        )
-                        motivo_ab_ed = st.text_input(
-                            "Motivo de abandono (solo aplica si el estado es Abandono)",
-                            value=tk.get("motivo_abandono") or "",
-                        )
-                        if st.form_submit_button("💾 Guardar cambios", use_container_width=True):
-                            if not nombre_ed.strip() or not servicio_ed:
-                                st.error("Nombre y servicio/producto son obligatorios.")
-                            else:
-                                if estado_ed != tk.get("estado"):
-                                    # avanzar_ticket_tienda registra también la hora de la
-                                    # nueva etapa (si aplica), igual que los botones del tablero.
-                                    db.avanzar_ticket_tienda(tid, estado_ed)
-                                db.update_ticket_tienda(
-                                    tid, nombre=nombre_ed.strip(), telefono=telefono_ed.strip(),
-                                    servicio=[s for s in servicio_ed if s],
-                                    motivo_abandono=motivo_ab_ed.strip() or None,
-                                    asesor_id=opciones_as_ed.get(asesor_ed),
-                                )
-                                st.success("Ticket actualizado.")
+                    if puede_gestionar and st.session_state.get(editando_key):
+                        _render_ticket_edit_form(t, editando_key)
+                    elif puede_gestionar and estado == "En atención":
+                        asignando_key = f"tt_asignando_{tid}"
+                        if st.session_state.get(abandonando_key):
+                            _render_abandono_form(tid, abandonando_key)
+                        elif st.session_state.get(asignando_key):
+                            _render_asignar_form(tid, t["tienda"], asignando_key)
+                        else:
+                            bc1, bc2 = st.columns(2)
+                            if bc1.button(
+                                "➡️ Elaborar", key=f"tt_elabora_{tid}", use_container_width=True,
+                            ):
+                                st.session_state[asignando_key] = True
+                                st.rerun()
+                            if bc2.button(
+                                "🚫", key=f"tt_abandono_{tid}", use_container_width=True,
+                                help="Marcar como Abandono",
+                            ):
+                                st.session_state[abandonando_key] = True
+                                st.rerun()
+                    elif puede_gestionar and estado == "En elaboración":
+                        if st.session_state.get(abandonando_key):
+                            _render_abandono_form(tid, abandonando_key)
+                        else:
+                            bc1, bc2 = st.columns(2)
+                            if bc1.button(
+                                "➡️ Facturar", key=f"tt_facturar_{tid}", use_container_width=True,
+                            ):
+                                db.avanzar_ticket_tienda(tid, "Facturado")
+                                st.rerun()
+                            if bc2.button(
+                                "🚫", key=f"tt_abandono_{tid}", use_container_width=True,
+                                help="Marcar como Abandono",
+                            ):
+                                st.session_state[abandonando_key] = True
                                 st.rerun()
 
-                    st.markdown("###### 🗑️ Eliminar este ticket")
-                    st.caption(
-                        "El ticket deja de aparecer en el tablero y en el historial, pero queda "
-                        "guardado en el listado de 'Tickets eliminados' de más abajo, junto con el "
-                        "motivo y quién lo eliminó."
+    # ------------------------------------------------------------------
+    # Facturados de hoy: lista compacta (no tarjetas) para que no estorbe
+    # junto a los tickets que todavía se están trabajando. Cada uno también
+    # tiene su lápiz ✏️ para corregir algo si hace falta.
+    # ------------------------------------------------------------------
+    st.divider()
+    st.markdown("#### ✅ Facturados de hoy")
+    facturados_hoy = sorted(
+        [t for t in tickets_hoy if t["estado"] == "Facturado"],
+        key=lambda t: t.get("numero_ticket") or 0,
+    )
+    if not facturados_hoy:
+        st.caption("Todavía no hay tickets facturados hoy.")
+    else:
+        for t in facturados_hoy:
+            tid = t["id"]
+            editando_key = f"tt_editando_{tid}"
+            total = minutos_entre(t.get("hora_ingreso"), t.get("hora_facturado"))
+            elaborado_por = db.nombre_personal_tienda(t.get("asesor_id"), personal_todos) if t.get("asesor_id") else "—"
+            with st.container(border=True):
+                fc1, fc2 = st.columns([6, 1])
+                with fc1:
+                    st.markdown(
+                        f"**#{t['numero_ticket']} — {t['nombre']}**"
+                        + (f" · 🏬 {t['tienda']}" if not tienda_activa else "")
+                        + f"  \n🧾 {lineas_venta_display(t.get('servicio'))}"
+                        f" · ✅ Facturado: {hora_legible(t.get('hora_facturado'))}"
+                        f" · ⏱️ Total: {minutos_legible(total)} · 👤 {elaborado_por}"
                     )
-                    eliminando_key = f"tt_eliminando_{tid}"
-                    if st.session_state.get(eliminando_key):
-                        motivo_el = st.text_area(
-                            "¿Por qué se elimina este ticket?", key=f"tt_motivo_el_{tid}", height=80,
-                        )
-                        dc1, dc2 = st.columns(2)
-                        if dc1.button(
-                            "Confirmar eliminación", key=f"tt_confirmar_el_{tid}", use_container_width=True,
-                        ):
-                            if not motivo_el.strip():
-                                st.error("Escribe el motivo antes de confirmar.")
-                            else:
-                                db.eliminar_ticket_tienda(tid, motivo_el, eliminado_por=user["nombre"])
-                                st.session_state.pop(eliminando_key, None)
-                                st.success("Ticket eliminado.")
-                                st.rerun()
-                        if dc2.button("Cancelar", key=f"tt_cancelar_el_{tid}", use_container_width=True):
-                            st.session_state.pop(eliminando_key, None)
+                with fc2:
+                    if puede_gestionar:
+                        if st.button("✏️", key=f"tt_editar_{tid}", help="Editar este ticket"):
+                            st.session_state[editando_key] = not st.session_state.get(editando_key, False)
                             st.rerun()
-                    else:
-                        if st.button(
-                            "🗑️ Eliminar ticket", key=f"tt_del_ticket_{tid}", use_container_width=True,
-                        ):
-                            st.session_state[eliminando_key] = True
-                            st.rerun()
+                if puede_gestionar and st.session_state.get(editando_key):
+                    _render_ticket_edit_form(t, editando_key)
 
     # ------------------------------------------------------------------
     # Tickets eliminados (registro de auditoría)
