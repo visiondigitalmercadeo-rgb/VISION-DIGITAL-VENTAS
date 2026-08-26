@@ -160,6 +160,7 @@ DISENO_ARCHIVOS_MAX = 3  # máximo de archivos adjuntos por solicitud
 FRANJAS_PEDIDO = ["AM", "PM"]
 ESTADOS_PEDIDO = ["Pendiente", "En ruta", "Entregado", "No entregado"]
 ZONAS_CAPITAL = [f"Zona {i}" for i in range(1, 22)]
+PEDIDO_FOTO_ENTREGA_MAX_BYTES = 900_000  # ~900 KB — mismo límite práctico que Mantenimiento/Diseño
 
 # Vendedores adicionales (sin necesitar usuario propio) que también se
 # pueden elegir como "vendedor que hizo la venta" en un pedido de Logística,
