@@ -1,3 +1,4 @@
+import base64
 from datetime import date, timedelta
 
 import pandas as pd
@@ -5,8 +6,8 @@ import streamlit as st
 
 import auth
 import database as db
-from config import ESTADOS_PEDIDO, FRANJAS_PEDIDO, TIPOS_RUTA_PEDIDO, ZONAS_CAPITAL
-from utils import download_excel_button, sidebar_user_box
+from config import ESTADOS_PEDIDO, FRANJAS_PEDIDO, PEDIDO_FOTO_ENTREGA_MAX_BYTES, TIPOS_RUTA_PEDIDO, ZONAS_CAPITAL
+from utils import archivo_a_b64, download_excel_button, sidebar_user_box
 
 user = auth.current_user()
 rol = user["rol"]
@@ -44,6 +45,60 @@ puede_cambiar_estado = rol in ("admin", "jefe_logistica", "repartidor")
 
 hoy = date.today()
 manana = hoy + timedelta(days=1)
+
+
+def _mostrar_foto_entrega(p):
+    """Muestra la foto de comprobante de entrega del pedido, si tiene una."""
+    b64 = p.get("foto_entrega_b64")
+    if not b64:
+        return
+    st.caption("📸 Foto de entrega:")
+    try:
+        st.image(base64.b64decode(b64), width=220)
+    except Exception:
+        st.caption("(no se pudo mostrar la foto — el archivo podría estar dañado)")
+
+
+def _render_confirmar_entrega(p, siguiente, cancelar_key):
+    """Panel que se abre al intentar marcar un pedido como 'Entregado' desde
+    el rol repartidor — exige una foto de comprobante antes de poder
+    confirmar, tomada con la cámara del dispositivo o subida de archivos."""
+    pid = p["id"]
+    st.caption("📸 Antes de confirmar la entrega, sube una foto como comprobante.")
+    origen = st.radio(
+        "¿Cómo quieres agregar la foto?", ["📷 Tomar foto ahora", "📁 Subir desde mis archivos"],
+        key=f"log_foto_origen_{pid}", horizontal=True,
+    )
+    if origen == "📷 Tomar foto ahora":
+        foto = st.camera_input("Foto del pedido entregado", key=f"log_foto_camara_{pid}")
+    else:
+        foto = st.file_uploader(
+            "Foto del pedido entregado", type=["jpg", "jpeg", "png"], key=f"log_foto_archivo_{pid}",
+        )
+
+    colc1, colc2 = st.columns(2)
+    confirmar = colc1.button("✅ Confirmar entrega", key=f"log_confirmar_entrega_{pid}", use_container_width=True)
+    cancelar = colc2.button("Cancelar", key=f"log_cancelar_entrega_{pid}", use_container_width=True)
+
+    if confirmar:
+        if foto is None:
+            st.error("Debes tomar o subir una foto para confirmar la entrega.")
+        else:
+            try:
+                nombre, tipo, b64 = archivo_a_b64(foto, PEDIDO_FOTO_ENTREGA_MAX_BYTES)
+            except ValueError as e:
+                st.error(str(e))
+            else:
+                db.update_pedido(
+                    pid, estado=siguiente,
+                    foto_entrega_nombre=nombre, foto_entrega_tipo=tipo, foto_entrega_b64=b64,
+                )
+                st.session_state.pop(cancelar_key, None)
+                st.success("Pedido marcado como entregado.")
+                st.rerun()
+    if cancelar:
+        st.session_state.pop(cancelar_key, None)
+        st.rerun()
 
 
 def _render_pedido_edit_form(p, editando_key, vendedores_op, repartidores_op, lookup_vendedores, todos_usuarios):
@@ -209,7 +264,9 @@ with tab_vista:
                     st.caption(f"Estado: **{p.get('estado') or '—'}**")
                     if p.get("notas"):
                         st.caption(f"📝 {p['notas']}")
+                    _mostrar_foto_entrega(p)
 
+                    confirmando_key = f"log_confirmando_entrega_{pid}"
                     if puede_crear and st.session_state.get(editando_key):
                         # --------------------------------------------------
                         # Edición en línea (se abrió con el lápiz ✏️) — solo
@@ -219,10 +276,26 @@ with tab_vista:
                             p, editando_key, vendedores_op_todos, repartidores_op_todos,
                             lookup_vendedores, todos_usuarios,
                         )
+                    elif st.session_state.get(confirmando_key):
+                        # --------------------------------------------------
+                        # Panel abierto para confirmar la entrega con foto
+                        # (ver más abajo — solo aplica al repartidor).
+                        # --------------------------------------------------
+                        estado_actual = p.get("estado") if p.get("estado") in ESTADOS_PEDIDO else ESTADOS_PEDIDO[0]
+                        siguiente = ESTADOS_PEDIDO[(ESTADOS_PEDIDO.index(estado_actual) + 1) % len(ESTADOS_PEDIDO)]
+                        _render_confirmar_entrega(p, siguiente, confirmando_key)
                     elif puede_cambiar_estado:
                         estado_actual = p.get("estado") if p.get("estado") in ESTADOS_PEDIDO else ESTADOS_PEDIDO[0]
                         siguiente = ESTADOS_PEDIDO[(ESTADOS_PEDIDO.index(estado_actual) + 1) % len(ESTADOS_PEDIDO)]
-                        if st.button(
+                        requiere_foto = siguiente == "Entregado" and rol == "repartidor"
+                        if requiere_foto:
+                            if st.button(
+                                f"➡️ Marcar como «{siguiente}» (requiere foto)",
+                                key=f"log_avanzar_{pid}", use_container_width=True,
+                            ):
+                                st.session_state[confirmando_key] = True
+                                st.rerun()
+                        elif st.button(
                             f"➡️ Marcar como «{siguiente}»", key=f"log_avanzar_{pid}", use_container_width=True,
                         ):
                             db.update_pedido(pid, estado=siguiente)
