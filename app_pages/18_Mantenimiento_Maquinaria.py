@@ -2,12 +2,13 @@ import base64
 from datetime import date
 
 import pandas as pd
+import plotly.express as px
 import streamlit as st
 
 import auth
 import database as db
-from config import MANTENIMIENTO_ARCHIVO_MAX_BYTES, PLANTAS_MAQUINARIA
-from utils import archivo_a_b64, download_excel_button, sidebar_user_box
+from config import CATEGORICAL, MANTENIMIENTO_ARCHIVO_MAX_BYTES, PLANTAS_MAQUINARIA
+from utils import archivo_a_b64, base_layout, download_excel_button, sidebar_user_box
 
 user = auth.current_user()
 sidebar_user_box()
@@ -46,6 +47,77 @@ def _mostrar_adjunto(etiqueta, prefijo_key, nombre, tipo, b64):
         )
 
 
+def _preventivo_realizado(r, hoy_str):
+    """True/False si el registro (de tipo Preventivo) ya se realizó.
+
+    Los registros nuevos guardan el campo explícito 'realizado' (True/False).
+    Los registros viejos, creados antes de que existiera esta casilla, no
+    tienen ese campo — para esos usamos como respaldo la lógica anterior
+    (naive): si la fecha programada ya pasó, se asume realizado; si no, se
+    asume programado/pendiente. Así no se reclasifica de golpe el historial
+    viejo al lanzar esta función."""
+    val = r.get("realizado")
+    if val is not None:
+        return bool(val)
+    return bool(r.get("fecha")) and r["fecha"] < hoy_str
+
+
+def _preventivo_vencido(r, hoy_str):
+    """True si es un preventivo programado (con fecha) que ya pasó de fecha y
+    todavía no se ha marcado como realizado."""
+    return bool(r.get("fecha")) and r["fecha"] < hoy_str and not _preventivo_realizado(r, hoy_str)
+
+
+def _ultimos_meses(n):
+    """Lista de los últimos n meses como 'YYYY-MM', del más antiguo al más
+    reciente (incluye el mes actual). Se usa para la gráfica de mantenimientos
+    realizados por mes — comparación de strings 'YYYY-MM' alcanza porque el
+    formato ISO ordena igual que el orden cronológico."""
+    hoy = date.today()
+    meses = []
+    y, m = hoy.year, hoy.month
+    for _ in range(n):
+        meses.append(f"{y:04d}-{m:02d}")
+        m -= 1
+        if m == 0:
+            m = 12
+            y -= 1
+    return list(reversed(meses))
+
+
+_MESES_LABEL = {
+    "01": "Ene", "02": "Feb", "03": "Mar", "04": "Abr", "05": "May", "06": "Jun",
+    "07": "Jul", "08": "Ago", "09": "Sep", "10": "Oct", "11": "Nov", "12": "Dic",
+}
+
+
+def _label_mes(mes_iso):
+    y, m = mes_iso.split("-")
+    return f"{_MESES_LABEL.get(m, m)} {y}"
+
+
+def _construir_kpi_mensual(mantenimientos, hoy_str, n_meses=6):
+    """DataFrame en formato largo (Mes, Tipo, Cantidad) con los mantenimientos
+    realizados por mes en los últimos n_meses — un preventivo cuenta en el mes
+    de su fecha solo si ya se marcó como realizado; un correctivo siempre
+    cuenta (se registra cuando ya ocurrió la reparación)."""
+    meses = _ultimos_meses(n_meses)
+    filas = []
+    for mes in meses:
+        n_prev = sum(
+            1 for r in mantenimientos
+            if r.get("tipo") == "Preventivo" and (r.get("fecha") or "").startswith(mes)
+            and _preventivo_realizado(r, hoy_str)
+        )
+        n_corr = sum(
+            1 for r in mantenimientos
+            if r.get("tipo") == "Correctivo" and (r.get("fecha") or "").startswith(mes)
+        )
+        filas.append({"Mes": _label_mes(mes), "_orden": mes, "Tipo": "Preventivo", "Cantidad": n_prev})
+        filas.append({"Mes": _label_mes(mes), "_orden": mes, "Tipo": "Correctivo", "Cantidad": n_corr})
+    return pd.DataFrame(filas)
+
+
 def _render_form_nuevo_mantenimiento(maquina_id, tipo):
     es_preventivo = tipo == "Preventivo"
     with st.form(f"nuevo_mant_{tipo}_{maquina_id}", clear_on_submit=True):
@@ -69,6 +141,14 @@ def _render_form_nuevo_mantenimiento(maquina_id, tipo):
             key=f"mant_foto_rep_{tipo}_{maquina_id}",
         )
         notas_m = st.text_area("Notas (opcional)")
+        realizado_m = True
+        if es_preventivo:
+            realizado_m = st.checkbox(
+                "✅ Ya se realizó este mantenimiento",
+                value=fecha_m <= date.today(),
+                help="Desmárcalo si estás programando un mantenimiento preventivo que todavía no se ha hecho.",
+                key=f"mant_realizado_{tipo}_{maquina_id}",
+            )
         if st.form_submit_button(f"Guardar mantenimiento {tipo.lower()}", use_container_width=True):
             if not proveedor_m.strip():
                 st.error("El proveedor es obligatorio.")
@@ -94,6 +174,7 @@ def _render_form_nuevo_mantenimiento(maquina_id, tipo):
                         factura_nombre=factura_nombre, factura_tipo=factura_tipo, factura_b64=factura_b64,
                         foto_repuesto_nombre=foto_nombre, foto_repuesto_tipo=foto_tipo,
                         foto_repuesto_b64=foto_b64, notas=notas_m.strip() or None,
+                        realizado=bool(realizado_m) if es_preventivo else True,
                     )
                     st.success(f"Mantenimiento {tipo.lower()} registrado.")
                     st.rerun()
@@ -129,6 +210,13 @@ def _render_editar_mantenimiento(r, es_preventivo, editando_key):
             type=["jpg", "jpeg", "png"], key=f"mant_ed_foto_rep_{r['id']}",
         )
         notas_ed = st.text_area("Notas", value=r.get("notas") or "")
+        realizado_ed = True
+        if es_preventivo:
+            realizado_ed = st.checkbox(
+                "✅ Ya se realizó este mantenimiento",
+                value=_preventivo_realizado(r, str(date.today())),
+                key=f"mant_ed_realizado_{r['id']}",
+            )
         colf1, colf2 = st.columns(2)
         guardar = colf1.form_submit_button("💾 Guardar cambios", use_container_width=True)
         eliminar = colf2.form_submit_button("Eliminar registro", use_container_width=True)
@@ -146,6 +234,8 @@ def _render_editar_mantenimiento(r, es_preventivo, editando_key):
                         "numero_factura": numero_factura_ed.strip() or None,
                         "notas": notas_ed.strip() or None,
                     }
+                    if es_preventivo:
+                        update_kwargs["realizado"] = bool(realizado_ed)
                     if nueva_factura is not None:
                         n, t, b = archivo_a_b64(nueva_factura, MANTENIMIENTO_ARCHIVO_MAX_BYTES)
                         update_kwargs.update(factura_nombre=n, factura_tipo=t, factura_b64=b)
@@ -184,8 +274,16 @@ def _render_seccion_mantenimiento(maquina_id, tipo):
     for r in registros:
         with st.container(border=True):
             estado_txt = ""
-            if es_preventivo and r.get("fecha"):
-                estado_txt = " · 🗓️ Programado" if r["fecha"] >= hoy_str else " · ✅ Realizado"
+            marcar_realizado = False
+            if es_preventivo:
+                if _preventivo_realizado(r, hoy_str):
+                    estado_txt = " · ✅ Realizado"
+                elif _preventivo_vencido(r, hoy_str):
+                    estado_txt = " · 🔴 Vencido"
+                    marcar_realizado = True
+                else:
+                    estado_txt = " · 🗓️ Programado"
+                    marcar_realizado = True
             st.markdown(f"**📅 {r.get('fecha') or '—'}**{estado_txt}")
             st.caption(f"Proveedor: {r.get('proveedor') or '—'} · Costo: Q{r.get('costo') or 0:,.2f}")
             if r.get("repuesto_cambiado"):
@@ -210,6 +308,14 @@ def _render_seccion_mantenimiento(maquina_id, tipo):
                 )
 
             if puede_gestionar:
+                if marcar_realizado:
+                    if st.button(
+                        "✅ Marcar como realizado", key=f"mant_marcar_realizado_{r['id']}",
+                        use_container_width=True,
+                    ):
+                        db.update_mantenimiento(r["id"], realizado=True)
+                        st.success("Mantenimiento marcado como realizado.")
+                        st.rerun()
                 editando_key = f"mant_editando_{r['id']}"
                 if st.button("✏️ Editar / eliminar", key=f"mant_toggle_{r['id']}", use_container_width=True):
                     st.session_state[editando_key] = not st.session_state.get(editando_key, False)
@@ -234,6 +340,82 @@ def _render_historial(maquina_id):
         df, "historial_mantenimiento.xlsx", key=f"mant_descargar_historial_{maquina_id}",
     )
 
+    st.divider()
+    st.markdown("**🔎 Ver ficha completa de un mantenimiento**")
+    hoy_str = str(date.today())
+
+    def _opcion_label(r):
+        return f"{r['tipo']} · {r.get('fecha') or '—'} · {r.get('proveedor') or 'sin proveedor'}"
+
+    opciones = {r["id"]: _opcion_label(r) for r in registros}
+    sel_id = st.selectbox(
+        "Selecciona un registro", options=list(opciones.keys()), format_func=lambda i: opciones[i],
+        key=f"mant_hist_sel_{maquina_id}",
+    )
+    if sel_id:
+        r = next((x for x in registros if x["id"] == sel_id), None)
+        if r:
+            es_preventivo = r["tipo"] == "Preventivo"
+            with st.container(border=True):
+                estado_txt = ""
+                if es_preventivo:
+                    if _preventivo_realizado(r, hoy_str):
+                        estado_txt = " · ✅ Realizado"
+                    elif _preventivo_vencido(r, hoy_str):
+                        estado_txt = " · 🔴 Vencido"
+                    else:
+                        estado_txt = " · 🗓️ Programado"
+                st.markdown(f"**{r['tipo']} · 📅 {r.get('fecha') or '—'}**{estado_txt}")
+                st.caption(f"Proveedor: {r.get('proveedor') or '—'} · Costo: Q{r.get('costo') or 0:,.2f}")
+                if r.get("repuesto_cambiado"):
+                    st.caption(f"🔩 Repuesto cambiado: {r['repuesto_cambiado']}")
+                if r.get("tiempo_garantia"):
+                    st.caption(f"🛡️ Garantía: {r['tiempo_garantia']}")
+                if r.get("numero_factura"):
+                    st.caption(f"🧾 N° factura: {r['numero_factura']}")
+                if r.get("notas"):
+                    st.caption(f"📝 {r['notas']}")
+                fc1, fc2 = st.columns(2)
+                with fc1:
+                    _mostrar_adjunto(
+                        "Factura", f"mant_hist_dl_factura_{r['id']}",
+                        r.get("factura_nombre"), r.get("factura_tipo"), r.get("factura_b64"),
+                    )
+                with fc2:
+                    _mostrar_adjunto(
+                        "Repuesto viejo", f"mant_hist_dl_repuesto_{r['id']}",
+                        r.get("foto_repuesto_nombre"), r.get("foto_repuesto_tipo"), r.get("foto_repuesto_b64"),
+                    )
+
+
+def _render_editar_maquina_inline(maquina, key_suffix):
+    """Edición rápida (nombre / tipo / serie / planta) desde la tarjeta de la
+    máquina en la vista de lista — para eliminar la máquina se usa el
+    expander completo '⚙️ Editar / eliminar esta máquina' dentro de su
+    ficha detallada, no aquí."""
+    with st.form(f"editar_maquina_inline_{key_suffix}"):
+        nombre_ed = st.text_input("Nombre", value=maquina["nombre"])
+        tipo_ed = st.text_input(
+            "Tipo de máquina (ej. Impresora, Troqueladora)", value=maquina.get("tipo_maquina") or "",
+        )
+        serie_ed = st.text_input("Número de serie", value=maquina.get("numero_serie") or "")
+        planta_ed = st.selectbox(
+            "Planta", PLANTAS_MAQUINARIA,
+            index=PLANTAS_MAQUINARIA.index(maquina["planta"]) if maquina["planta"] in PLANTAS_MAQUINARIA else 0,
+            key=f"mant_planta_ed_{key_suffix}",
+        )
+        if st.form_submit_button("💾 Guardar cambios", use_container_width=True):
+            if not nombre_ed.strip():
+                st.error("El nombre es obligatorio.")
+            else:
+                db.update_maquina(
+                    maquina["id"], nombre=nombre_ed.strip(), tipo_maquina=tipo_ed.strip() or None,
+                    numero_serie=serie_ed.strip() or None, planta=planta_ed,
+                )
+                st.session_state.pop(f"mant_editando_maq_{key_suffix}", None)
+                st.success("Máquina actualizada.")
+                st.rerun()
+
 
 maquina_sel_id = st.session_state.get("mant_maquina_sel")
 
@@ -257,9 +439,19 @@ if maquina_sel_id:
 
     preventivos = db.list_mantenimientos_maquina(maquina_sel_id, tipo="Preventivo")
     hoy_str = str(date.today())
-    proximos = sorted(
-        [p for p in preventivos if p.get("fecha") and p["fecha"] >= hoy_str], key=lambda p: p["fecha"],
+    vencidos_maquina = sorted(
+        [p for p in preventivos if _preventivo_vencido(p, hoy_str)], key=lambda p: p["fecha"],
     )
+    proximos = sorted(
+        [p for p in preventivos if p.get("fecha") and p["fecha"] >= hoy_str
+         and not _preventivo_realizado(p, hoy_str)],
+        key=lambda p: p["fecha"],
+    )
+    if vencidos_maquina:
+        st.error(
+            f"🔴 Hay {len(vencidos_maquina)} mantenimiento(s) preventivo(s) **vencido(s)** — el más antiguo "
+            f"estaba programado para **{vencidos_maquina[0]['fecha']}** y todavía no se ha marcado como realizado."
+        )
     if proximos:
         st.info(
             f"🗓️ Próximo mantenimiento preventivo: **{proximos[0]['fecha']}** — "
@@ -317,6 +509,70 @@ if maquina_sel_id:
                 st.rerun()
 
 else:
+    mantenimientos_todos = db.list_mantenimientos_todos()
+    maquinas_por_id = {m["id"]: m for m in db.list_maquinas()}
+    hoy_str = str(date.today())
+    mes_actual = hoy_str[:7]
+
+    preventivos_todos = [r for r in mantenimientos_todos if r.get("tipo") == "Preventivo"]
+    vencidos_todos = sorted(
+        [r for r in preventivos_todos if _preventivo_vencido(r, hoy_str)], key=lambda r: r["fecha"],
+    )
+    vencen_este_mes = sorted(
+        [r for r in preventivos_todos
+         if (r.get("fecha") or "").startswith(mes_actual) and not _preventivo_realizado(r, hoy_str)],
+        key=lambda r: r["fecha"],
+    )
+    realizados_este_mes = sum(
+        1 for r in mantenimientos_todos
+        if (r.get("fecha") or "").startswith(mes_actual)
+        and (r.get("tipo") != "Preventivo" or _preventivo_realizado(r, hoy_str))
+    )
+
+    st.subheader("📊 Resumen general de mantenimiento")
+
+    if vencidos_todos:
+        st.error(f"🔴 Hay {len(vencidos_todos)} mantenimiento(s) preventivo(s) **vencido(s)** sin realizar.")
+        with st.expander(f"Ver los {len(vencidos_todos)} vencido(s)"):
+            for r in vencidos_todos:
+                maq = maquinas_por_id.get(r.get("maquina_id"))
+                nombre_maq = maq["nombre"] if maq else "Máquina eliminada"
+                st.caption(
+                    f"🔴 **{nombre_maq}** — programado para {r['fecha']} · "
+                    f"{r.get('proveedor') or 'sin proveedor'}"
+                )
+
+    with st.expander(f"🗓️ Preventivos que vencen este mes ({len(vencen_este_mes)})"):
+        if not vencen_este_mes:
+            st.caption("No hay mantenimientos preventivos programados para este mes que sigan pendientes.")
+        else:
+            for r in vencen_este_mes:
+                maq = maquinas_por_id.get(r.get("maquina_id"))
+                nombre_maq = maq["nombre"] if maq else "Máquina eliminada"
+                st.caption(f"🗓️ **{nombre_maq}** — {r['fecha']} · {r.get('proveedor') or 'sin proveedor'}")
+
+    m1, m2, m3 = st.columns(3)
+    m1.metric("✅ Realizados este mes", realizados_este_mes)
+    m2.metric("🗓️ Preventivos que vencen este mes", len(vencen_este_mes))
+    m3.metric("🔴 Preventivos vencidos", len(vencidos_todos))
+
+    df_kpi = _construir_kpi_mensual(mantenimientos_todos, hoy_str)
+    if df_kpi["Cantidad"].sum() > 0:
+        df_kpi = df_kpi.sort_values("_orden")
+        fig = px.bar(
+            df_kpi, x="Mes", y="Cantidad", color="Tipo", barmode="group",
+            category_orders={"Mes": [_label_mes(m) for m in _ultimos_meses(6)]},
+            color_discrete_map={"Preventivo": CATEGORICAL[0], "Correctivo": CATEGORICAL[1]},
+        )
+        st.plotly_chart(
+            base_layout(fig, title="Mantenimientos realizados por mes (últimos 6 meses)", height=340),
+            use_container_width=True,
+        )
+    else:
+        st.caption("Todavía no hay suficientes mantenimientos realizados para mostrar la gráfica mensual.")
+
+    st.divider()
+
     tabs_plantas = st.tabs([f"🏭 Planta {p}" for p in PLANTAS_MAQUINARIA])
     for tab, planta in zip(tabs_plantas, PLANTAS_MAQUINARIA):
         with tab:
@@ -328,13 +584,23 @@ else:
                 for i, maq in enumerate(maquinas_planta):
                     with cols[i % 3]:
                         with st.container(border=True):
-                            st.markdown(f"**🖨️ {maq['nombre']}**")
+                            title_col, edit_col = st.columns([5, 1])
+                            title_col.markdown(f"**🖨️ {maq['nombre']}**")
+                            editando_maq_key = f"mant_editando_maq_{maq['id']}"
+                            if puede_gestionar:
+                                if edit_col.button("✏️", key=f"mant_editar_maq_{maq['id']}"):
+                                    st.session_state[editando_maq_key] = not st.session_state.get(
+                                        editando_maq_key, False,
+                                    )
+                                    st.rerun()
                             st.caption(maq.get("tipo_maquina") or "Tipo no especificado")
                             if maq.get("numero_serie"):
                                 st.caption(f"Serie: {maq['numero_serie']}")
                             n_prev = len(db.list_mantenimientos_maquina(maq["id"], tipo="Preventivo"))
                             n_corr = len(db.list_mantenimientos_maquina(maq["id"], tipo="Correctivo"))
                             st.caption(f"🛠️ {n_prev} preventivo(s) · 🔧 {n_corr} correctivo(s)")
+                            if st.session_state.get(editando_maq_key):
+                                _render_editar_maquina_inline(maq, maq["id"])
                             if st.button("Abrir", key=f"mant_abrir_{maq['id']}", use_container_width=True):
                                 st.session_state["mant_maquina_sel"] = maq["id"]
                                 st.rerun()
