@@ -17,6 +17,7 @@ Cómo se eligen las credenciales, en este orden:
                                       avisa que Firebase no está conectado.
 """
 
+import math
 import os
 from datetime import date, datetime, timedelta, timezone
 
@@ -25,7 +26,9 @@ import firebase_admin
 from firebase_admin import credentials, firestore
 
 import fake_firestore
-from config import BASE_DIR, CHECKLIST_DEFAULT, LOGISTICA_VENDEDORES_INICIAL
+from config import (
+    BASE_DIR, CHECKLIST_DEFAULT, LITO_MAQUINAS_INICIAL, LITO_PAPELES_INICIAL, LOGISTICA_VENDEDORES_INICIAL,
+)
 
 SERVICE_ACCOUNT_PATH = os.path.join(BASE_DIR, "serviceAccountKey.json")
 
@@ -112,6 +115,7 @@ def init_db(seed_demo: bool = True):
     if not usuarios:
         _seed(client, seed_demo)
     _seed_logistica_vendedores(client)
+    _seed_lito_catalogos(client)
 
 
 def _seed_logistica_vendedores(client):
@@ -127,6 +131,27 @@ def _seed_logistica_vendedores(client):
             "nombre": nombre, "activo": True,
             "creado_en": datetime.now().isoformat(timespec="seconds"),
         })
+
+
+def _seed_lito_catalogos(client):
+    """Carga máquinas y papel DE EJEMPLO (LITO_MAQUINAS_INICIAL / LITO_PAPELES_INICIAL
+    en config.py) la primera vez que arranca la app, para que el cotizador de
+    Litografía no empiece vacío. Son solo ejemplos — hay que corregir precios
+    y medidas reales desde la pestaña de Litografía."""
+    existentes_m = list(client.collection("lito_maquinas").limit(1).stream())
+    if not existentes_m:
+        for m in LITO_MAQUINAS_INICIAL:
+            client.collection("lito_maquinas").document().set({
+                **m, "activo": True,
+                "creado_en": datetime.now().isoformat(timespec="seconds"),
+            })
+    existentes_p = list(client.collection("lito_papeles").limit(1).stream())
+    if not existentes_p:
+        for p in LITO_PAPELES_INICIAL:
+            client.collection("lito_papeles").document().set({
+                **p, "activo": True,
+                "creado_en": datetime.now().isoformat(timespec="seconds"),
+            })
 
 
 def _seed(client, seed_demo):
@@ -1247,11 +1272,22 @@ def get_mantenimiento(mantenimiento_id):
     return _doc_to_dict(snap) if snap.exists else None
 
 
+def list_mantenimientos_todos():
+    """Todos los mantenimientos (preventivos y correctivos) de todas las
+    máquinas, sin filtrar por una sola — para los KPIs y alertas generales
+    de la pantalla principal de Mantenimiento de Maquinaria."""
+    client = get_client()
+    rows = [_doc_to_dict(s) for s in client.collection("mantenimientos_maquinas").stream()]
+    rows.sort(key=lambda r: r.get("fecha") or "", reverse=True)
+    return rows
+
+
 def create_mantenimiento(maquina_id, tipo, **campos):
     """Crea un registro de mantenimiento ('Preventivo' o 'Correctivo') para
     una máquina. 'campos' admite: fecha, proveedor, costo, repuesto_cambiado,
     tiempo_garantia, numero_factura, notas, factura_nombre/tipo/b64,
-    foto_repuesto_nombre/tipo/b64."""
+    foto_repuesto_nombre/tipo/b64, realizado (solo aplica a 'Preventivo' —
+    si ya se llevó a cabo el mantenimiento programado)."""
     doc_ref = get_client().collection("mantenimientos_maquinas").document()
     data = {
         "maquina_id": maquina_id, "tipo": tipo,
@@ -1269,3 +1305,124 @@ def update_mantenimiento(mantenimiento_id, **kwargs):
 
 def delete_mantenimiento(mantenimiento_id):
     get_client().collection("mantenimientos_maquinas").document(mantenimiento_id).delete()
+
+
+# ---------------------------------------------------------------------------
+# Litografía: catálogo de máquinas y papel (con precios), y cotizaciones
+# técnicas — la ficha de especificación de un trabajo (formato, tintas,
+# páginas, papel, máquina) con cálculo automático de pliegos, planchas,
+# pasadas de máquina y costo total. Inspirado en sistemas como Logic Print.
+# ---------------------------------------------------------------------------
+def list_lito_maquinas(solo_activos=True):
+    client = get_client()
+    rows = [_doc_to_dict(s) for s in client.collection("lito_maquinas").stream()]
+    if solo_activos:
+        rows = [r for r in rows if r.get("activo", True)]
+    rows.sort(key=lambda r: r.get("nombre") or "")
+    return rows
+
+
+def get_lito_maquina(maquina_id):
+    if not maquina_id:
+        return None
+    snap = get_client().collection("lito_maquinas").document(maquina_id).get()
+    return _doc_to_dict(snap) if snap.exists else None
+
+
+def create_lito_maquina(nombre, ancho_max, alto_max, costo_millar_pasadas, costo_plancha):
+    get_client().collection("lito_maquinas").document().set({
+        "nombre": nombre.strip(), "ancho_max": float(ancho_max), "alto_max": float(alto_max),
+        "costo_millar_pasadas": float(costo_millar_pasadas), "costo_plancha": float(costo_plancha),
+        "activo": True, "creado_en": datetime.now().isoformat(timespec="seconds"),
+    })
+
+
+def update_lito_maquina(maquina_id, **kwargs):
+    if kwargs:
+        get_client().collection("lito_maquinas").document(maquina_id).update(kwargs)
+
+
+def delete_lito_maquina(maquina_id):
+    get_client().collection("lito_maquinas").document(maquina_id).delete()
+
+
+def list_lito_papeles(solo_activos=True):
+    client = get_client()
+    rows = [_doc_to_dict(s) for s in client.collection("lito_papeles").stream()]
+    if solo_activos:
+        rows = [r for r in rows if r.get("activo", True)]
+    rows.sort(key=lambda r: r.get("tipo") or "")
+    return rows
+
+
+def get_lito_papel(papel_id):
+    if not papel_id:
+        return None
+    snap = get_client().collection("lito_papeles").document(papel_id).get()
+    return _doc_to_dict(snap) if snap.exists else None
+
+
+def create_lito_papel(tipo, fabricante, gramaje, ancho, alto, costo_pliego):
+    get_client().collection("lito_papeles").document().set({
+        "tipo": tipo.strip(), "fabricante": fabricante.strip(), "gramaje": float(gramaje),
+        "ancho": float(ancho), "alto": float(alto), "costo_pliego": float(costo_pliego),
+        "activo": True, "creado_en": datetime.now().isoformat(timespec="seconds"),
+    })
+
+
+def update_lito_papel(papel_id, **kwargs):
+    if kwargs:
+        get_client().collection("lito_papeles").document(papel_id).update(kwargs)
+
+
+def delete_lito_papel(papel_id):
+    get_client().collection("lito_papeles").document(papel_id).delete()
+
+
+def _siguiente_numero_lito():
+    """Numeración corrida (no reinicia por día) para las cotizaciones
+    técnicas de Litografía — ej. LIT-0001, LIT-0002, ..."""
+    rows = [_doc_to_dict(s) for s in get_client().collection("lito_cotizaciones").stream()]
+    numeros = [r.get("numero") for r in rows if isinstance(r.get("numero"), int)]
+    return (max(numeros, default=0)) + 1
+
+
+def list_lito_cotizaciones():
+    client = get_client()
+    rows = [_doc_to_dict(s) for s in client.collection("lito_cotizaciones").stream()]
+    rows.sort(key=lambda r: r.get("numero") or 0, reverse=True)
+    return rows
+
+
+def get_lito_cotizacion(cotizacion_id):
+    if not cotizacion_id:
+        return None
+    snap = get_client().collection("lito_cotizaciones").document(cotizacion_id).get()
+    return _doc_to_dict(snap) if snap.exists else None
+
+
+def create_lito_cotizacion(**campos):
+    """Crea una cotización técnica de Litografía. 'campos' admite: cliente,
+    nit, descripcion, cantidad, merma_pct, margen_pct, componentes (lista de
+    dicts, uno por cada parte del trabajo — ej. Cubierta e Interior — con sus
+    especificaciones y los resultados ya calculados), acabados (lista de
+    {descripcion, costo}), costo_total, precio_sugerido, estado, notas,
+    creado_por."""
+    numero = _siguiente_numero_lito()
+    doc_ref = get_client().collection("lito_cotizaciones").document()
+    data = {
+        "numero": numero,
+        "creado_en": datetime.now().isoformat(timespec="seconds"),
+    }
+    data.update(campos)
+    doc_ref.set(data)
+    return {"id": doc_ref.id, "numero": numero}
+
+
+def update_lito_cotizacion(cotizacion_id, **kwargs):
+    if kwargs:
+        get_client().collection("lito_cotizaciones").document(cotizacion_id).update(kwargs)
+
+
+def delete_lito_cotizacion(cotizacion_id):
+    get_client().collection("lito_cotizaciones").document(cotizacion_id).delete()
