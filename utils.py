@@ -11,7 +11,10 @@ from fpdf import FPDF
 
 import auth
 import database as db
-from config import CATEGORICAL, EMPRESA_NOMBRE, GRIDLINE, INK_MUTED, INK_PRIMARY, ROLES_LABEL, SURFACE
+from config import (
+    CATEGORICAL, EMPRESA_DIRECCION_LINEA1, EMPRESA_DIRECCION_LINEA2, EMPRESA_NOMBRE, GRIDLINE, INK_MUTED,
+    INK_PRIMARY, LOGO_PATH, ROLES_LABEL, SURFACE,
+)
 
 
 def money(v):
@@ -434,5 +437,133 @@ def diseno_pdf_bytes(d: dict, vendedor_nombre: str) -> bytes:
     pdf.set_font("Helvetica", "I", 9)
     pdf.set_text_color(120, 120, 120)
     pdf.multi_cell(0, 5, _pdf_safe("Documento generado automáticamente por la Plataforma Comercial - Visión Digital."))
+
+    return bytes(pdf.output())
+
+
+def pedido_pdf_bytes(p: dict) -> bytes:
+    """Genera el PDF de 'ENVÍO No. ____' de un pedido de Logística, con el
+    mismo diseño que la libreta física de envíos que se usaba en papel
+    (encabezado con logo y número de envío, datos de FECHA/ATENCIÓN A/
+    CLIENTE/DIRECCIÓN, tabla de CANTIDAD/DESCRIPCIÓN y las líneas de firma
+    ENVÍA/RECIBE al final)."""
+    pdf = FPDF(format="Letter")
+    pdf.add_page()
+    pdf.set_auto_page_break(auto=True, margin=12)
+
+    # -- Encabezado: logo a la izquierda, caja "ENVÍO No." a la derecha -----
+    try:
+        pdf.image(LOGO_PATH, x=10, y=10, w=42)
+    except Exception:
+        pdf.set_font("Helvetica", "B", 16)
+        pdf.set_xy(10, 12)
+        pdf.cell(60, 8, _pdf_safe(EMPRESA_NOMBRE))
+
+    caja_x, caja_w = 138, 64
+    pdf.set_fill_color(20, 20, 20)
+    pdf.set_text_color(255, 255, 255)
+    pdf.set_font("Helvetica", "B", 11)
+    pdf.set_xy(caja_x, 12)
+    pdf.cell(caja_w, 8, _pdf_safe("ENVÍO No."), border=0, align="C", fill=True)
+
+    numero_envio = p.get("numero_envio")
+    texto_numero = f"No. {numero_envio:04d}" if isinstance(numero_envio, int) else "No. ____"
+    pdf.set_text_color(0, 0, 0)
+    pdf.set_draw_color(0, 0, 0)
+    pdf.set_font("Helvetica", "B", 13)
+    pdf.set_xy(caja_x, 20)
+    pdf.cell(caja_w, 10, _pdf_safe(texto_numero), border=1, align="C")
+
+    pdf.set_font("Helvetica", "", 9)
+    pdf.set_text_color(60, 60, 60)
+    pdf.set_xy(caja_x, 32)
+    pdf.cell(caja_w, 5, _pdf_safe(EMPRESA_DIRECCION_LINEA1), align="C")
+    pdf.set_xy(caja_x, 37)
+    pdf.cell(caja_w, 5, _pdf_safe(EMPRESA_DIRECCION_LINEA2), align="C")
+    pdf.set_text_color(0, 0, 0)
+
+    # -- Datos del envío: FECHA / ATENCIÓN A / CLIENTE / DIRECCIÓN ----------
+    fecha_txt = p.get("fecha") or ""
+    if len(fecha_txt) == 10 and fecha_txt[4] == "-":
+        fecha_txt = f"{fecha_txt[8:10]}/{fecha_txt[5:7]}/{fecha_txt[0:4]}"
+
+    campos = [
+        ("FECHA:", fecha_txt or "—"),
+        ("ATENCIÓN A:", p.get("atencion_a") or "—"),
+        ("CLIENTE:", p.get("cliente") or "—"),
+        ("DIRECCIÓN:", p.get("direccion") or "—"),
+    ]
+    box_y0, fila_h, box_w = 52, 9, 190
+    pdf.set_draw_color(150, 150, 150)
+    pdf.rect(10, box_y0, box_w, fila_h * len(campos))
+    for i, (etiqueta, valor) in enumerate(campos):
+        fila_y = box_y0 + i * fila_h
+        if i > 0:
+            pdf.line(10, fila_y, 10 + box_w, fila_y)
+        pdf.set_font("Helvetica", "B", 10)
+        pdf.set_xy(13, fila_y + 2.3)
+        pdf.cell(35, 5, _pdf_safe(etiqueta))
+        pdf.set_font("Helvetica", "", 10)
+        pdf.set_xy(45, fila_y + 2.3)
+        pdf.cell(box_w - 38, 5, _pdf_safe(valor))
+
+    # -- Tabla CANTIDAD / DESCRIPCIÓN ----------------------------------------
+    productos = [
+        it for it in (p.get("productos") or [])
+        if (it.get("cantidad") or "").strip() or (it.get("descripcion") or "").strip()
+    ]
+    if not productos and p.get("producto"):
+        productos = [{"cantidad": "", "descripcion": p["producto"]}]
+
+    tabla_y0 = box_y0 + fila_h * len(campos) + 6
+    col_cant_w, col_desc_w = 35, box_w - 35
+    fila_tabla_h = 8
+    num_filas = max(10, len(productos) + 1)
+
+    pdf.set_xy(10, tabla_y0)
+    pdf.set_fill_color(20, 20, 20)
+    pdf.set_text_color(255, 255, 255)
+    pdf.set_font("Helvetica", "B", 10)
+    pdf.cell(col_cant_w, fila_tabla_h, _pdf_safe("CANTIDAD"), border=0, align="C", fill=True)
+    pdf.cell(col_desc_w, fila_tabla_h, _pdf_safe("DESCRIPCIÓN"), border=0, align="C", fill=True)
+    pdf.set_text_color(0, 0, 0)
+
+    pdf.set_font("Helvetica", "", 10)
+    pdf.set_draw_color(150, 150, 150)
+    line_h = 5
+    fila_y = tabla_y0 + fila_tabla_h
+    for i in range(num_filas):
+        cant = productos[i]["cantidad"] if i < len(productos) else ""
+        desc = productos[i]["descripcion"] if i < len(productos) else ""
+        desc_txt = _pdf_safe(f" {desc}") if desc else ""
+        if desc_txt:
+            # Calcula cuántas líneas necesita la descripción para no salirse
+            # de su columna (pedidos con varios productos largos) y usa esa
+            # altura para ambas celdas de la fila, para que el borde quede
+            # parejo entre "Cantidad" y "Descripción".
+            lineas = pdf.multi_cell(col_desc_w, line_h, desc_txt, dry_run=True, output="LINES")
+            alto_fila = max(fila_tabla_h, len(lineas) * line_h + 3)
+        else:
+            alto_fila = fila_tabla_h
+        pdf.set_xy(10, fila_y)
+        pdf.cell(col_cant_w, alto_fila, _pdf_safe(cant), border=1, align="C")
+        pdf.set_xy(10 + col_cant_w, fila_y)
+        pdf.multi_cell(col_desc_w, line_h, desc_txt, border=1)
+        fila_y += alto_fila
+
+    # -- Firmas: ENVÍA / RECIBE ----------------------------------------------
+    firmas_y = fila_y + 18
+    pdf.set_draw_color(0, 0, 0)
+    pdf.line(15, firmas_y, 95, firmas_y)
+    pdf.line(115, firmas_y, 195, firmas_y)
+    pdf.set_font("Helvetica", "", 9)
+    pdf.set_xy(15, firmas_y + 2)
+    pdf.cell(80, 5, _pdf_safe("ENVÍA"), align="C")
+    pdf.set_xy(115, firmas_y + 2)
+    pdf.cell(80, 5, _pdf_safe("RECIBE"), align="C")
+    pdf.set_xy(15, firmas_y + 7)
+    pdf.cell(80, 5, _pdf_safe("Firma y Nombre"), align="C")
+    pdf.set_xy(115, firmas_y + 7)
+    pdf.cell(80, 5, _pdf_safe("Firma, Nombre y Sello."), align="C")
 
     return bytes(pdf.output())
