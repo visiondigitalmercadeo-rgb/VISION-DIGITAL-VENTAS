@@ -482,7 +482,7 @@ def pedido_pdf_bytes(p: dict) -> bytes:
     pdf.cell(caja_w, 5, _pdf_safe(EMPRESA_DIRECCION_LINEA2), align="C")
     pdf.set_text_color(0, 0, 0)
 
-    # -- Datos del envío: FECHA / ATENCIÓN A / CLIENTE / DIRECCIÓN ----------
+    # -- Datos del envío: FECHA / ATENCIÓN A / CLIENTE / DIRECCIÓN / N° ORDEN --
     fecha_txt = p.get("fecha") or ""
     if len(fecha_txt) == 10 and fecha_txt[4] == "-":
         fecha_txt = f"{fecha_txt[8:10]}/{fecha_txt[5:7]}/{fecha_txt[0:4]}"
@@ -492,6 +492,7 @@ def pedido_pdf_bytes(p: dict) -> bytes:
         ("ATENCIÓN A:", p.get("atencion_a") or "—"),
         ("CLIENTE:", p.get("cliente") or "—"),
         ("DIRECCIÓN:", p.get("direccion") or "—"),
+        ("N° ORDEN:", p.get("numero_orden") or "—"),
     ]
     box_y0, fila_h, box_w = 52, 9, 190
     pdf.set_draw_color(150, 150, 150)
