@@ -34,7 +34,7 @@ def _mostrar_adjunto(etiqueta, prefijo_key, nombre, tipo, b64):
     mostrado_como_imagen = False
     if tipo and tipo.startswith("image/"):
         try:
-            st.image(datos, use_container_width=True)
+            st.image(datos, width="stretch")
             mostrado_como_imagen = True
         except Exception:
             # Si el archivo quedó dañado o no se puede decodificar como imagen,
@@ -399,6 +399,9 @@ def _render_editar_maquina_inline(maquina, key_suffix):
             "Tipo de máquina (ej. Impresora, Troqueladora)", value=maquina.get("tipo_maquina") or "",
         )
         serie_ed = st.text_input("Número de serie", value=maquina.get("numero_serie") or "")
+        codigo_gasto_ed = st.text_input(
+            "Código alterno de gasto", value=maquina.get("codigo_alterno_gasto") or "",
+        )
         planta_ed = st.selectbox(
             "Planta", PLANTAS_MAQUINARIA,
             index=PLANTAS_MAQUINARIA.index(maquina["planta"]) if maquina["planta"] in PLANTAS_MAQUINARIA else 0,
@@ -411,6 +414,7 @@ def _render_editar_maquina_inline(maquina, key_suffix):
                 db.update_maquina(
                     maquina["id"], nombre=nombre_ed.strip(), tipo_maquina=tipo_ed.strip() or None,
                     numero_serie=serie_ed.strip() or None, planta=planta_ed,
+                    codigo_alterno_gasto=codigo_gasto_ed.strip() or None,
                 )
                 st.session_state.pop(f"mant_editando_maq_{key_suffix}", None)
                 st.success("Máquina actualizada.")
@@ -435,6 +439,8 @@ if maquina_sel_id:
         detalle = f"{maquina['tipo_maquina']} · {detalle}"
     if maquina.get("numero_serie"):
         detalle += f" · Serie: {maquina['numero_serie']}"
+    if maquina.get("codigo_alterno_gasto"):
+        detalle += f" · Código alterno de gasto: {maquina['codigo_alterno_gasto']}"
     st.caption(detalle)
 
     preventivos = db.list_mantenimientos_maquina(maquina_sel_id, tipo="Preventivo")
@@ -477,6 +483,9 @@ if maquina_sel_id:
                     "Tipo de máquina (ej. Impresora, Troqueladora)", value=maquina.get("tipo_maquina") or "",
                 )
                 serie_maq_ed = st.text_input("Número de serie", value=maquina.get("numero_serie") or "")
+                codigo_gasto_maq_ed = st.text_input(
+                    "Código alterno de gasto", value=maquina.get("codigo_alterno_gasto") or "",
+                )
                 planta_maq_ed = st.selectbox(
                     "Planta", PLANTAS_MAQUINARIA,
                     index=PLANTAS_MAQUINARIA.index(maquina["planta"]) if maquina["planta"] in PLANTAS_MAQUINARIA else 0,
@@ -489,6 +498,7 @@ if maquina_sel_id:
                             maquina_sel_id, nombre=nombre_maq_ed.strip(),
                             tipo_maquina=tipo_maq_ed.strip() or None,
                             numero_serie=serie_maq_ed.strip() or None, planta=planta_maq_ed,
+                            codigo_alterno_gasto=codigo_gasto_maq_ed.strip() or None,
                         )
                         st.success("Máquina actualizada.")
                         st.rerun()
@@ -596,6 +606,8 @@ else:
                             st.caption(maq.get("tipo_maquina") or "Tipo no especificado")
                             if maq.get("numero_serie"):
                                 st.caption(f"Serie: {maq['numero_serie']}")
+                            if maq.get("codigo_alterno_gasto"):
+                                st.caption(f"Código alterno de gasto: {maq['codigo_alterno_gasto']}")
                             n_prev = len(db.list_mantenimientos_maquina(maq["id"], tipo="Preventivo"))
                             n_corr = len(db.list_mantenimientos_maquina(maq["id"], tipo="Correctivo"))
                             st.caption(f"🛠️ {n_prev} preventivo(s) · 🔧 {n_corr} correctivo(s)")
@@ -614,6 +626,7 @@ else:
                             "¿Qué máquina es? (ej. Impresora, Troqueladora, Guillotina, Plotter...)",
                         )
                         serie_maq = st.text_input("Número de serie (si aplica)")
+                        codigo_gasto_maq = st.text_input("Código alterno de gasto (opcional)")
                         if st.form_submit_button("Registrar máquina", use_container_width=True):
                             if not nombre_maq.strip():
                                 st.error("El nombre de la máquina es obligatorio.")
@@ -621,6 +634,7 @@ else:
                                 db.create_maquina(
                                     nombre_maq.strip(), tipo_maq.strip() or None, planta,
                                     serie_maq.strip() or None,
+                                    codigo_alterno_gasto=codigo_gasto_maq.strip() or None,
                                 )
                                 st.success(f"Máquina '{nombre_maq}' registrada en Planta {planta}.")
                                 st.rerun()
