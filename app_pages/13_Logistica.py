@@ -45,6 +45,87 @@ puede_cambiar_estado = rol in ("admin", "jefe_logistica", "repartidor")
 hoy = date.today()
 manana = hoy + timedelta(days=1)
 
+
+def _render_pedido_edit_form(p, editando_key, vendedores_op, repartidores_op, lookup_vendedores, todos_usuarios):
+    """Formulario de edición en línea del pedido (se abre con el lápiz ✏️ de
+    la tarjeta) — mismo patrón que el lápiz de Prospección. Solo se llama
+    para jefe de logística y admin (puede_crear)."""
+    pid = p["id"]
+    with st.form(f"log_editar_form_{pid}"):
+        c1, c2 = st.columns(2)
+        cliente_ed = c1.text_input("Nombre del cliente", value=p.get("cliente") or "")
+        direccion_ed = c2.text_input("Dirección de entrega", value=p.get("direccion") or "")
+        c3, c4 = st.columns(2)
+        zona_ed = c3.selectbox(
+            "Zona", ZONAS_CAPITAL,
+            index=ZONAS_CAPITAL.index(p["zona"]) if p.get("zona") in ZONAS_CAPITAL else 0,
+        )
+        franja_ed = c4.selectbox(
+            "Franja", FRANJAS_PEDIDO,
+            index=FRANJAS_PEDIDO.index(p["franja"]) if p.get("franja") in FRANJAS_PEDIDO else 0,
+        )
+        c5, c6 = st.columns(2)
+        producto_ed = c5.text_input("Producto / descripción", value=p.get("producto") or "")
+        numero_orden_ed = c6.text_input("N° orden/factura", value=p.get("numero_orden") or "")
+        fecha_ed = st.date_input(
+            "Fecha de entrega",
+            value=date.fromisoformat(p["fecha"]) if p.get("fecha") else date.today(),
+        )
+        tipo_ruta_ed = st.selectbox(
+            "Tipo de ruta", TIPOS_RUTA_PEDIDO,
+            index=TIPOS_RUTA_PEDIDO.index(p["tipo_ruta"]) if p.get("tipo_ruta") in TIPOS_RUTA_PEDIDO else 0,
+        )
+        nombre_vendedor_actual = db.nombre_vendedor(p.get("vendedor_id"), lookup_vendedores)
+        c7, c8 = st.columns(2)
+        vendedor_nombre_ed = c7.selectbox(
+            "Vendedor", list(vendedores_op.keys()),
+            index=list(vendedores_op.keys()).index(nombre_vendedor_actual)
+            if nombre_vendedor_actual in vendedores_op else 0,
+        )
+        nombre_repartidor_actual = db.nombre_vendedor(p.get("repartidor_id"), todos_usuarios)
+        repartidor_nombre_ed = c8.selectbox(
+            "Repartidor asignado", list(repartidores_op.keys()),
+            index=list(repartidores_op.keys()).index(nombre_repartidor_actual)
+            if nombre_repartidor_actual in repartidores_op else 0,
+        )
+        notas_ed = st.text_area(
+            "Notas", value=p.get("notas") or "",
+            help="Por ejemplo, el motivo si el pedido no se pudo entregar.",
+        )
+        colg1, colg2 = st.columns(2)
+        guardar = colg1.form_submit_button("💾 Guardar", use_container_width=True)
+        cancelar = colg2.form_submit_button("Cancelar", use_container_width=True)
+        if guardar:
+            if not cliente_ed.strip() or not direccion_ed.strip():
+                st.error("El nombre del cliente y la dirección son obligatorios.")
+            else:
+                db.update_pedido(
+                    pid, cliente=cliente_ed.strip(), direccion=direccion_ed.strip(),
+                    zona=zona_ed, franja=franja_ed, producto=producto_ed.strip(),
+                    numero_orden=numero_orden_ed.strip(), fecha=str(fecha_ed),
+                    tipo_ruta=tipo_ruta_ed,
+                    vendedor_id=vendedores_op.get(vendedor_nombre_ed),
+                    repartidor_id=repartidores_op.get(repartidor_nombre_ed),
+                    notas=notas_ed.strip() or None,
+                )
+                st.session_state.pop(editando_key, None)
+                st.success("Pedido actualizado.")
+                st.rerun()
+        if cancelar:
+            st.session_state.pop(editando_key, None)
+            st.rerun()
+
+    with st.expander("🗑️ Eliminar este pedido"):
+        st.caption("Esto elimina el pedido por completo de la ruta (no se puede deshacer).")
+        confirmar_borrar = st.checkbox(
+            "Confirmo que deseo eliminar este pedido", key=f"log_conf_del_{pid}",
+        )
+        if st.button("Eliminar pedido", key=f"log_btn_del_{pid}", disabled=not confirmar_borrar):
+            db.delete_pedido(pid)
+            st.session_state.pop(editando_key, None)
+            st.success("Pedido eliminado.")
+            st.rerun()
+
 tab_vista, tab_nueva = st.tabs(["🗺️ Vista de la ruta", "➕ Nuevo pedido"])
 
 # --------------------------------------------------------------------------
@@ -69,6 +150,12 @@ with tab_vista:
     # combinan las dos listas (sin duplicar nombres) para poder mostrar el
     # nombre correcto.
     lookup_vendedores = _combinar_vendedores(todos_usuarios, db.list_logistica_vendedores(solo_activos=False))
+    # Opciones para el formulario de edición en línea (lápiz ✏️) de cada tarjeta.
+    vendedores_op_todos = {
+        v["nombre"]: v["id"] for v in
+        _combinar_vendedores(db.list_vendedores(solo_activos=False), db.list_logistica_vendedores(solo_activos=False))
+    }
+    repartidores_op_todos = {r["nombre"]: r["id"] for r in db.list_repartidores(solo_activos=False)}
 
     todos_los_pedidos = hoy_am + hoy_pm + manana_am
     if todos_los_pedidos:
@@ -98,7 +185,18 @@ with tab_vista:
                 st.caption("Sin pedidos.")
             for p in items:
                 with st.container(border=True):
-                    st.markdown(f"{ESTADO_EMOJI.get(p.get('estado'), '')} **{p.get('cliente') or 'Sin cliente'}**")
+                    pid = p["id"]
+                    editando_key = f"log_editando_{pid}"
+
+                    title_col, edit_col = st.columns([5, 1])
+                    with title_col:
+                        st.markdown(f"{ESTADO_EMOJI.get(p.get('estado'), '')} **{p.get('cliente') or 'Sin cliente'}**")
+                    with edit_col:
+                        if puede_crear:
+                            if st.button("✏️", key=f"log_editar_{pid}", help="Editar este pedido"):
+                                st.session_state[editando_key] = not st.session_state.get(editando_key, False)
+                                st.rerun()
+
                     st.caption(f"📍 {p.get('direccion') or '—'} · {p.get('zona') or '—'}")
                     if p.get("producto"):
                         st.caption(f"📦 {p['producto']}")
@@ -112,32 +210,41 @@ with tab_vista:
                     if p.get("notas"):
                         st.caption(f"📝 {p['notas']}")
 
-                    if puede_cambiar_estado:
+                    if puede_crear and st.session_state.get(editando_key):
+                        # --------------------------------------------------
+                        # Edición en línea (se abrió con el lápiz ✏️) — solo
+                        # jefe de logística y admin.
+                        # --------------------------------------------------
+                        _render_pedido_edit_form(
+                            p, editando_key, vendedores_op_todos, repartidores_op_todos,
+                            lookup_vendedores, todos_usuarios,
+                        )
+                    elif puede_cambiar_estado:
                         estado_actual = p.get("estado") if p.get("estado") in ESTADOS_PEDIDO else ESTADOS_PEDIDO[0]
                         siguiente = ESTADOS_PEDIDO[(ESTADOS_PEDIDO.index(estado_actual) + 1) % len(ESTADOS_PEDIDO)]
                         if st.button(
-                            f"➡️ Marcar como «{siguiente}»", key=f"log_avanzar_{p['id']}", use_container_width=True,
+                            f"➡️ Marcar como «{siguiente}»", key=f"log_avanzar_{pid}", use_container_width=True,
                         ):
-                            db.update_pedido(p["id"], estado=siguiente)
+                            db.update_pedido(pid, estado=siguiente)
                             st.rerun()
 
     st.divider()
 
     # ----------------------------------------------------------------------
-    # Editar un pedido: jefe de logística / admin editan todos los datos;
-    # repartidor solo puede agregar una nota a lo suyo (el estado se cambia
-    # con el botón de la tarjeta, arriba).
+    # Jefe de logística y admin ya editan todo desde el lápiz ✏️ de la
+    # tarjeta, arriba. El repartidor no ve ese lápiz — aquí solo puede
+    # agregar una nota a sus pedidos (el estado lo cambia con el botón
+    # «Marcar como…» de la tarjeta).
     # ----------------------------------------------------------------------
-    if puede_cambiar_estado:
-        st.markdown("#### ✏️ Editar datos o nota de un pedido")
+    if rol == "repartidor":
+        st.markdown("#### 📝 Agregar nota a un pedido")
         st.caption("Para cambiar el estado, usa el botón «Marcar como…» en la tarjeta del pedido, arriba.")
         gestionables = todos_los_pedidos
         if not gestionables:
             st.caption("No hay pedidos para gestionar con estos filtros.")
         else:
             opciones = {
-                f"[{p['fecha']} {p['franja']}] {p.get('cliente') or 'Sin cliente'} — "
-                f"{db.nombre_vendedor(p.get('repartidor_id'), todos_usuarios)}": p["id"]
+                f"[{p['fecha']} {p['franja']}] {p.get('cliente') or 'Sin cliente'}": p["id"]
                 for p in gestionables
             }
             elegido = st.selectbox("Selecciona un pedido", ["—"] + list(opciones.keys()), key="log_gestionar_select")
@@ -146,93 +253,19 @@ with tab_vista:
                 p = db.get_pedido(pid)
 
                 with st.form(f"gestionar_pedido_{pid}"):
-                    if puede_crear:
-                        c1, c2 = st.columns(2)
-                        cliente_ed = c1.text_input("Nombre del cliente", value=p.get("cliente") or "")
-                        direccion_ed = c2.text_input("Dirección de entrega", value=p.get("direccion") or "")
-                        c3, c4 = st.columns(2)
-                        zona_ed = c3.selectbox(
-                            "Zona", ZONAS_CAPITAL,
-                            index=ZONAS_CAPITAL.index(p["zona"]) if p.get("zona") in ZONAS_CAPITAL else 0,
-                        )
-                        franja_ed = c4.selectbox(
-                            "Franja", FRANJAS_PEDIDO,
-                            index=FRANJAS_PEDIDO.index(p["franja"]) if p.get("franja") in FRANJAS_PEDIDO else 0,
-                        )
-                        c5, c6 = st.columns(2)
-                        producto_ed = c5.text_input("Producto / descripción", value=p.get("producto") or "")
-                        numero_orden_ed = c6.text_input("N° orden/factura", value=p.get("numero_orden") or "")
-                        fecha_ed = st.date_input(
-                            "Fecha de entrega",
-                            value=date.fromisoformat(p["fecha"]) if p.get("fecha") else date.today(),
-                        )
-                        tipo_ruta_ed = st.selectbox(
-                            "Tipo de ruta", TIPOS_RUTA_PEDIDO,
-                            index=TIPOS_RUTA_PEDIDO.index(p["tipo_ruta"]) if p.get("tipo_ruta") in TIPOS_RUTA_PEDIDO else 0,
-                        )
-
-                        vendedores_op = {
-                            v["nombre"]: v["id"] for v in _combinar_vendedores(
-                                db.list_vendedores(solo_activos=False), db.list_logistica_vendedores(solo_activos=False),
-                            )
-                        }
-                        nombre_vendedor_actual = db.nombre_vendedor(p.get("vendedor_id"), lookup_vendedores)
-                        c7, c8 = st.columns(2)
-                        vendedor_nombre_ed = c7.selectbox(
-                            "Vendedor", list(vendedores_op.keys()),
-                            index=list(vendedores_op.keys()).index(nombre_vendedor_actual)
-                            if nombre_vendedor_actual in vendedores_op else 0,
-                        )
-                        repartidores_op = {r["nombre"]: r["id"] for r in db.list_repartidores(solo_activos=False)}
-                        nombre_repartidor_actual = db.nombre_vendedor(p.get("repartidor_id"), todos_usuarios)
-                        repartidor_nombre_ed = c8.selectbox(
-                            "Repartidor asignado", list(repartidores_op.keys()),
-                            index=list(repartidores_op.keys()).index(nombre_repartidor_actual)
-                            if nombre_repartidor_actual in repartidores_op else 0,
-                        )
-                    else:
-                        st.caption(f"Cliente: **{p.get('cliente') or '—'}**")
-                        st.caption(f"Dirección: {p.get('direccion') or '—'} · {p.get('zona') or '—'}")
-                        st.caption(f"Producto: {p.get('producto') or '—'}")
-                        st.caption(f"Fecha/franja: {p.get('fecha') or '—'} {p.get('franja') or ''}")
-
+                    st.caption(f"Cliente: **{p.get('cliente') or '—'}**")
+                    st.caption(f"Dirección: {p.get('direccion') or '—'} · {p.get('zona') or '—'}")
+                    st.caption(f"Producto: {p.get('producto') or '—'}")
+                    st.caption(f"Fecha/franja: {p.get('fecha') or '—'} {p.get('franja') or ''}")
                     notas_ed = st.text_area(
                         "Notas", value=p.get("notas") or "",
                         help="Por ejemplo, el motivo si el pedido no se pudo entregar.",
                     )
-
-                    if puede_crear:
-                        colf1, colf2 = st.columns(2)
-                        guardar = colf1.form_submit_button("Guardar cambios", use_container_width=True)
-                        eliminar = colf2.form_submit_button("Eliminar pedido", use_container_width=True)
-                    else:
-                        guardar = st.form_submit_button("Guardar nota", use_container_width=True)
-                        eliminar = False
-
-                    if guardar:
-                        update_kwargs = {"notas": notas_ed.strip() or None}
-                        if puede_crear:
-                            if not cliente_ed.strip() or not direccion_ed.strip():
-                                st.error("El nombre del cliente y la dirección son obligatorios.")
-                                update_kwargs = None
-                            else:
-                                update_kwargs.update(
-                                    cliente=cliente_ed.strip(), direccion=direccion_ed.strip(),
-                                    zona=zona_ed, franja=franja_ed, producto=producto_ed.strip(),
-                                    numero_orden=numero_orden_ed.strip(), fecha=str(fecha_ed),
-                                    tipo_ruta=tipo_ruta_ed,
-                                    vendedor_id=vendedores_op.get(vendedor_nombre_ed),
-                                    repartidor_id=repartidores_op.get(repartidor_nombre_ed),
-                                )
-                        if update_kwargs:
-                            db.update_pedido(pid, **update_kwargs)
-                            st.success("Pedido actualizado.")
-                            st.rerun()
-                    if eliminar:
-                        db.delete_pedido(pid)
-                        st.success("Pedido eliminado.")
+                    if st.form_submit_button("Guardar nota", use_container_width=True):
+                        db.update_pedido(pid, notas=notas_ed.strip() or None)
+                        st.success("Nota guardada.")
                         st.rerun()
-    else:
+    elif not puede_cambiar_estado:
         st.caption("Tu rol es de solo vista para la ruta de reparto.")
 
 # --------------------------------------------------------------------------
