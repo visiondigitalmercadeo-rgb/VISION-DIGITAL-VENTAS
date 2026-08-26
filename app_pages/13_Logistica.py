@@ -109,7 +109,7 @@ def _render_pedido_edit_form(p, editando_key, vendedores_op, repartidores_op, lo
     with st.form(f"log_editar_form_{pid}"):
         c1, c2 = st.columns(2)
         cliente_ed = c1.text_input("Nombre del cliente", value=p.get("cliente") or "")
-        direccion_ed = c2.text_input("Dirección de entrega", value=p.get("direccion") or "")
+        direccion_ed = c2.text_input("Área/Departamento", value=p.get("direccion") or "")
         c3, c4 = st.columns(2)
         zona_ed = c3.selectbox(
             "Zona", ZONAS_CAPITAL,
@@ -152,7 +152,7 @@ def _render_pedido_edit_form(p, editando_key, vendedores_op, repartidores_op, lo
         cancelar = colg2.form_submit_button("Cancelar", use_container_width=True)
         if guardar:
             if not cliente_ed.strip() or not direccion_ed.strip():
-                st.error("El nombre del cliente y la dirección son obligatorios.")
+                st.error("El nombre del cliente y el área/departamento son obligatorios.")
             else:
                 db.update_pedido(
                     pid, cliente=cliente_ed.strip(), direccion=direccion_ed.strip(),
@@ -217,7 +217,7 @@ with tab_vista:
         download_excel_button(
             pd.DataFrame([{
                 "Fecha": p.get("fecha"), "Franja": p.get("franja"), "Cliente": p.get("cliente"),
-                "Dirección": p.get("direccion"), "Zona": p.get("zona"), "Producto": p.get("producto"),
+                "Área/Departamento": p.get("direccion"), "Zona": p.get("zona"), "Producto": p.get("producto"),
                 "N° orden/factura": p.get("numero_orden"),
                 "Tipo de ruta": p.get("tipo_ruta") or "—",
                 "Vendedor": db.nombre_vendedor(p.get("vendedor_id"), lookup_vendedores),
@@ -327,7 +327,7 @@ with tab_vista:
 
                 with st.form(f"gestionar_pedido_{pid}"):
                     st.caption(f"Cliente: **{p.get('cliente') or '—'}**")
-                    st.caption(f"Dirección: {p.get('direccion') or '—'} · {p.get('zona') or '—'}")
+                    st.caption(f"Área/Departamento: {p.get('direccion') or '—'} · {p.get('zona') or '—'}")
                     st.caption(f"Producto: {p.get('producto') or '—'}")
                     st.caption(f"Fecha/franja: {p.get('fecha') or '—'} {p.get('franja') or ''}")
                     notas_ed = st.text_area(
@@ -368,7 +368,7 @@ with tab_nueva:
                 franja = c2.radio("Franja", FRANJAS_PEDIDO, horizontal=True)
 
                 cliente = st.text_input("Nombre del cliente")
-                direccion = st.text_input("Dirección de entrega")
+                direccion = st.text_input("Área/Departamento")
                 c3, c4 = st.columns(2)
                 zona = c3.selectbox("Zona de la capital", ZONAS_CAPITAL)
                 numero_orden = c4.text_input("N° de orden o factura (opcional)")
@@ -383,7 +383,7 @@ with tab_nueva:
 
                 if st.form_submit_button("Registrar pedido", use_container_width=True):
                     if not cliente.strip() or not direccion.strip():
-                        st.error("El nombre del cliente y la dirección son obligatorios.")
+                        st.error("El nombre del cliente y el área/departamento son obligatorios.")
                     else:
                         vendedor_id = next(v["id"] for v in vendedores_disp if v["nombre"] == vendedor_nombre_sel)
                         repartidor_id = next(r["id"] for r in repartidores_disp if r["nombre"] == repartidor_nombre_sel)
