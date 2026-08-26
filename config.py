@@ -219,6 +219,10 @@ ESTADOS_PENDIENTE_MERCADEO = ["Pendiente", "En proceso", "Resuelto"]
 PLANTAS_MAQUINARIA = ["Offset", "Digital", "Valloy"]
 MANTENIMIENTO_ARCHIVO_MAX_BYTES = 900_000  # ~900 KB — mismo límite práctico que Diseño/Capacitación
 TIPOS_MANTENIMIENTO = ["Preventivo", "Correctivo"]
+# Motivo por el que se cambió una pieza en un mantenimiento — selección
+# múltiple porque a veces aplica más de un motivo a la vez. "Otro" pide un
+# detalle específico aparte (ver MOTIVO_OTRO_CAMBIO_PIEZA en la página).
+MOTIVOS_CAMBIO_PIEZA = ["Desgaste", "Mal uso", "Tema eléctrico", "Adaptación", "Sustitución", "Otro"]
 
 LINEAS_VENTA = [
     "AFICHE",
