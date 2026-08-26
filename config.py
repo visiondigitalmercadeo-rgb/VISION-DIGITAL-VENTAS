@@ -45,7 +45,7 @@ SURFACE = "#fcfcfb"
 ROLES = [
     "admin", "vendedor", "vista", "mercadeo", "jefe_planta", "disenador", "disenador_alvaro",
     "jefe_logistica", "repartidor", "jefe_capacitacion", "asistente_capacitacion",
-    "anfitriona", "jefe_tienda", "subjefe_tienda", "asesor_ventas", "cajero",
+    "anfitriona", "jefe_tienda", "subjefe_tienda", "asesor_ventas", "cajero", "cotizadora",
 ]
 ROLES_LABEL = {
     "admin": "Administrador",
@@ -64,6 +64,7 @@ ROLES_LABEL = {
     "subjefe_tienda": "Sub jefe de tienda",
     "asesor_ventas": "Asesor de ventas",
     "cajero": "Cajero",
+    "cotizadora": "Cotizadora (Litografía)",
 }
 
 # Roles que pertenecen a una tienda específica (necesitan el campo "tienda"
