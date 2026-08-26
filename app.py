@@ -108,6 +108,12 @@ elif rol in ("anfitriona", "jefe_tienda", "subjefe_tienda", "asesor_ventas", "ca
     # ven la tienda asignada a su usuario). El resto del personal de tienda
     # (acabados, express) no tiene usuario propio.
     pages = [tickets_tienda]
+elif rol == "cotizadora":
+    # El rol 'cotizadora' solo tiene acceso a la pestaña de Litografía, donde
+    # tiene control total: crear/editar/eliminar cotizaciones y administrar
+    # los catálogos de máquinas y papel (ver auth.puede_gestionar_litografia
+    # y auth.puede_administrar_catalogos_litografia).
+    pages = [litografia]
 else:
     pages = [
         inicio, prospectos, llamadas, citas, mercadeo, cotizaciones, reclamos,
