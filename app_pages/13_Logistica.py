@@ -20,6 +20,25 @@ st.caption(
 
 ESTADO_EMOJI = {"Pendiente": "⚪", "En ruta": "🔵", "Entregado": "🟢", "No entregado": "🔴"}
 
+
+def _combinar_vendedores(*listas):
+    """Combina varias listas de vendedores (usuarios con rol 'vendedor' +
+    la lista adicional de Logística) quitando duplicados por nombre — si la
+    misma persona aparece en más de una lista (por ejemplo porque ya tenía
+    usuario y además se agregó a la lista adicional), se queda con la
+    primera aparición, así que los usuarios con acceso al sistema tienen
+    prioridad sobre la lista adicional."""
+    vistos = set()
+    combinados = []
+    for lista in listas:
+        for v in lista:
+            clave = (v.get("nombre") or "").strip().lower()
+            if clave in vistos:
+                continue
+            vistos.add(clave)
+            combinados.append(v)
+    return combinados
+
 puede_crear = rol in ("admin", "jefe_logistica")
 puede_cambiar_estado = rol in ("admin", "jefe_logistica", "repartidor")
 
@@ -47,8 +66,9 @@ with tab_vista:
     todos_usuarios = db.list_usuarios()
     # El "vendedor que hizo la venta" puede ser un usuario con rol 'vendedor'
     # o alguien de la lista adicional de Logística (sin usuario propio) — se
-    # combinan las dos listas para poder mostrar el nombre correcto.
-    lookup_vendedores = todos_usuarios + db.list_logistica_vendedores(solo_activos=False)
+    # combinan las dos listas (sin duplicar nombres) para poder mostrar el
+    # nombre correcto.
+    lookup_vendedores = _combinar_vendedores(todos_usuarios, db.list_logistica_vendedores(solo_activos=False))
 
     todos_los_pedidos = hoy_am + hoy_pm + manana_am
     if todos_los_pedidos:
@@ -152,8 +172,9 @@ with tab_vista:
                         )
 
                         vendedores_op = {
-                            v["nombre"]: v["id"] for v in
-                            db.list_vendedores(solo_activos=False) + db.list_logistica_vendedores(solo_activos=False)
+                            v["nombre"]: v["id"] for v in _combinar_vendedores(
+                                db.list_vendedores(solo_activos=False), db.list_logistica_vendedores(solo_activos=False),
+                            )
                         }
                         nombre_vendedor_actual = db.nombre_vendedor(p.get("vendedor_id"), lookup_vendedores)
                         c7, c8 = st.columns(2)
@@ -222,7 +243,7 @@ with tab_nueva:
         st.info("Solo el jefe de logística y el administrador pueden ingresar pedidos nuevos.")
     else:
         vendedores_disp = sorted(
-            db.list_vendedores(solo_activos=True) + db.list_logistica_vendedores(solo_activos=True),
+            _combinar_vendedores(db.list_vendedores(solo_activos=True), db.list_logistica_vendedores(solo_activos=True)),
             key=lambda v: v["nombre"],
         )
         repartidores_disp = db.list_repartidores(solo_activos=True)
