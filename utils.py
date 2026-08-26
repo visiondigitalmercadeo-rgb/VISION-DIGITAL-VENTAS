@@ -1,121 +1,570 @@
+import base64
+import hashlib
+import html
+import io
+from datetime import date
+
+import pandas as pd
+import plotly.graph_objects as go
 import streamlit as st
+from fpdf import FPDF
 
 import auth
 import database as db
-import public_tickets
-from config import EMPRESA_NOMBRE, FAVICON_PATH, LOGO_PATH
+from config import (
+    CATEGORICAL, EMPRESA_DIRECCION_LINEA1, EMPRESA_DIRECCION_LINEA2, EMPRESA_NOMBRE, GRIDLINE, INK_MUTED,
+    INK_PRIMARY, LOGO_PATH, ROLES_LABEL, SURFACE,
+)
 
-st.set_page_config(page_title=f"{EMPRESA_NOMBRE} — Plataforma Comercial", page_icon=FAVICON_PATH, layout="wide")
 
-try:
-    st.logo(LOGO_PATH, size="large")
-    # st.logo limita la altura a ~32px por defecto; la agrandamos un poco
-    # manteniendo la proporción original del logo (se define solo el alto,
-    # el ancho se ajusta automáticamente).
-    st.markdown(
-        """
-        <style>
-        img[data-testid="stSidebarLogo"] {
-            height: 4.2rem;
-            max-height: none;
-        }
-        </style>
-        """,
-        unsafe_allow_html=True,
+def money(v):
+    try:
+        return f"Q {float(v):,.2f}"
+    except (TypeError, ValueError):
+        return "Q 0.00"
+
+
+def scope_vendedor_id():
+    """Para un vendedor, retorna su propio id (los datos se filtran a lo suyo).
+    Para admin/vista, retorna None (ven todo, con selector opcional)."""
+    u = auth.current_user()
+    if u["rol"] == "vendedor":
+        return u["id"]
+    return None
+
+
+def vendedor_filter_selector(label="Vendedor", key="vendedor_filter"):
+    """Selector de vendedor para admin/vista. Devuelve el id elegido o None (todos)."""
+    u = auth.current_user()
+    if u["rol"] == "vendedor":
+        return u["id"]
+    vendedores = db.list_vendedores(solo_activos=False)
+    opciones = {"Todos": None}
+    opciones.update({v["nombre"]: v["id"] for v in vendedores})
+    elegido = st.selectbox(label, list(opciones.keys()), key=key)
+    return opciones[elegido]
+
+
+def sidebar_user_box():
+    u = auth.current_user()
+    with st.sidebar:
+        # Botón de refrescar datos, justo debajo del logo. Solo vuelve a
+        # ejecutar la página actual (st.rerun) — NO recarga el navegador, así
+        # que la sesión (usuario ya logueado) se mantiene y no manda de
+        # regreso a la pantalla de credenciales.
+        _, col_refrescar = st.columns([5, 1])
+        with col_refrescar:
+            if st.button("🔄", key="btn_refrescar_datos", help="Actualizar datos (no cierra tu sesión)"):
+                st.rerun()
+
+        st.markdown("---")
+        st.caption(f"Sesión: **{u['nombre']}**  \nRol: *{ROLES_LABEL.get(u['rol'], u['rol'])}*")
+        if st.button("Cerrar sesión", use_container_width=True):
+            auth.do_logout()
+            st.rerun()
+
+
+def base_layout(fig: go.Figure, title=None, height=380):
+    fig.update_layout(
+        title=title,
+        height=height,
+        plot_bgcolor=SURFACE,
+        paper_bgcolor=SURFACE,
+        font=dict(color=INK_PRIMARY, family="system-ui, -apple-system, Segoe UI, sans-serif"),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
+        margin=dict(l=10, r=10, t=50 if title else 20, b=10),
+        colorway=CATEGORICAL,
     )
-except Exception:
-    pass
+    fig.update_xaxes(showgrid=False, linecolor=GRIDLINE, tickfont=dict(color=INK_MUTED))
+    fig.update_yaxes(showgrid=True, gridcolor=GRIDLINE, tickfont=dict(color=INK_MUTED), zeroline=False)
+    return fig
 
-db.init_db(seed_demo=True)
 
-# ---------------------------------------------------------------------------
-# Rutas públicas del Sistema de Tickets — Tiendas (check-in por QR y pantalla
-# "Ahora atendiendo"). NO requieren haber iniciado sesión, así que se
-# atienden aquí mismo, antes del login, y se detiene la ejecución.
-# ---------------------------------------------------------------------------
-_qp_ticket = st.query_params.get("ticket")
-_qp_pantalla = st.query_params.get("pantalla")
-if _qp_ticket:
-    public_tickets.render_checkin(_qp_ticket)
-    st.stop()
-elif _qp_pantalla:
-    public_tickets.render_pantalla(_qp_pantalla)
-    st.stop()
+def df_or_empty(rows, columns=None):
+    if not rows:
+        return pd.DataFrame(columns=columns or [])
+    return pd.DataFrame(rows)
 
-if not db.firebase_conectado():
-    st.warning(
-        "⚠️ **Firebase todavía no está conectado.** Estás viendo la plataforma en "
-        "**modo de práctica**: los datos son temporales y se pierden al cerrar el servidor. "
-        "Coloca tu archivo `serviceAccountKey.json` (descargado desde Firebase) en la carpeta "
-        "del proyecto y vuelve a iniciar la app para guardar datos de verdad.",
-        icon="⚠️",
+
+def today_str():
+    return str(date.today())
+
+
+def as_lineas_venta(value):
+    """Normaliza el campo 'linea_venta': acepta datos viejos (texto único) o
+    nuevos (lista de productos seleccionados) y siempre retorna una lista."""
+    if isinstance(value, list):
+        return [v for v in value if v]
+    if value:
+        return [value]
+    return []
+
+
+def lineas_venta_display(value):
+    """Texto legible (separado por comas) para mostrar en tablas/reportes."""
+    return ", ".join(as_lineas_venta(value)) or "—"
+
+
+def hora_24_a_12(hhmm):
+    """Convierte 'HH:MM' (24 horas) a (hora_1_12, minuto, 'AM'/'PM')."""
+    from datetime import datetime as _dt
+    try:
+        t = _dt.strptime(hhmm, "%H:%M")
+    except (ValueError, TypeError):
+        t = _dt.now()
+    hora12 = t.hour % 12
+    hora12 = 12 if hora12 == 0 else hora12
+    ampm = "PM" if t.hour >= 12 else "AM"
+    return hora12, t.minute, ampm
+
+
+def hora_12_a_24(hora12, minuto, ampm):
+    """Convierte (hora_1_12, minuto, 'AM'/'PM') a texto 'HH:MM' (24 horas)."""
+    h = hora12 % 12
+    if ampm == "PM":
+        h += 12
+    return f"{h:02d}:{minuto:02d}"
+
+
+def hora_legible(iso_ts):
+    """'2026-08-25T09:14:32' -> '09:14 a.m.'. Devuelve '—' si no hay valor."""
+    if not iso_ts:
+        return "—"
+    from datetime import datetime as _dt
+    try:
+        t = _dt.fromisoformat(iso_ts)
+    except (ValueError, TypeError):
+        return "—"
+    hora12 = t.hour % 12
+    hora12 = 12 if hora12 == 0 else hora12
+    ampm = "a.m." if t.hour < 12 else "p.m."
+    return f"{hora12:02d}:{t.minute:02d} {ampm}"
+
+
+def minutos_entre(inicio_iso, fin_iso=None):
+    """Minutos transcurridos entre dos timestamps ISO ('...T09:14:32'). Si no
+    hay fin_iso, usa la hora actual de Guatemala (para tickets todavía en
+    curso — los timestamps se guardan en hora de Guatemala, así que la hora
+    actual con la que se comparan debe ser la misma). Devuelve None si
+    inicio_iso no existe todavía (esa etapa no ha comenzado)."""
+    if not inicio_iso:
+        return None
+    from datetime import datetime as _dt
+    try:
+        inicio = _dt.fromisoformat(inicio_iso)
+        fin = _dt.fromisoformat(fin_iso) if fin_iso else db.ahora_guatemala()
+    except (ValueError, TypeError):
+        return None
+    return max(0, int((fin - inicio).total_seconds() // 60))
+
+
+def minutos_legible(minutos):
+    """int -> '7 min' o '1 h 12 min'. None -> '—'."""
+    if minutos is None:
+        return "—"
+    if minutos < 60:
+        return f"{minutos} min"
+    h, m = divmod(minutos, 60)
+    return f"{h} h {m} min"
+
+
+def selector_hora(label_prefix, key_prefix, hora12=12, minuto=0, ampm="AM"):
+    """Muestra 3 selectores (Hora 1-12 / Minuto / AM-PM) y retorna el texto
+    'HH:MM' en formato 24 horas, listo para guardar en la base de datos."""
+    c1, c2, c3 = st.columns(3)
+    hora_sel = c1.selectbox(
+        f"{label_prefix} (hora)", list(range(1, 13)),
+        index=list(range(1, 13)).index(hora12), key=f"{key_prefix}_hora",
+    )
+    minutos_opciones = list(range(0, 60))
+    minuto_sel = c2.selectbox(
+        f"{label_prefix} (minutos)", minutos_opciones,
+        index=minutos_opciones.index(minuto), format_func=lambda m: f"{m:02d}",
+        key=f"{key_prefix}_minuto",
+    )
+    ampm_sel = c3.selectbox(
+        f"{label_prefix} (AM/PM)", ["AM", "PM"],
+        index=["AM", "PM"].index(ampm), key=f"{key_prefix}_ampm",
+    )
+    return hora_12_a_24(hora_sel, minuto_sel, ampm_sel)
+
+
+def to_excel_bytes(df: pd.DataFrame, sheet_name: str = "Datos") -> bytes:
+    """Convierte un DataFrame a los bytes de un archivo .xlsx en memoria."""
+    buffer = io.BytesIO()
+    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+        df.to_excel(writer, index=False, sheet_name=sheet_name[:31])
+    return buffer.getvalue()
+
+
+def download_excel_button(df: pd.DataFrame, filename: str, key: str,
+                           label: str = "⬇️ Descargar Excel", sheet_name: str = "Datos"):
+    """Botón para descargar un DataFrame como archivo Excel (.xlsx). Disponible
+    para cualquier rol que pueda ver la tabla correspondiente (vendedor, mercadeo,
+    administrador, etc.) — solo exporta lo que ya está filtrado en pantalla."""
+    st.download_button(
+        label, data=to_excel_bytes(df, sheet_name=sheet_name), file_name=filename,
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        use_container_width=True, key=key,
     )
 
-if not auth.require_login():
-    st.stop()
 
-user = auth.current_user()
-rol = user["rol"]
+def archivo_a_b64(archivo_subido, max_bytes):
+    """Convierte un archivo subido con st.file_uploader a (nombre, tipo, base64).
+    Retorna (None, None, None) si no hay archivo. Lanza ValueError si excede
+    max_bytes (límite práctico por documento en Firestore)."""
+    if archivo_subido is None:
+        return None, None, None
+    datos = archivo_subido.getvalue()
+    if len(datos) > max_bytes:
+        raise ValueError(
+            f"El archivo pesa {len(datos) / 1000:.0f} KB; el máximo permitido es "
+            f"{max_bytes / 1000:.0f} KB. Comprime la imagen o el PDF e intenta de nuevo."
+        )
+    return archivo_subido.name, archivo_subido.type, base64.b64encode(datos).decode("ascii")
 
-inicio = st.Page("app_pages/1_Inicio.py", title="Inicio", icon="🏠", default=True)
-prospectos = st.Page("app_pages/2_Prospectos_CRM.py", title="Prospección (CRM)", icon="🧾")
-llamadas = st.Page("app_pages/11_Llamadas.py", title="Llamadas", icon="📞")
-citas = st.Page("app_pages/3_Citas_Vendedores.py", title="Citas y visitas de vendedores", icon="📅")
-mercadeo = st.Page("app_pages/4_Visitas_Mercadeo.py", title="Visitas de mercadeo", icon="🏪")
-cotizaciones = st.Page("app_pages/5_Cotizaciones.py", title="Cotizaciones", icon="💰")
-reclamos = st.Page("app_pages/6_Reclamos.py", title="Reclamos", icon="⚠️")
-diseno = st.Page("app_pages/12_Diseno_Grafico.py", title="Diseño Gráfico - Nicolás", icon="🎨")
-diseno_alvaro = st.Page("app_pages/14_Diseno_Grafico_Alvaro.py", title="Diseño Gráfico - Álvaro", icon="🖌️")
-logistica = st.Page("app_pages/13_Logistica.py", title="Logística", icon="🚚")
-ventas = st.Page("app_pages/7_Ventas_Diarias.py", title="Venta del día", icon="🧮")
-ventas_mes = st.Page("app_pages/15_Ventas_Por_Mes.py", title="Ventas por mes", icon="📅")
-capacitacion = st.Page("app_pages/16_Capacitacion.py", title="Capacitación", icon="🎓")
-tickets_tienda = st.Page("app_pages/17_Tickets_Tienda.py", title="Sistema Tickets Tiendas", icon="🎫")
-mantenimiento = st.Page("app_pages/18_Mantenimiento_Maquinaria.py", title="Mantenimiento de Maquinaria", icon="🔧")
-litografia = st.Page("app_pages/19_Litografia.py", title="Litografía", icon="🖨️")
-generales = st.Page("app_pages/8_Prospectos_Generales.py", title="Prospectos generales (todos)", icon="🌐")
-kpis = st.Page("app_pages/9_KPIs.py", title="KPIs", icon="📊")
-admin = st.Page("app_pages/10_Administracion.py", title="Administración de usuarios", icon="👥")
 
-if rol == "mercadeo":
-    # El rol 'mercadeo' tiene acceso a Visitas de mercadeo y, además, a
-    # Tickets — Tiendas (solo para configurar los tiempos meta / KPIs; no
-    # puede avanzar ni gestionar tickets, eso lo hace el personal de tienda).
-    pages = [mercadeo, tickets_tienda]
-elif rol == "jefe_planta":
-    # El rol 'jefe_planta' tiene acceso a Reclamos (donde puede cambiar el
-    # estado de cada reclamo) y a Mantenimiento de Maquinaria (donde puede
-    # registrar máquinas y sus mantenimientos preventivos/correctivos).
-    pages = [reclamos, mantenimiento]
-elif rol == "disenador":
-    # El rol 'disenador' solo tiene acceso al tablero de Diseño Gráfico - Nicolás.
-    pages = [diseno]
-elif rol == "disenador_alvaro":
-    # El rol 'disenador_alvaro' solo tiene acceso al tablero de Diseño Gráfico - Álvaro.
-    pages = [diseno_alvaro]
-elif rol == "jefe_logistica":
-    # El rol 'jefe_logistica' solo tiene acceso a la pestaña de Logística.
-    pages = [logistica]
-elif rol == "repartidor":
-    # El rol 'repartidor' solo tiene acceso a la pestaña de Logística
-    # (ahí solo puede actualizar el estado de sus pedidos asignados).
-    pages = [logistica]
-elif rol in ("jefe_capacitacion", "asistente_capacitacion"):
-    # Estos roles solo tienen acceso a la pestaña de Capacitación.
-    pages = [capacitacion]
-elif rol in ("anfitriona", "jefe_tienda", "subjefe_tienda", "asesor_ventas", "cajero"):
-    # Estos roles solo tienen acceso al Sistema de Tickets — Tiendas (y solo
-    # ven la tienda asignada a su usuario). El resto del personal de tienda
-    # (acabados, express) no tiene usuario propio.
-    pages = [tickets_tienda]
-else:
-    pages = [
-        inicio, prospectos, llamadas, citas, mercadeo, cotizaciones, reclamos,
-        diseno, diseno_alvaro, logistica, ventas, ventas_mes, capacitacion, tickets_tienda,
-        mantenimiento, litografia, generales, kpis,
+def archivos_a_b64_lista(archivos_subidos, max_bytes, max_archivos=3):
+    """Convierte una lista de archivos subidos con
+    st.file_uploader(accept_multiple_files=True) a una lista de
+    {"nombre", "tipo", "b64"}. Retorna [] si no hay archivos. Lanza ValueError
+    si se suben más de max_archivos, o si alguno pesa más de max_bytes."""
+    archivos_subidos = archivos_subidos or []
+    if len(archivos_subidos) > max_archivos:
+        raise ValueError(
+            f"Puedes adjuntar máximo {max_archivos} archivos (subiste {len(archivos_subidos)}). "
+            "Quita alguno e intenta de nuevo."
+        )
+    resultado = []
+    for archivo in archivos_subidos:
+        datos = archivo.getvalue()
+        if len(datos) > max_bytes:
+            raise ValueError(
+                f"El archivo '{archivo.name}' pesa {len(datos) / 1000:.0f} KB; el máximo permitido "
+                f"por archivo es {max_bytes / 1000:.0f} KB. Comprime la imagen o el PDF e intenta de nuevo."
+            )
+        resultado.append({
+            "nombre": archivo.name, "tipo": archivo.type,
+            "b64": base64.b64encode(datos).decode("ascii"),
+        })
+    return resultado
+
+
+def diseno_archivos_lista(d: dict) -> list:
+    """Normaliza los archivos adjuntos de una solicitud de diseño: soporta
+    tanto el formato nuevo (lista 'archivos') como el formato viejo (un solo
+    archivo en 'archivo_nombre'/'archivo_tipo'/'archivo_b64'), para que las
+    solicitudes creadas antes de este cambio se sigan viendo bien."""
+    if d.get("archivos"):
+        return d["archivos"]
+    if d.get("archivo_b64"):
+        return [{
+            "nombre": d.get("archivo_nombre") or "archivo",
+            "tipo": d.get("archivo_tipo") or "application/octet-stream",
+            "b64": d["archivo_b64"],
+        }]
+    return []
+
+
+# Versión pastel de la paleta de marca (CATEGORICAL), en el mismo orden, para
+# las etiquetas de producto del resumen de Diseño Gráfico: (fondo, texto).
+_CATEGORICAL_PASTEL = [
+    ("#dce9fb", "#1c5cab"),
+    ("#fbe3d5", "#b14d1f"),
+    ("#d7f3e7", "#0f7a52"),
+    ("#fdeecb", "#8a6100"),
+    ("#fbe0ea", "#a83866"),
+    ("#dcefdc", "#0a5c0a"),
+    ("#e6e2f7", "#392a7a"),
+    ("#fbdcdb", "#a32b2b"),
+]
+
+
+def _color_index(texto, cuantos):
+    """Índice determinístico 0..cuantos-1 a partir de un texto (mismo texto
+    siempre da el mismo índice, para que un vendedor o producto siempre
+    tenga el mismo color)."""
+    if not texto:
+        return 0
+    return int(hashlib.md5(texto.encode("utf-8")).hexdigest(), 16) % cuantos
+
+
+def iniciales_nombre(nombre):
+    """'Juan Pérez' -> 'JP'. Con un solo nombre, usa las primeras 2 letras."""
+    partes = (nombre or "?").split()
+    if len(partes) >= 2:
+        return (partes[0][0] + partes[1][0]).upper()
+    return (partes[0][:2] if partes and partes[0] else "?").upper()
+
+
+def pastel_para_texto(texto):
+    """Color pastel determinístico (fondo, texto) para una etiqueta tipo
+    'tag' — mismo texto siempre da el mismo color, tomado de la paleta de marca."""
+    return _CATEGORICAL_PASTEL[_color_index(texto, len(_CATEGORICAL_PASTEL))]
+
+
+def avatar_color_para(texto):
+    """Color sólido determinístico (de la paleta de marca) para el círculo
+    de iniciales de un vendedor."""
+    return CATEGORICAL[_color_index(texto, len(CATEGORICAL))]
+
+
+def diseno_resumen_html(rows, estados_orden, column_emoji, columnas_con_semaforo, vendedores, hoy, manana):
+    """Genera el HTML de un 'resumen de pendientes' estilo lista (como un
+    tablero de Asana/Trello en modo lista), agrupado por columna del tablero
+    de Diseño Gráfico, con avatar del vendedor, tag del producto y — donde
+    aplica — el semáforo y una urgencia por fecha (Hoy / Mañana)."""
+    hoy_s, manana_s = str(hoy), str(manana)
+    secciones = []
+    for estado in estados_orden:
+        items = [r for r in rows if r.get("estado") == estado]
+        filas_html = []
+        for r in sorted(items, key=lambda x: x.get("fecha_necesaria") or "9999-99-99"):
+            cliente = html.escape(r.get("cliente") or "Sin cliente")
+            producto = html.escape(r.get("producto") or "—")
+            fecha = r.get("fecha_necesaria")
+            nombre_vend = db.nombre_vendedor(r.get("vendedor_id"), vendedores)
+            av_bg = avatar_color_para(nombre_vend)
+            iniciales = html.escape(iniciales_nombre(nombre_vend))
+            p_bg, p_fg = pastel_para_texto(producto)
+
+            pills = f'<span class="vd-pill" style="background:{p_bg};color:{p_fg};">{producto}</span>'
+
+            if estado in columnas_con_semaforo:
+                if r.get("detenido_emergencia"):
+                    pills += '<span class="vd-pill" style="background:#fde8e8;color:#c62828;">🔴 Emergencia</span>'
+                else:
+                    pills += '<span class="vd-pill" style="background:#e4f7e4;color:#0ca30c;">🟢 En proceso</span>'
+
+            if fecha and estado != "Entregado":
+                if fecha == hoy_s:
+                    pills += '<span class="vd-pill" style="background:#fde8e8;color:#c62828;">⏰ Hoy</span>'
+                elif fecha == manana_s:
+                    pills += '<span class="vd-pill" style="background:#fdeecb;color:#8a6100;">⏰ Mañana</span>'
+                else:
+                    pills += f'<span class="vd-pill" style="background:#eceae3;color:#52514e;">📅 {html.escape(fecha)}</span>'
+
+            filas_html.append(
+                '<div class="vd-resumen-row">'
+                f'<span class="vd-avatar" style="background:{av_bg};" title="{html.escape(nombre_vend)}">{iniciales}</span>'
+                f'<span class="vd-resumen-cliente">{cliente}</span>'
+                f'<span class="vd-resumen-spacer">{pills}</span>'
+                '</div>'
+            )
+
+        cuerpo = "".join(filas_html) or '<div class="vd-resumen-empty">Sin solicitudes en esta columna.</div>'
+        secciones.append(
+            '<div class="vd-resumen-section">'
+            '<div class="vd-resumen-section-header">'
+            f'<span>{column_emoji.get(estado, "")} {html.escape(estado)}</span>'
+            f'<span class="vd-resumen-count">{len(items)}</span>'
+            '</div>'
+            f'{cuerpo}'
+            '</div>'
+        )
+
+    estilo = (
+        "<style>"
+        ".vd-resumen-wrap{display:flex;flex-direction:column;gap:14px;margin-bottom:6px;}"
+        ".vd-resumen-section{border:1px solid #e1e0d9;border-radius:10px;overflow:hidden;background:#fcfcfb;}"
+        ".vd-resumen-section-header{display:flex;align-items:center;gap:8px;padding:10px 14px;"
+        "background:#f5f4f0;border-bottom:1px solid #e1e0d9;font-weight:600;color:#0b0b0b;font-size:0.95rem;}"
+        ".vd-resumen-count{margin-left:auto;background:#e1e0d9;color:#52514e;border-radius:999px;"
+        "padding:1px 10px;font-size:0.78rem;font-weight:600;}"
+        ".vd-resumen-row{display:flex;align-items:center;gap:10px;padding:9px 14px;"
+        "border-bottom:1px solid #efeee9;font-size:0.87rem;}"
+        ".vd-resumen-row:last-child{border-bottom:none;}"
+        ".vd-resumen-cliente{font-weight:600;color:#0b0b0b;}"
+        ".vd-avatar{width:24px;height:24px;border-radius:50%;display:flex;align-items:center;"
+        "justify-content:center;color:white;font-size:0.66rem;font-weight:700;flex-shrink:0;}"
+        ".vd-pill{border-radius:999px;padding:2px 10px;font-size:0.72rem;font-weight:600;white-space:nowrap;}"
+        ".vd-resumen-spacer{margin-left:auto;display:flex;gap:6px;align-items:center;"
+        "flex-wrap:wrap;justify-content:flex-end;}"
+        ".vd-resumen-empty{padding:12px 14px;color:#898781;font-size:0.85rem;font-style:italic;}"
+        "</style>"
+    )
+    return estilo + '<div class="vd-resumen-wrap">' + "".join(secciones) + "</div>"
+
+
+def _pdf_safe(texto):
+    """Los PDFs con fuentes estándar (Helvetica) solo soportan Latin-1. Si el
+    vendedor pegó texto con símbolos raros (emojis, comillas curvas, etc.),
+    los reemplaza por '?' en vez de hacer fallar la generación del PDF."""
+    return str(texto).encode("latin-1", "replace").decode("latin-1")
+
+
+def diseno_pdf_bytes(d: dict, vendedor_nombre: str) -> bytes:
+    """Genera un PDF tipo 'orden de compra' con toda la información inicial
+    de una solicitud de diseño gráfico."""
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Helvetica", "B", 16)
+    pdf.cell(0, 10, _pdf_safe(EMPRESA_NOMBRE), new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("Helvetica", "B", 13)
+    pdf.cell(0, 8, _pdf_safe("Solicitud de Diseño Gráfico"), new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("Helvetica", "", 10)
+    pdf.cell(0, 6, _pdf_safe(f"Folio: {d.get('id', '')}"), new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(4)
+
+    pdf.set_draw_color(200, 200, 200)
+    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+    pdf.ln(4)
+
+    campos = [
+        ("Vendedor", vendedor_nombre or "-"),
+        ("Cliente", d.get("cliente") or "-"),
+        ("Producto", d.get("producto") or "-"),
+        ("Material", d.get("material") or "-"),
+        ("Acabado", d.get("acabado") or "-"),
+        ("Medida", d.get("medida") or "-"),
+        ("Fecha en que se necesita", d.get("fecha_necesaria") or "-"),
+        ("Fecha de solicitud", (d.get("creado_en") or "-")[:10]),
+        ("Estado actual", d.get("estado") or "-"),
+        ("Cambios necesarios", d.get("cambios_necesarios") or "-"),
+        (
+            "Archivos adjuntos",
+            ", ".join(a["nombre"] for a in diseno_archivos_lista(d)) or "Sin archivos adjuntos",
+        ),
     ]
-    if rol == "admin":
-        pages.append(admin)
+    for etiqueta, valor in campos:
+        pdf.set_font("Helvetica", "B", 11)
+        pdf.cell(0, 7, _pdf_safe(f"{etiqueta}:"), new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font("Helvetica", "", 11)
+        pdf.multi_cell(0, 7, _pdf_safe(valor))
+        pdf.ln(1)
 
-nav = st.navigation(pages)
-nav.run()
+    pdf.ln(4)
+    pdf.set_font("Helvetica", "I", 9)
+    pdf.set_text_color(120, 120, 120)
+    pdf.multi_cell(0, 5, _pdf_safe("Documento generado automáticamente por la Plataforma Comercial - Visión Digital."))
+
+    return bytes(pdf.output())
+
+
+def pedido_pdf_bytes(p: dict) -> bytes:
+    """Genera el PDF de 'ENVÍO No. ____' de un pedido de Logística, con el
+    mismo diseño que la libreta física de envíos que se usaba en papel
+    (encabezado con logo y número de envío, datos de FECHA/ATENCIÓN A/
+    CLIENTE/DIRECCIÓN, tabla de CANTIDAD/DESCRIPCIÓN y las líneas de firma
+    ENVÍA/RECIBE al final)."""
+    pdf = FPDF(format="Letter")
+    pdf.add_page()
+    pdf.set_auto_page_break(auto=True, margin=12)
+
+    # -- Encabezado: logo a la izquierda, caja "ENVÍO No." a la derecha -----
+    try:
+        pdf.image(LOGO_PATH, x=10, y=10, w=42)
+    except Exception:
+        pdf.set_font("Helvetica", "B", 16)
+        pdf.set_xy(10, 12)
+        pdf.cell(60, 8, _pdf_safe(EMPRESA_NOMBRE))
+
+    caja_x, caja_w = 138, 64
+    pdf.set_fill_color(20, 20, 20)
+    pdf.set_text_color(255, 255, 255)
+    pdf.set_font("Helvetica", "B", 11)
+    pdf.set_xy(caja_x, 12)
+    pdf.cell(caja_w, 8, _pdf_safe("ENVÍO No."), border=0, align="C", fill=True)
+
+    numero_envio = p.get("numero_envio")
+    texto_numero = f"No. {numero_envio:04d}" if isinstance(numero_envio, int) else "No. ____"
+    pdf.set_text_color(0, 0, 0)
+    pdf.set_draw_color(0, 0, 0)
+    pdf.set_font("Helvetica", "B", 13)
+    pdf.set_xy(caja_x, 20)
+    pdf.cell(caja_w, 10, _pdf_safe(texto_numero), border=1, align="C")
+
+    pdf.set_font("Helvetica", "", 9)
+    pdf.set_text_color(60, 60, 60)
+    pdf.set_xy(caja_x, 32)
+    pdf.cell(caja_w, 5, _pdf_safe(EMPRESA_DIRECCION_LINEA1), align="C")
+    pdf.set_xy(caja_x, 37)
+    pdf.cell(caja_w, 5, _pdf_safe(EMPRESA_DIRECCION_LINEA2), align="C")
+    pdf.set_text_color(0, 0, 0)
+
+    # -- Datos del envío: FECHA / ATENCIÓN A / CLIENTE / DIRECCIÓN / N° ORDEN --
+    fecha_txt = p.get("fecha") or ""
+    if len(fecha_txt) == 10 and fecha_txt[4] == "-":
+        fecha_txt = f"{fecha_txt[8:10]}/{fecha_txt[5:7]}/{fecha_txt[0:4]}"
+
+    campos = [
+        ("FECHA:", fecha_txt or "—"),
+        ("ATENCIÓN A:", p.get("atencion_a") or "—"),
+        ("CLIENTE:", p.get("cliente") or "—"),
+        ("DIRECCIÓN:", p.get("direccion") or "—"),
+        ("N° ORDEN:", p.get("numero_orden") or "—"),
+    ]
+    box_y0, fila_h, box_w = 52, 9, 190
+    pdf.set_draw_color(150, 150, 150)
+    pdf.rect(10, box_y0, box_w, fila_h * len(campos))
+    for i, (etiqueta, valor) in enumerate(campos):
+        fila_y = box_y0 + i * fila_h
+        if i > 0:
+            pdf.line(10, fila_y, 10 + box_w, fila_y)
+        pdf.set_font("Helvetica", "B", 10)
+        pdf.set_xy(13, fila_y + 2.3)
+        pdf.cell(35, 5, _pdf_safe(etiqueta))
+        pdf.set_font("Helvetica", "", 10)
+        pdf.set_xy(45, fila_y + 2.3)
+        pdf.cell(box_w - 38, 5, _pdf_safe(valor))
+
+    # -- Tabla CANTIDAD / DESCRIPCIÓN ----------------------------------------
+    productos = [
+        it for it in (p.get("productos") or [])
+        if (it.get("cantidad") or "").strip() or (it.get("descripcion") or "").strip()
+    ]
+    if not productos and p.get("producto"):
+        productos = [{"cantidad": "", "descripcion": p["producto"]}]
+
+    tabla_y0 = box_y0 + fila_h * len(campos) + 6
+    col_cant_w, col_desc_w = 35, box_w - 35
+    fila_tabla_h = 8
+    num_filas = max(10, len(productos) + 1)
+
+    pdf.set_xy(10, tabla_y0)
+    pdf.set_fill_color(20, 20, 20)
+    pdf.set_text_color(255, 255, 255)
+    pdf.set_font("Helvetica", "B", 10)
+    pdf.cell(col_cant_w, fila_tabla_h, _pdf_safe("CANTIDAD"), border=0, align="C", fill=True)
+    pdf.cell(col_desc_w, fila_tabla_h, _pdf_safe("DESCRIPCIÓN"), border=0, align="C", fill=True)
+    pdf.set_text_color(0, 0, 0)
+
+    pdf.set_font("Helvetica", "", 10)
+    pdf.set_draw_color(150, 150, 150)
+    line_h = 5
+    fila_y = tabla_y0 + fila_tabla_h
+    for i in range(num_filas):
+        cant = productos[i]["cantidad"] if i < len(productos) else ""
+        desc = productos[i]["descripcion"] if i < len(productos) else ""
+        desc_txt = _pdf_safe(f" {desc}") if desc else ""
+        if desc_txt:
+            # Calcula cuántas líneas necesita la descripción para no salirse
+            # de su columna (pedidos con varios productos largos) y usa esa
+            # altura para ambas celdas de la fila, para que el borde quede
+            # parejo entre "Cantidad" y "Descripción".
+            lineas = pdf.multi_cell(col_desc_w, line_h, desc_txt, dry_run=True, output="LINES")
+            alto_fila = max(fila_tabla_h, len(lineas) * line_h + 3)
+        else:
+            alto_fila = fila_tabla_h
+        pdf.set_xy(10, fila_y)
+        pdf.cell(col_cant_w, alto_fila, _pdf_safe(cant), border=1, align="C")
+        pdf.set_xy(10 + col_cant_w, fila_y)
+        pdf.multi_cell(col_desc_w, line_h, desc_txt, border=1)
+        fila_y += alto_fila
+
+    # -- Firmas: ENVÍA / RECIBE ----------------------------------------------
+    firmas_y = fila_y + 18
+    pdf.set_draw_color(0, 0, 0)
+    pdf.line(15, firmas_y, 95, firmas_y)
+    pdf.line(115, firmas_y, 195, firmas_y)
+    pdf.set_font("Helvetica", "", 9)
+    pdf.set_xy(15, firmas_y + 2)
+    pdf.cell(80, 5, _pdf_safe("ENVÍA"), align="C")
+    pdf.set_xy(115, firmas_y + 2)
+    pdf.cell(80, 5, _pdf_safe("RECIBE"), align="C")
+    pdf.set_xy(15, firmas_y + 7)
+    pdf.cell(80, 5, _pdf_safe("Firma y Nombre"), align="C")
+    pdf.set_xy(115, firmas_y + 7)
+    pdf.cell(80, 5, _pdf_safe("Firma, Nombre y Sello."), align="C")
+
+    return bytes(pdf.output())
