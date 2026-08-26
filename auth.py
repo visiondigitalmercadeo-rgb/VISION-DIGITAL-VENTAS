@@ -198,18 +198,25 @@ def can_edit():
     return u is not None and u["rol"] in ("admin", "vendedor", "mercadeo")
 
 
+def is_cotizadora():
+    u = current_user()
+    return u is not None and u["rol"] == "cotizadora"
+
+
 def puede_gestionar_litografia():
     """Quién puede crear, editar y eliminar cotizaciones técnicas en el
     cotizador de Litografía — admin y vendedor, que son quienes cotizan
-    trabajos con clientes. El rol 'vista' solo puede consultar."""
+    trabajos con clientes, y 'cotizadora', el rol dedicado exclusivamente a
+    este cotizador. El rol 'vista' solo puede consultar."""
     u = current_user()
-    return u is not None and u["rol"] in ("admin", "vendedor")
+    return u is not None and u["rol"] in ("admin", "vendedor", "cotizadora")
 
 
 def puede_administrar_catalogos_litografia():
-    """Solo admin puede agregar, editar o desactivar máquinas y tipos de
-    papel del catálogo de Litografía — ahí viven los precios y capacidades
-    técnicas que usa el cálculo de costo, así que se restringe más que la
-    creación de cotizaciones."""
+    """Quién puede agregar, editar o desactivar máquinas y tipos de papel del
+    catálogo de Litografía — ahí viven los precios y capacidades técnicas que
+    usa el cálculo de costo, así que se restringe más que la creación de
+    cotizaciones: admin y 'cotizadora' (que tiene control total del
+    cotizador, pero solo de esa pestaña)."""
     u = current_user()
-    return u is not None and u["rol"] == "admin"
+    return u is not None and u["rol"] in ("admin", "cotizadora")
