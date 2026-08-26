@@ -325,3 +325,43 @@ TICKET_SLUG_TIENDA = {v: k for k, v in TICKET_TIENDA_SLUG.items()}
 # enlace de la pantalla "Ahora atendiendo". Si algún día cambia el dominio de
 # Streamlit Cloud, solo hay que actualizar esto.
 APP_URL = "https://vision-digital-ventas.streamlit.app"
+
+# ---------------------------------------------------------------------------
+# Litografía: cotizador técnico (ficha del trabajo + cálculo automático de
+# costo en pliegos, planchas y pasadas de máquina), inspirado en Logic Print.
+# ---------------------------------------------------------------------------
+# Máquinas y tipos de papel de ejemplo — se cargan solos la primera vez que
+# arranca la app (igual que LOGISTICA_VENDEDORES_INICIAL) para que el
+# cotizador no empiece vacío. SON DATOS DE EJEMPLO: hay que entrar a
+# Litografía → "🖨️ Máquinas" / "📄 Papel" y corregir los precios y medidas
+# reales antes de cotizar un trabajo de verdad.
+LITO_MAQUINAS_INICIAL = [
+    # nombre, ancho_max (cm), alto_max (cm), costo por millar de pasadas (Q), costo por plancha (Q)
+    {"nombre": "Offset 65x90 (ejemplo)", "ancho_max": 65, "alto_max": 90,
+     "costo_millar_pasadas": 350.0, "costo_plancha": 45.0},
+    {"nombre": "Offset 52x72 (ejemplo)", "ancho_max": 52, "alto_max": 72,
+     "costo_millar_pasadas": 280.0, "costo_plancha": 35.0},
+    {"nombre": "Digital carta/oficio (ejemplo)", "ancho_max": 32, "alto_max": 45,
+     "costo_millar_pasadas": 180.0, "costo_plancha": 0.0},
+]
+LITO_PAPELES_INICIAL = [
+    # tipo, fabricante, gramaje (g/m²), ancho (cm), alto (cm), costo por pliego (Q)
+    {"tipo": "Bond", "fabricante": "Genérico", "gramaje": 80, "ancho": 65, "alto": 90, "costo_pliego": 1.20},
+    {"tipo": "Couché brillante", "fabricante": "Genérico", "gramaje": 115, "ancho": 65, "alto": 90, "costo_pliego": 2.10},
+    {"tipo": "Cartulina SBS", "fabricante": "Genérico", "gramaje": 250, "ancho": 65, "alto": 90, "costo_pliego": 3.50},
+]
+
+# Combinaciones comunes de tintas (frente + dorso), para que el usuario elija
+# rápido en vez de escribir números — "Personalizado" permite cualquier otra.
+LITO_TINTAS_PRESETS = {
+    "4+4 (full color ambos lados)": (4, 4),
+    "4+0 (full color un lado)": (4, 0),
+    "4+1": (4, 1),
+    "2+2": (2, 2),
+    "1+1 (un color ambos lados)": (1, 1),
+    "1+0 (un color un lado)": (1, 0),
+    "Personalizado": None,
+}
+
+# Estados de una cotización técnica de litografía.
+ESTADOS_LITO_COTIZACION = ["Borrador", "Cotizado", "Aprobado", "Rechazado"]
