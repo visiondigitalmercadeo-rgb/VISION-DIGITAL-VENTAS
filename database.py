@@ -1278,11 +1278,12 @@ def get_maquina(maquina_id):
     return _doc_to_dict(snap) if snap.exists else None
 
 
-def create_maquina(nombre, tipo_maquina, planta, numero_serie=None, notas=None):
+def create_maquina(nombre, tipo_maquina, planta, numero_serie=None, notas=None, codigo_alterno_gasto=None):
     doc_ref = get_client().collection("maquinas").document()
     doc_ref.set({
         "nombre": nombre.strip(), "tipo_maquina": (tipo_maquina or "").strip() or None,
         "planta": planta, "numero_serie": (numero_serie or "").strip() or None,
+        "codigo_alterno_gasto": (codigo_alterno_gasto or "").strip() or None,
         "notas": (notas or "").strip() or None, "activa": True,
         "creado_en": ahora_guatemala().isoformat(timespec="seconds"),
     })
