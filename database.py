@@ -1500,13 +1500,28 @@ def get_mant_tienda(mant_id):
     return _doc_to_dict(snap) if snap.exists else None
 
 
+def _siguiente_numero_mant_tienda():
+    """Numeración corrida (no reinicia), empezando en 1 — el 'N° de
+    solicitud' que se muestra en la tarjeta y en la orden de trabajo en PDF,
+    igual que el número de envío de Logística."""
+    rows = [_doc_to_dict(s) for s in get_client().collection("mant_tiendas").stream()]
+    numeros = [r.get("numero_solicitud") for r in rows if isinstance(r.get("numero_solicitud"), int)]
+    return (max(numeros, default=0)) + 1
+
+
 def create_mant_tienda(creado_por_id, tienda, quien_solicita, descripcion, estado, fotos=None):
     doc_ref = get_client().collection("mant_tiendas").document()
     doc_ref.set({
+        "numero_solicitud": _siguiente_numero_mant_tienda(),
         "creado_por_id": creado_por_id, "tienda": tienda, "quien_solicita": quien_solicita,
         "descripcion": descripcion, "estado": estado, "detenido_emergencia": False,
         "fotos": fotos or [],
         "creado_en": ahora_guatemala().isoformat(timespec="seconds"),
+        # Hora exacta en la que la solicitud entró a cada etapa medida — se
+        # llenan solo la primera vez que llega a esa etapa (ver
+        # avanzar_mant_tienda), para poder calcular cuánto tiempo se tarda
+        # cada proceso: solicitud -> cotización -> proceso -> finalización.
+        "fecha_cotizacion": None, "fecha_en_proceso": None, "fecha_finalizado": None,
     })
     return doc_ref.id
 
@@ -1514,6 +1529,34 @@ def create_mant_tienda(creado_por_id, tienda, quien_solicita, descripcion, estad
 def update_mant_tienda(mant_id, **kwargs):
     if kwargs:
         get_client().collection("mant_tiendas").document(mant_id).update(kwargs)
+
+
+# Campo de "hora de entrada" que se registra la primera vez que una
+# solicitud llega a cada una de estas etapas — usado por avanzar_mant_tienda
+# para medir cuánto tiempo se tarda cada proceso.
+MANT_TIENDA_TS_POR_ESTADO = {
+    "En cotización": "fecha_cotizacion",
+    "En proceso": "fecha_en_proceso",
+    "Finalizado": "fecha_finalizado",
+}
+
+
+def avanzar_mant_tienda(mant_id, nuevo_estado, extra=None):
+    """Cambia el estado de una solicitud de Mantenimiento de Tiendas y, la
+    primera vez que llega a una etapa medida (En cotización / En proceso /
+    Finalizado), registra la hora exacta de entrada — así se puede calcular
+    cuánto tiempo se tarda cada etapa. Si la solicitud se mueve hacia atrás y
+    vuelve a pasar por la misma etapa, NO vuelve a pisar la hora ya guardada.
+    'extra' son otros campos a actualizar en la misma escritura (por ejemplo,
+    si también se editaron los datos de la solicitud en el mismo formulario)."""
+    actual = get_mant_tienda(mant_id) or {}
+    cambios = dict(extra or {})
+    cambios["estado"] = nuevo_estado
+    if actual.get("estado") != nuevo_estado:
+        campo_ts = MANT_TIENDA_TS_POR_ESTADO.get(nuevo_estado)
+        if campo_ts and not actual.get(campo_ts):
+            cambios[campo_ts] = ahora_guatemala().isoformat(timespec="seconds")
+    get_client().collection("mant_tiendas").document(mant_id).update(cambios)
 
 
 def delete_mant_tienda(mant_id):
