@@ -643,3 +643,117 @@ def pedido_pdf_bytes(p: dict) -> bytes:
     pdf.cell(80, 5, _pdf_safe("Firma, Nombre y Sello."), align="C")
 
     return bytes(pdf.output())
+
+
+def mant_tienda_pdf_bytes(r: dict) -> bytes:
+    """Genera el PDF de 'ORDEN DE TRABAJO No. ____' de una solicitud de
+    Mantenimiento de Tiendas — mismo diseño que el PDF de 'ENVÍO No.' de
+    Logística (encabezado con logo y número corrido, caja de datos, y las
+    líneas de firma al final), adaptado a los campos propios de este
+    tablero (tienda, quién solicita, descripción del problema) en vez de la
+    tabla de productos de un envío."""
+    pdf = FPDF(format="Letter")
+    pdf.add_page()
+    pdf.set_auto_page_break(auto=True, margin=12)
+
+    # -- Encabezado: logo a la izquierda, caja "ORDEN DE TRABAJO No." a la derecha --
+    try:
+        pdf.image(LOGO_PATH, x=10, y=10, w=42)
+    except Exception:
+        pdf.set_font("Helvetica", "B", 16)
+        pdf.set_xy(10, 12)
+        pdf.cell(60, 8, _pdf_safe(EMPRESA_NOMBRE))
+
+    caja_x, caja_w = 128, 74
+    pdf.set_fill_color(20, 20, 20)
+    pdf.set_text_color(255, 255, 255)
+    pdf.set_font("Helvetica", "B", 11)
+    pdf.set_xy(caja_x, 12)
+    pdf.cell(caja_w, 8, _pdf_safe("ORDEN DE TRABAJO No."), border=0, align="C", fill=True)
+
+    numero_solicitud = r.get("numero_solicitud")
+    texto_numero = f"No. {numero_solicitud:04d}" if isinstance(numero_solicitud, int) else "No. ____"
+    pdf.set_text_color(0, 0, 0)
+    pdf.set_draw_color(0, 0, 0)
+    pdf.set_font("Helvetica", "B", 13)
+    pdf.set_xy(caja_x, 20)
+    pdf.cell(caja_w, 10, _pdf_safe(texto_numero), border=1, align="C")
+
+    pdf.set_font("Helvetica", "", 9)
+    pdf.set_text_color(60, 60, 60)
+    pdf.set_xy(caja_x, 32)
+    pdf.cell(caja_w, 5, _pdf_safe(EMPRESA_DIRECCION_LINEA1), align="C")
+    pdf.set_xy(caja_x, 37)
+    pdf.cell(caja_w, 5, _pdf_safe(EMPRESA_DIRECCION_LINEA2), align="C")
+    pdf.set_text_color(0, 0, 0)
+
+    # -- Datos de la solicitud: FECHA / TIENDA / SOLICITA / ESTADO -----------
+    fecha_txt = (r.get("creado_en") or "")[:10]
+    if len(fecha_txt) == 10 and fecha_txt[4] == "-":
+        fecha_txt = f"{fecha_txt[8:10]}/{fecha_txt[5:7]}/{fecha_txt[0:4]}"
+
+    campos = [
+        ("FECHA:", fecha_txt or "—"),
+        ("TIENDA:", r.get("tienda") or "—"),
+        ("SOLICITA:", r.get("quien_solicita") or "—"),
+        ("ESTADO:", r.get("estado") or "—"),
+    ]
+    box_y0, fila_h, box_w = 52, 9, 190
+    pdf.set_draw_color(150, 150, 150)
+    pdf.rect(10, box_y0, box_w, fila_h * len(campos))
+    for i, (etiqueta, valor) in enumerate(campos):
+        fila_y = box_y0 + i * fila_h
+        if i > 0:
+            pdf.line(10, fila_y, 10 + box_w, fila_y)
+        pdf.set_font("Helvetica", "B", 10)
+        pdf.set_xy(13, fila_y + 2.3)
+        pdf.cell(35, 5, _pdf_safe(etiqueta))
+        pdf.set_font("Helvetica", "", 10)
+        pdf.set_xy(45, fila_y + 2.3)
+        pdf.cell(box_w - 38, 5, _pdf_safe(valor))
+
+    # -- Descripción del problema --------------------------------------------
+    desc_y0 = box_y0 + fila_h * len(campos) + 6
+    pdf.set_xy(10, desc_y0)
+    pdf.set_fill_color(20, 20, 20)
+    pdf.set_text_color(255, 255, 255)
+    pdf.set_font("Helvetica", "B", 10)
+    pdf.cell(box_w, 8, _pdf_safe("DESCRIPCIÓN DEL PROBLEMA"), border=0, align="C", fill=True)
+    pdf.set_text_color(0, 0, 0)
+
+    pdf.set_font("Helvetica", "", 10)
+    pdf.set_draw_color(150, 150, 150)
+    pdf.set_xy(10, desc_y0 + 8)
+    texto_desc = _pdf_safe(r.get("descripcion") or "Sin descripción.")
+    lineas = pdf.multi_cell(box_w, 6, texto_desc, dry_run=True, output="LINES")
+    alto_desc = max(24, len(lineas) * 6 + 6)
+    pdf.multi_cell(box_w, 6, texto_desc, border=1)
+    pdf.rect(10, desc_y0 + 8, box_w, alto_desc)
+
+    fotos_y0 = desc_y0 + 8 + alto_desc + 6
+    pdf.set_xy(10, fotos_y0)
+    pdf.set_font("Helvetica", "I", 9)
+    pdf.set_text_color(90, 90, 90)
+    n_fotos = len(r.get("fotos") or [])
+    pdf.cell(
+        box_w, 5,
+        _pdf_safe(f"📷 {n_fotos} foto(s) adjunta(s) — ver la plataforma." if n_fotos else "Sin fotos adjuntas."),
+    )
+    pdf.set_text_color(0, 0, 0)
+
+    # -- Firmas: SOLICITA / ATIENDE MANTENIMIENTO ----------------------------
+    firmas_y = fotos_y0 + 20
+    pdf.set_draw_color(0, 0, 0)
+    pdf.line(15, firmas_y, 95, firmas_y)
+    pdf.line(115, firmas_y, 195, firmas_y)
+    pdf.set_font("Helvetica", "", 9)
+    pdf.set_xy(15, firmas_y + 2)
+    pdf.cell(80, 5, _pdf_safe("SOLICITA"), align="C")
+    pdf.set_xy(115, firmas_y + 2)
+    pdf.cell(80, 5, _pdf_safe("ATIENDE MANTENIMIENTO"), align="C")
+    pdf.set_xy(15, firmas_y + 7)
+    pdf.cell(80, 5, _pdf_safe("Firma y Nombre"), align="C")
+    pdf.set_xy(115, firmas_y + 7)
+    pdf.cell(80, 5, _pdf_safe("Firma y Nombre"), align="C")
+
+    return bytes(pdf.output())
