@@ -1522,6 +1522,10 @@ def create_mant_tienda(creado_por_id, tienda, quien_solicita, descripcion, estad
         # avanzar_mant_tienda), para poder calcular cuánto tiempo se tarda
         # cada proceso: solicitud -> cotización -> proceso -> finalización.
         "fecha_cotizacion": None, "fecha_en_proceso": None, "fecha_finalizado": None,
+        # Cotización: PDFs subidos (máximo 3) y su autorización — solo el
+        # admin puede autorizarla (ver autorizar_cotizacion_mant_tienda).
+        "cotizacion_pdfs": [], "cotizacion_autorizada": False,
+        "cotizacion_autorizada_por_id": None, "cotizacion_autorizada_en": None,
     })
     return doc_ref.id
 
@@ -1529,6 +1533,41 @@ def create_mant_tienda(creado_por_id, tienda, quien_solicita, descripcion, estad
 def update_mant_tienda(mant_id, **kwargs):
     if kwargs:
         get_client().collection("mant_tiendas").document(mant_id).update(kwargs)
+
+
+def subir_cotizacion_mant_tienda(mant_id, pdfs):
+    """Guarda los archivos PDF de cotización de una solicitud (máximo 3,
+    ver config.MANT_TIENDAS_COTIZACION_MAX_ARCHIVOS). Si ya había una
+    cotización autorizada, subir archivos nuevos LE QUITA la autorización
+    automáticamente — el admin tiene que volver a autorizar la cotización
+    actualizada, para no dejar aprobado por error un PDF que ya cambió."""
+    get_client().collection("mant_tiendas").document(mant_id).update({
+        "cotizacion_pdfs": pdfs,
+        "cotizacion_autorizada": False,
+        "cotizacion_autorizada_por_id": None,
+        "cotizacion_autorizada_en": None,
+    })
+
+
+def autorizar_cotizacion_mant_tienda(mant_id, autorizado_por_id):
+    """Solo el admin puede llamar a esto (ver
+    auth.puede_autorizar_cotizacion_mant_tiendas) — pone el semáforo de
+    cotización en verde."""
+    get_client().collection("mant_tiendas").document(mant_id).update({
+        "cotizacion_autorizada": True,
+        "cotizacion_autorizada_por_id": autorizado_por_id,
+        "cotizacion_autorizada_en": ahora_guatemala().isoformat(timespec="seconds"),
+    })
+
+
+def desautorizar_cotizacion_mant_tienda(mant_id):
+    """Le quita la autorización a una cotización ya autorizada (por ejemplo,
+    si el admin se equivocó) — el semáforo vuelve a rojo."""
+    get_client().collection("mant_tiendas").document(mant_id).update({
+        "cotizacion_autorizada": False,
+        "cotizacion_autorizada_por_id": None,
+        "cotizacion_autorizada_en": None,
+    })
 
 
 # Campo de "hora de entrada" que se registra la primera vez que una
