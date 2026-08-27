@@ -282,12 +282,20 @@ with tab_tablero:
 
                     siguiente = MANT_TIENDA_SIGUIENTE_ESTADO.get(r.get("estado"))
                     if puede_mover and siguiente:
+                        bloqueado_por_cotizacion = siguiente == "En proceso" and not r.get("cotizacion_autorizada")
                         if st.button(
                             f"➡️ Mover a «{siguiente}»", key=f"mt_avanzar_{mid}", use_container_width=True,
+                            disabled=bloqueado_por_cotizacion,
                         ):
-                            db.avanzar_mant_tienda(mid, siguiente)
-                            st.success(f"Solicitud movida a «{siguiente}».")
-                            st.rerun()
+                            try:
+                                db.avanzar_mant_tienda(mid, siguiente)
+                            except ValueError as e:
+                                st.error(str(e))
+                            else:
+                                st.success(f"Solicitud movida a «{siguiente}».")
+                                st.rerun()
+                        if bloqueado_por_cotizacion:
+                            st.caption("🔒 Un admin debe autorizar la cotización antes de pasar a «En proceso».")
 
                     if puede_editar_este and st.session_state.get(editando_key):
                         # ----------------------------------------------------
@@ -330,6 +338,8 @@ with tab_tablero:
                                     "Estado (columna del tablero)", ESTADOS_MANT_TIENDAS,
                                     index=ESTADOS_MANT_TIENDAS.index(r["estado"]) if r.get("estado") in ESTADOS_MANT_TIENDAS else 0,
                                 )
+                                if r.get("estado") != "En proceso" and not r.get("cotizacion_autorizada"):
+                                    st.caption("🔒 No se puede pasar a «En proceso» sin autorizar la cotización primero.")
                                 opciones_semaforo = ["🟢 Sigue en proceso", "🔴 Parado por emergencia"]
                                 semaforo_ed = st.radio(
                                     "Semáforo (se muestra en las columnas En cotización, En proceso y Finalizado)",
@@ -383,10 +393,14 @@ with tab_tablero:
                                 if error_msg:
                                     st.error(error_msg)
                                 else:
-                                    db.avanzar_mant_tienda(mid, estado_ed, extra=update_kwargs)
-                                    st.session_state.pop(editando_key, None)
-                                    st.success("Solicitud actualizada.")
-                                    st.rerun()
+                                    try:
+                                        db.avanzar_mant_tienda(mid, estado_ed, extra=update_kwargs)
+                                    except ValueError as e:
+                                        st.error(str(e))
+                                    else:
+                                        st.session_state.pop(editando_key, None)
+                                        st.success("Solicitud actualizada.")
+                                        st.rerun()
                             if eliminar:
                                 db.delete_mant_tienda(mid)
                                 st.session_state.pop(editando_key, None)
