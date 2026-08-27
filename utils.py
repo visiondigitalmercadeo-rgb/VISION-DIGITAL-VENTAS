@@ -395,6 +395,72 @@ def diseno_resumen_html(rows, estados_orden, column_emoji, columnas_con_semaforo
     return estilo + '<div class="vd-resumen-wrap">' + "".join(secciones) + "</div>"
 
 
+def mant_tiendas_resumen_html(rows, estados_orden, column_emoji, columnas_con_semaforo):
+    """Genera el HTML de un 'resumen de pendientes' estilo lista para el
+    tablero de Mantenimiento de Tiendas — mismo concepto y mismo estilo
+    visual que diseno_resumen_html(), pero con las columnas/campos propios de
+    este tablero (tienda, quién solicita) en vez de vendedor/producto/fecha."""
+    secciones = []
+    for estado in estados_orden:
+        items = [r for r in rows if r.get("estado") == estado]
+        filas_html = []
+        for r in sorted(items, key=lambda x: x.get("creado_en") or "", reverse=True):
+            quien = html.escape(r.get("quien_solicita") or "Sin especificar")
+            tienda = html.escape(r.get("tienda") or "—")
+            av_bg = avatar_color_para(quien)
+            iniciales = html.escape(iniciales_nombre(quien))
+            t_bg, t_fg = pastel_para_texto(tienda)
+
+            pills = f'<span class="vd-pill" style="background:{t_bg};color:{t_fg};">{tienda}</span>'
+
+            if estado in columnas_con_semaforo:
+                if r.get("detenido_emergencia"):
+                    pills += '<span class="vd-pill" style="background:#fde8e8;color:#c62828;">🔴 Emergencia</span>'
+                else:
+                    pills += '<span class="vd-pill" style="background:#e4f7e4;color:#0ca30c;">🟢 En proceso</span>'
+
+            filas_html.append(
+                '<div class="vd-resumen-row">'
+                f'<span class="vd-avatar" style="background:{av_bg};" title="{quien}">{iniciales}</span>'
+                f'<span class="vd-resumen-cliente">{quien}</span>'
+                f'<span class="vd-resumen-spacer">{pills}</span>'
+                '</div>'
+            )
+
+        cuerpo = "".join(filas_html) or '<div class="vd-resumen-empty">Sin solicitudes en esta columna.</div>'
+        secciones.append(
+            '<div class="vd-resumen-section">'
+            '<div class="vd-resumen-section-header">'
+            f'<span>{column_emoji.get(estado, "")} {html.escape(estado)}</span>'
+            f'<span class="vd-resumen-count">{len(items)}</span>'
+            '</div>'
+            f'{cuerpo}'
+            '</div>'
+        )
+
+    estilo = (
+        "<style>"
+        ".vd-resumen-wrap{display:flex;flex-direction:column;gap:14px;margin-bottom:6px;}"
+        ".vd-resumen-section{border:1px solid #e1e0d9;border-radius:10px;overflow:hidden;background:#fcfcfb;}"
+        ".vd-resumen-section-header{display:flex;align-items:center;gap:8px;padding:10px 14px;"
+        "background:#f5f4f0;border-bottom:1px solid #e1e0d9;font-weight:600;color:#0b0b0b;font-size:0.95rem;}"
+        ".vd-resumen-count{margin-left:auto;background:#e1e0d9;color:#52514e;border-radius:999px;"
+        "padding:1px 10px;font-size:0.78rem;font-weight:600;}"
+        ".vd-resumen-row{display:flex;align-items:center;gap:10px;padding:9px 14px;"
+        "border-bottom:1px solid #efeee9;font-size:0.87rem;}"
+        ".vd-resumen-row:last-child{border-bottom:none;}"
+        ".vd-resumen-cliente{font-weight:600;color:#0b0b0b;}"
+        ".vd-avatar{width:24px;height:24px;border-radius:50%;display:flex;align-items:center;"
+        "justify-content:center;color:white;font-size:0.66rem;font-weight:700;flex-shrink:0;}"
+        ".vd-pill{border-radius:999px;padding:2px 10px;font-size:0.72rem;font-weight:600;white-space:nowrap;}"
+        ".vd-resumen-spacer{margin-left:auto;display:flex;gap:6px;align-items:center;"
+        "flex-wrap:wrap;justify-content:flex-end;}"
+        ".vd-resumen-empty{padding:12px 14px;color:#898781;font-size:0.85rem;font-style:italic;}"
+        "</style>"
+    )
+    return estilo + '<div class="vd-resumen-wrap">' + "".join(secciones) + "</div>"
+
+
 def _pdf_safe(texto):
     """Los PDFs con fuentes estándar (Helvetica) solo soportan Latin-1. Si el
     vendedor pegó texto con símbolos raros (emojis, comillas curvas, etc.),
