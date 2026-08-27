@@ -82,7 +82,8 @@ if rol == "mercadeo":
     # El rol 'mercadeo' tiene acceso a Visitas de mercadeo y, además, a
     # Tickets — Tiendas (solo para configurar los tiempos meta / KPIs; no
     # puede avanzar ni gestionar tickets, eso lo hace el personal de tienda).
-    pages = [mercadeo, tickets_tienda]
+    # También tiene acceso total al tablero de Mantenimiento de Tiendas.
+    pages = [mercadeo, tickets_tienda, mant_tiendas]
 elif rol == "jefe_planta":
     # El rol 'jefe_planta' tiene acceso a Reclamos (donde puede cambiar el
     # estado de cada reclamo) y a Mantenimiento de Maquinaria (donde puede
@@ -104,12 +105,13 @@ elif rol == "repartidor":
 elif rol in ("jefe_capacitacion", "asistente_capacitacion"):
     # Estos roles solo tienen acceso a la pestaña de Capacitación.
     pages = [capacitacion]
-elif rol == "jefe_tienda":
-    # El rol 'jefe_tienda' tiene acceso al Sistema de Tickets — Tiendas (solo
-    # su tienda asignada) y, además, puede reportar solicitudes en el tablero
-    # de Mantenimiento de Tiendas para su sucursal.
+elif rol in ("jefe_tienda", "subjefe_tienda"):
+    # 'jefe_tienda' y 'subjefe_tienda' tienen acceso al Sistema de Tickets —
+    # Tiendas (solo su tienda asignada) y, además, acceso total al tablero
+    # de Mantenimiento de Tiendas para su sucursal (crear, editar, mover y
+    # eliminar solicitudes).
     pages = [tickets_tienda, mant_tiendas]
-elif rol in ("anfitriona", "subjefe_tienda", "asesor_ventas", "cajero"):
+elif rol in ("anfitriona", "asesor_ventas", "cajero"):
     # Estos roles solo tienen acceso al Sistema de Tickets — Tiendas (y solo
     # ven la tienda asignada a su usuario). El resto del personal de tienda
     # (acabados, express) no tiene usuario propio.
