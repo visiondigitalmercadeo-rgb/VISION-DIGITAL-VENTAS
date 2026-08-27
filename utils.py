@@ -730,19 +730,51 @@ def mant_tienda_pdf_bytes(r: dict) -> bytes:
     pdf.multi_cell(box_w, 6, texto_desc, border=1)
     pdf.rect(10, desc_y0 + 8, box_w, alto_desc)
 
+    # -- Fotos de la solicitud inicial ---------------------------------------
     fotos_y0 = desc_y0 + 8 + alto_desc + 6
+    fotos = r.get("fotos") or []
     pdf.set_xy(10, fotos_y0)
     pdf.set_font("Helvetica", "I", 9)
     pdf.set_text_color(90, 90, 90)
-    n_fotos = len(r.get("fotos") or [])
-    pdf.cell(
-        box_w, 5,
-        _pdf_safe(f"📷 {n_fotos} foto(s) adjunta(s) — ver la plataforma." if n_fotos else "Sin fotos adjuntas."),
-    )
-    pdf.set_text_color(0, 0, 0)
+    if not fotos:
+        pdf.cell(box_w, 5, _pdf_safe("Sin fotos adjuntas."))
+        pdf.set_text_color(0, 0, 0)
+        firmas_y = fotos_y0 + 20
+    else:
+        pdf.cell(box_w, 5, _pdf_safe(f"📷 Fotos de la solicitud ({len(fotos)}):"))
+        pdf.set_text_color(0, 0, 0)
+        img_w, img_h, gap = 58, 44, 4
+        img_y = fotos_y0 + 7
+        x_cursor = 10
+        col_i = 0
+        for foto in fotos:
+            try:
+                img_bytes = base64.b64decode(foto.get("b64") or "")
+                img_stream = io.BytesIO(img_bytes)
+                # Si la foto no cabe antes del margen inferior, se pasa a una
+                # página nueva en vez de encimarse con las líneas de firma.
+                if img_y + img_h > 235:
+                    pdf.add_page()
+                    img_y = 15
+                    x_cursor = 10
+                    col_i = 0
+                pdf.image(img_stream, x=x_cursor, y=img_y, w=img_w, h=img_h)
+            except Exception:
+                # Foto dañada o formato no soportado por fpdf2 — se omite en
+                # vez de hacer fallar la generación de todo el PDF.
+                continue
+            col_i += 1
+            if col_i >= 3:
+                col_i = 0
+                x_cursor = 10
+                img_y += img_h + gap
+            else:
+                x_cursor += img_w + gap
+        if col_i != 0:
+            img_y += img_h + gap
+        firmas_y = img_y + 14
 
     # -- Firmas: SOLICITA / ATIENDE MANTENIMIENTO ----------------------------
-    firmas_y = fotos_y0 + 20
     pdf.set_draw_color(0, 0, 0)
     pdf.line(15, firmas_y, 95, firmas_y)
     pdf.line(115, firmas_y, 195, firmas_y)
