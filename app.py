@@ -73,6 +73,7 @@ capacitacion = st.Page("app_pages/16_Capacitacion.py", title="Capacitación", ic
 tickets_tienda = st.Page("app_pages/17_Tickets_Tienda.py", title="Sistema Tickets Tiendas", icon="🎫")
 mantenimiento = st.Page("app_pages/18_Mantenimiento_Maquinaria.py", title="Mantenimiento de Maquinaria", icon="🔧")
 litografia = st.Page("app_pages/19_Litografia.py", title="Litografía", icon="🖨️")
+mant_tiendas = st.Page("app_pages/20_Mant_Tiendas.py", title="Mant. Tiendas", icon="🏬")
 generales = st.Page("app_pages/8_Prospectos_Generales.py", title="Prospectos generales (todos)", icon="🌐")
 kpis = st.Page("app_pages/9_KPIs.py", title="KPIs", icon="📊")
 admin = st.Page("app_pages/10_Administracion.py", title="Administración de usuarios", icon="👥")
@@ -103,7 +104,12 @@ elif rol == "repartidor":
 elif rol in ("jefe_capacitacion", "asistente_capacitacion"):
     # Estos roles solo tienen acceso a la pestaña de Capacitación.
     pages = [capacitacion]
-elif rol in ("anfitriona", "jefe_tienda", "subjefe_tienda", "asesor_ventas", "cajero"):
+elif rol == "jefe_tienda":
+    # El rol 'jefe_tienda' tiene acceso al Sistema de Tickets — Tiendas (solo
+    # su tienda asignada) y, además, puede reportar solicitudes en el tablero
+    # de Mantenimiento de Tiendas para su sucursal.
+    pages = [tickets_tienda, mant_tiendas]
+elif rol in ("anfitriona", "subjefe_tienda", "asesor_ventas", "cajero"):
     # Estos roles solo tienen acceso al Sistema de Tickets — Tiendas (y solo
     # ven la tienda asignada a su usuario). El resto del personal de tienda
     # (acabados, express) no tiene usuario propio.
@@ -114,11 +120,16 @@ elif rol == "cotizadora":
     # los catálogos de máquinas y papel (ver auth.puede_gestionar_litografia
     # y auth.puede_administrar_catalogos_litografia).
     pages = [litografia]
+elif rol == "jefe_mantenimiento":
+    # El rol 'jefe_mantenimiento' solo tiene acceso al tablero de
+    # Mantenimiento de Tiendas, donde mueve las solicitudes por las columnas
+    # (mismo concepto que 'disenador' con el tablero de Diseño Gráfico).
+    pages = [mant_tiendas]
 else:
     pages = [
         inicio, prospectos, llamadas, citas, mercadeo, cotizaciones, reclamos,
         diseno, diseno_alvaro, logistica, ventas, ventas_mes, capacitacion, tickets_tienda,
-        mantenimiento, litografia, generales, kpis,
+        mantenimiento, litografia, mant_tiendas, generales, kpis,
     ]
     if rol == "admin":
         pages.append(admin)
