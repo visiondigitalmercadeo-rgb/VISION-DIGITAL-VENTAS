@@ -363,6 +363,10 @@ MANT_TIENDA_SIGUIENTE_ESTADO = {
 }
 MANT_TIENDAS_FOTO_MAX_BYTES = 900_000  # ~900 KB por foto — mismo límite práctico que Diseño/Capacitación
 MANT_TIENDAS_FOTOS_MAX = 5
+# Cotización: PDFs que sube el jefe de planta mientras la solicitud está en
+# la columna "En cotización" — solo el admin puede autorizarla.
+MANT_TIENDAS_COTIZACION_MAX_BYTES = 900_000  # ~900 KB por PDF — mismo límite práctico que el resto
+MANT_TIENDAS_COTIZACION_MAX_ARCHIVOS = 3
 
 # ---------------------------------------------------------------------------
 # Litografía: cotizador técnico (ficha del trabajo + cálculo automático de
