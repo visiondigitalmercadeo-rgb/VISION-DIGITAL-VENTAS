@@ -228,14 +228,17 @@ def is_jefe_mantenimiento():
 
 
 def puede_crear_mant_tiendas():
-    """Quién puede crear solicitudes en el tablero de Mantenimiento de
-    Tiendas — admin, jefe de tienda, sub jefe de tienda y mercadeo tienen
+    """Quién puede crear (abrir) solicitudes en el tablero de Mantenimiento
+    de Tiendas — admin, jefe de tienda, sub jefe de tienda y mercadeo tienen
     acceso total a esta pestaña (crear, editar, mover y eliminar cualquier
     solicitud); son quienes detectan y reportan qué hay que arreglar en su
     sucursal (mismo concepto que 'vendedor' en el tablero de Diseño
-    Gráfico)."""
+    Gráfico). 'jefe_mantenimiento' también puede abrir solicitudes él mismo,
+    además de darles seguimiento moviéndolas por el tablero."""
     u = current_user()
-    return u is not None and u["rol"] in ("admin", "jefe_tienda", "subjefe_tienda", "mercadeo")
+    return u is not None and u["rol"] in (
+        "admin", "jefe_tienda", "subjefe_tienda", "mercadeo", "jefe_mantenimiento",
+    )
 
 
 def puede_mover_mant_tiendas():
