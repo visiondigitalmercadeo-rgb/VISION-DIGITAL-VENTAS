@@ -349,8 +349,18 @@ APP_URL = "https://vision-digital-ventas.streamlit.app"
 # reporta qué hay que arreglar en su sucursal, y el 'Jefe de Mantenimiento'
 # la va moviendo por el tablero conforme avanza.
 # ---------------------------------------------------------------------------
-ESTADOS_MANT_TIENDAS = ["Lista de tareas", "Emergencias", "En proceso", "Requiere seguimiento", "Resuelto"]
-ESTADOS_MANT_TIENDAS_INICIALES = ["Lista de tareas", "Emergencias"]
+ESTADOS_MANT_TIENDAS = ["Lista de tareas", "Emergencia", "En cotización", "En proceso", "Finalizado"]
+ESTADOS_MANT_TIENDAS_INICIALES = ["Lista de tareas", "Emergencia"]
+# A qué columna pasa una solicitud al presionar el botón "➡️ Mover a la
+# siguiente etapa" — 'Lista de tareas' y 'Emergencia' son dos puertas de
+# entrada distintas que confluyen en el mismo siguiente paso (En cotización);
+# de ahí en adelante el flujo es lineal. 'Finalizado' no tiene siguiente.
+MANT_TIENDA_SIGUIENTE_ESTADO = {
+    "Lista de tareas": "En cotización",
+    "Emergencia": "En cotización",
+    "En cotización": "En proceso",
+    "En proceso": "Finalizado",
+}
 MANT_TIENDAS_FOTO_MAX_BYTES = 900_000  # ~900 KB por foto — mismo límite práctico que Diseño/Capacitación
 MANT_TIENDAS_FOTOS_MAX = 5
 
