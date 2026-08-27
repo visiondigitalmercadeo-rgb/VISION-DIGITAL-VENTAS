@@ -20,9 +20,9 @@ sidebar_user_box()
 st.title("🏬 Mantenimiento de Tiendas")
 st.caption(
     "Tablero de solicitudes de mantenimiento de tiendas, estilo Trello — mismo concepto que Diseño "
-    "Gráfico. Jefe de tienda, sub jefe de tienda, mercadeo y administrador tienen acceso total (crear, "
-    "editar, mover y eliminar); el Jefe de Mantenimiento también puede mover las solicitudes por el "
-    "tablero conforme avanza: Lista de tareas/Emergencia → En cotización → En proceso → Finalizado."
+    "Gráfico. Jefe de tienda, sub jefe de tienda, mercadeo, Jefe de Mantenimiento y administrador tienen "
+    "acceso total (crear, editar, mover y eliminar) conforme la solicitud avanza: Lista de tareas/"
+    "Emergencia → En cotización → En proceso → Finalizado."
 )
 
 COLUMN_EMOJI = {
@@ -165,7 +165,9 @@ with tab_tablero:
                 with st.container(border=True):
                     mid = r["id"]
                     editando_key = f"mt_editando_{mid}"
-                    puede_editar_esta = puede_crear and (user["rol"] == "admin" or r.get("creado_por_id") == user["id"])
+                    puede_editar_esta = puede_mover or (
+                        puede_crear and (user["rol"] == "admin" or r.get("creado_por_id") == user["id"])
+                    )
                     puede_editar_este = puede_editar_esta or puede_mover
                     numero_txt = _label_numero(r.get("numero_solicitud"))
 
@@ -323,8 +325,8 @@ with tab_tablero:
 with tab_nueva:
     if not puede_crear:
         st.info(
-            "Solo el jefe de tienda, sub jefe de tienda, mercadeo y los administradores pueden crear "
-            "solicitudes de mantenimiento."
+            "Solo el jefe de tienda, sub jefe de tienda, mercadeo, el Jefe de Mantenimiento y los "
+            "administradores pueden crear solicitudes de mantenimiento."
         )
     else:
         with st.form("nueva_solicitud_mant_tienda", clear_on_submit=True):
