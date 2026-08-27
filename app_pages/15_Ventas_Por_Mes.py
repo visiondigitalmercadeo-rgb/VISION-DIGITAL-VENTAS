@@ -29,6 +29,14 @@ registros = db.get_ventas_mensuales_planta(anio_mes)
 todos_los_vendedores = db.list_vendedores(solo_activos=False)
 columnas_planta = [f"Venta {p}" for p in PLANTAS]
 
+st.markdown("##### Totales del mes por planta (todos los vendedores)")
+cols_tot = st.columns(len(PLANTAS))
+for col, p in zip(cols_tot, PLANTAS):
+    total_planta = sum(float((r.get("montos") or {}).get(p, 0) or 0) for r in registros.values())
+    col.metric(p, money(total_planta))
+
+st.divider()
+
 if user["rol"] == "admin":
     vendedores_tabla = [v for v in todos_los_vendedores if v["activo"]]
 else:
@@ -41,6 +49,7 @@ else:
 if not vendedores_tabla:
     st.info("No hay vendedores para mostrar.")
 else:
+    st.markdown("##### Desglose por vendedor")
     filas = []
     for v in vendedores_tabla:
         montos = registros.get(v["id"], {}).get("montos", {})
@@ -53,12 +62,6 @@ else:
     for c in columnas_planta + ["Total"]:
         df_display[c] = df_display[c].apply(money)
     st.dataframe(df_display, use_container_width=True, hide_index=True)
-
-st.markdown("##### Totales del mes por planta (todos los vendedores)")
-cols_tot = st.columns(len(PLANTAS))
-for col, p in zip(cols_tot, PLANTAS):
-    total_planta = sum(float((r.get("montos") or {}).get(p, 0) or 0) for r in registros.values())
-    col.metric(p, money(total_planta))
 
 if user["rol"] == "admin":
     st.divider()
