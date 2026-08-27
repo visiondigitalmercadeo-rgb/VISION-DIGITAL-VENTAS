@@ -7,7 +7,8 @@ import auth
 import database as db
 from config import (
     ESTADOS_MANT_TIENDAS, ESTADOS_MANT_TIENDAS_INICIALES, MANT_TIENDA_SIGUIENTE_ESTADO,
-    MANT_TIENDAS_FOTO_MAX_BYTES, MANT_TIENDAS_FOTOS_MAX, TICKET_TIENDAS,
+    MANT_TIENDAS_COTIZACION_MAX_ARCHIVOS, MANT_TIENDAS_COTIZACION_MAX_BYTES, MANT_TIENDAS_FOTO_MAX_BYTES,
+    MANT_TIENDAS_FOTOS_MAX, TICKET_TIENDAS,
 )
 from utils import (
     archivos_a_b64_lista, download_excel_button, mant_tienda_pdf_bytes, mant_tiendas_resumen_html,
@@ -202,6 +203,82 @@ with tab_tablero:
                             mime=foto.get("tipo") or "application/octet-stream",
                             use_container_width=True, key=f"mt_foto_{mid}_{i}",
                         )
+
+                    # ------------------------------------------------------------
+                    # Cotización: PDFs (máximo 3) + autorización — semáforo propio
+                    # (🟢 autorizada / 🔴 pendiente), independiente del semáforo de
+                    # emergencia de arriba. El jefe de planta (y quien ya tenga
+                    # acceso total) sube los PDF mientras está en la columna 'En
+                    # cotización'; solo el admin puede autorizarla.
+                    # ------------------------------------------------------------
+                    puede_subir_cot = auth.puede_subir_cotizacion_mant_tiendas()
+                    puede_autorizar_cot = auth.puede_autorizar_cotizacion_mant_tiendas()
+                    cotizacion_pdfs = r.get("cotizacion_pdfs") or []
+                    mostrar_cotizacion = bool(cotizacion_pdfs) or (puede_subir_cot and estado == "En cotización")
+
+                    if mostrar_cotizacion:
+                        with st.container(border=True):
+                            semaforo_cot = "🟢" if r.get("cotizacion_autorizada") else "🔴"
+                            estado_cot_txt = "Autorizada" if r.get("cotizacion_autorizada") else "Pendiente de autorizar"
+                            st.markdown(f"{semaforo_cot} **Cotización — {estado_cot_txt}**")
+                            if r.get("cotizacion_autorizada") and r.get("cotizacion_autorizada_en"):
+                                st.caption(
+                                    f"Autorizada el {(r.get('cotizacion_autorizada_en') or '')[:16].replace('T', ' ')}"
+                                )
+
+                            for i, pdf_doc in enumerate(cotizacion_pdfs):
+                                st.download_button(
+                                    f"📄 {pdf_doc['nombre']}", data=base64.b64decode(pdf_doc["b64"]),
+                                    file_name=pdf_doc["nombre"], mime="application/pdf",
+                                    use_container_width=True, key=f"mt_cotpdf_{mid}_{i}",
+                                )
+
+                            if puede_subir_cot and estado == "En cotización":
+                                with st.form(f"cotizacion_form_{mid}"):
+                                    st.caption(
+                                        f"Subir/reemplazar los PDF de cotización "
+                                        f"(máximo {MANT_TIENDAS_COTIZACION_MAX_ARCHIVOS})."
+                                    )
+                                    nuevos_pdfs_cot = st.file_uploader(
+                                        "Archivos PDF de cotización", type=["pdf"], accept_multiple_files=True,
+                                        key=f"mt_cot_upload_{mid}",
+                                        help=(
+                                            "Si subes archivos aquí, reemplazan a TODOS los actuales. Si ya había "
+                                            "una cotización autorizada, subir archivos nuevos le quita la "
+                                            "autorización — hay que volver a autorizarla."
+                                        ),
+                                    )
+                                    if st.form_submit_button("💾 Guardar cotización", use_container_width=True):
+                                        if not nuevos_pdfs_cot:
+                                            st.error("Selecciona al menos un archivo PDF.")
+                                        else:
+                                            try:
+                                                pdfs_lista_cot = archivos_a_b64_lista(
+                                                    nuevos_pdfs_cot, MANT_TIENDAS_COTIZACION_MAX_BYTES,
+                                                    MANT_TIENDAS_COTIZACION_MAX_ARCHIVOS,
+                                                )
+                                            except ValueError as e:
+                                                st.error(str(e))
+                                            else:
+                                                db.subir_cotizacion_mant_tienda(mid, pdfs_lista_cot)
+                                                st.success("Cotización subida.")
+                                                st.rerun()
+
+                            if puede_autorizar_cot and cotizacion_pdfs:
+                                if r.get("cotizacion_autorizada"):
+                                    if st.button(
+                                        "🔓 Quitar autorización", key=f"mt_cot_desaut_{mid}", use_container_width=True,
+                                    ):
+                                        db.desautorizar_cotizacion_mant_tienda(mid)
+                                        st.rerun()
+                                else:
+                                    if st.button(
+                                        "✅ Autorizar cotización", key=f"mt_cot_autorizar_{mid}",
+                                        use_container_width=True,
+                                    ):
+                                        db.autorizar_cotizacion_mant_tienda(mid, user["id"])
+                                        st.success("Cotización autorizada.")
+                                        st.rerun()
 
                     siguiente = MANT_TIENDA_SIGUIENTE_ESTADO.get(r.get("estado"))
                     if puede_mover and siguiente:
