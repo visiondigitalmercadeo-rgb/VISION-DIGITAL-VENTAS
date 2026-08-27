@@ -5,8 +5,14 @@ import streamlit as st
 
 import auth
 import database as db
-from config import ESTADOS_MANT_TIENDAS, ESTADOS_MANT_TIENDAS_INICIALES, MANT_TIENDAS_FOTO_MAX_BYTES, MANT_TIENDAS_FOTOS_MAX, TICKET_TIENDAS
-from utils import archivos_a_b64_lista, download_excel_button, mant_tiendas_resumen_html, sidebar_user_box
+from config import (
+    ESTADOS_MANT_TIENDAS, ESTADOS_MANT_TIENDAS_INICIALES, MANT_TIENDA_SIGUIENTE_ESTADO,
+    MANT_TIENDAS_FOTO_MAX_BYTES, MANT_TIENDAS_FOTOS_MAX, TICKET_TIENDAS,
+)
+from utils import (
+    archivos_a_b64_lista, download_excel_button, mant_tienda_pdf_bytes, mant_tiendas_resumen_html,
+    minutos_entre, minutos_legible, sidebar_user_box,
+)
 
 user = auth.current_user()
 sidebar_user_box()
@@ -15,20 +21,71 @@ st.title("🏬 Mantenimiento de Tiendas")
 st.caption(
     "Tablero de solicitudes de mantenimiento de tiendas, estilo Trello — mismo concepto que Diseño "
     "Gráfico. El jefe de tienda (o admin) registra qué hay que arreglar (cae en 'Lista de tareas' o "
-    "'Emergencias'); el Jefe de Mantenimiento la va moviendo por el tablero conforme avanza."
+    "'Emergencia'); el Jefe de Mantenimiento la va moviendo por el tablero conforme avanza: "
+    "En cotización → En proceso → Finalizado."
 )
 
 COLUMN_EMOJI = {
-    "Lista de tareas": "📋", "Emergencias": "🚨", "En proceso": "🔧",
-    "Requiere seguimiento": "⏳", "Resuelto": "✅",
+    "Lista de tareas": "📋", "Emergencia": "🚨", "En cotización": "💰",
+    "En proceso": "🔧", "Finalizado": "✅",
 }
 # El semáforo (🟢/🔴) solo se muestra en estas columnas — no aplica a
-# "Lista de tareas" ni "Emergencias", que todavía no están en curso.
-COLUMNAS_CON_SEMAFORO = {"En proceso", "Requiere seguimiento", "Resuelto"}
+# "Lista de tareas" ni "Emergencia", que todavía no están en curso.
+COLUMNAS_CON_SEMAFORO = {"En cotización", "En proceso", "Finalizado"}
+
+# Etapas que se miden para los KPIs de tiempo de arriba: (etiqueta, campo de
+# hora de inicio, campo de hora de fin). El promedio de cada una se calcula
+# solo con las solicitudes que ya completaron esa etapa (tienen ambas horas
+# guardadas) — ver database.avanzar_mant_tienda, que registra la hora exacta
+# la primera vez que una solicitud entra a cada etapa.
+_ETAPAS_KPI = [
+    ("🧾 Solicitud → Cotización", "creado_en", "fecha_cotizacion"),
+    ("💰 Cotización → Proceso", "fecha_cotizacion", "fecha_en_proceso"),
+    ("🔧 Proceso → Finalización", "fecha_en_proceso", "fecha_finalizado"),
+    ("🏁 Total (solicitud → finalización)", "creado_en", "fecha_finalizado"),
+]
+
+
+def _promedio_minutos(rows, campo_ini, campo_fin):
+    valores = [
+        minutos_entre(r.get(campo_ini), r.get(campo_fin))
+        for r in rows if r.get(campo_ini) and r.get(campo_fin)
+    ]
+    return (sum(valores) / len(valores)) if valores else None
+
+
+def _label_numero(numero_solicitud):
+    return f"#{numero_solicitud:04d} · " if isinstance(numero_solicitud, int) else ""
+
 
 puede_crear = auth.puede_crear_mant_tiendas()
 puede_mover = auth.puede_mover_mant_tiendas()
 tienda_usuario = auth.current_user_tienda()
+
+if tienda_usuario:
+    filtro_tienda = tienda_usuario
+    st.caption(f"Mostrando solo la tienda: **{tienda_usuario}**")
+else:
+    elegido_tienda = st.selectbox(
+        "Filtrar por tienda", ["Todas"] + TICKET_TIENDAS, key="mt_filtro_tienda",
+    )
+    filtro_tienda = None if elegido_tienda == "Todas" else elegido_tienda
+
+rows = db.list_mant_tiendas(tienda=filtro_tienda)  # ya vienen ordenadas: más nueva primero
+
+# ------------------------------------------------------------------
+# KPIs de tiempo, arriba de todo — cuánto se tarda cada etapa del
+# proceso completo, en promedio (solo cuenta solicitudes que ya
+# completaron esa etapa).
+# ------------------------------------------------------------------
+st.markdown("#### ⏱️ Tiempos promedio por etapa")
+st.caption("Promedio de todas las solicitudes que ya completaron cada etapa (con el filtro de tienda de arriba).")
+kcols = st.columns(len(_ETAPAS_KPI))
+for col, (etiqueta, campo_ini, campo_fin) in zip(kcols, _ETAPAS_KPI):
+    promedio = _promedio_minutos(rows, campo_ini, campo_fin)
+    col.metric(etiqueta, minutos_legible(round(promedio)) if promedio is not None else "Sin datos")
+
+st.divider()
 
 tab_tablero, tab_nueva = st.tabs(["🗂️ Tablero", "➕ Nueva solicitud"])
 
@@ -36,31 +93,22 @@ tab_tablero, tab_nueva = st.tabs(["🗂️ Tablero", "➕ Nueva solicitud"])
 # Tablero
 # --------------------------------------------------------------------------
 with tab_tablero:
-    if tienda_usuario:
-        filtro_tienda = tienda_usuario
-        st.caption(f"Mostrando solo la tienda: **{tienda_usuario}**")
-    else:
-        elegido_tienda = st.selectbox(
-            "Filtrar por tienda", ["Todas"] + TICKET_TIENDAS, key="mt_filtro_tienda",
-        )
-        filtro_tienda = None if elegido_tienda == "Todas" else elegido_tienda
-
-    rows = db.list_mant_tiendas(tienda=filtro_tienda)  # ya vienen ordenadas: más nueva primero
-
     busqueda = st.text_input("🔎 Buscar por tienda, quién solicita o descripción (opcional)", key="mt_busqueda")
+    rows_tablero = rows
     if busqueda.strip():
         q = busqueda.strip().lower()
-        rows = [
-            r for r in rows
+        rows_tablero = [
+            r for r in rows_tablero
             if q in (r.get("tienda") or "").lower()
             or q in (r.get("quien_solicita") or "").lower()
             or q in (r.get("descripcion") or "").lower()
         ]
 
-    if rows:
+    if rows_tablero:
         download_excel_button(
             pd.DataFrame([{
-                "ID": r["id"], "Tienda": r.get("tienda"), "Quién solicita": r.get("quien_solicita"),
+                "N° Solicitud": r.get("numero_solicitud"),
+                "Tienda": r.get("tienda"), "Quién solicita": r.get("quien_solicita"),
                 "Descripción": r.get("descripcion"), "Estado": r.get("estado"),
                 "Semáforo": (
                     ("Parado por emergencia" if r.get("detenido_emergencia") else "Sigue en proceso")
@@ -68,7 +116,26 @@ with tab_tablero:
                 ),
                 "Fotos adjuntas": len(r.get("fotos") or []),
                 "Creado": r.get("creado_en"),
-            } for r in rows]),
+                "Entró a cotización": r.get("fecha_cotizacion") or "—",
+                "Entró a proceso": r.get("fecha_en_proceso") or "—",
+                "Finalizado": r.get("fecha_finalizado") or "—",
+                "Solicitud→Cotización (min)": (
+                    minutos_entre(r.get("creado_en"), r.get("fecha_cotizacion"))
+                    if r.get("fecha_cotizacion") else "—"
+                ),
+                "Cotización→Proceso (min)": (
+                    minutos_entre(r.get("fecha_cotizacion"), r.get("fecha_en_proceso"))
+                    if r.get("fecha_cotizacion") and r.get("fecha_en_proceso") else "—"
+                ),
+                "Proceso→Finalización (min)": (
+                    minutos_entre(r.get("fecha_en_proceso"), r.get("fecha_finalizado"))
+                    if r.get("fecha_en_proceso") and r.get("fecha_finalizado") else "—"
+                ),
+                "Tiempo total (min)": (
+                    minutos_entre(r.get("creado_en"), r.get("fecha_finalizado"))
+                    if r.get("fecha_finalizado") else "—"
+                ),
+            } for r in rows_tablero]),
             "solicitudes_mant_tiendas.xlsx", key="mt_descargar_excel",
         )
 
@@ -78,7 +145,7 @@ with tab_tablero:
     # ------------------------------------------------------------------
     st.markdown("#### 📋 Resumen de pendientes")
     st.markdown(
-        mant_tiendas_resumen_html(rows, ESTADOS_MANT_TIENDAS, COLUMN_EMOJI, COLUMNAS_CON_SEMAFORO),
+        mant_tiendas_resumen_html(rows_tablero, ESTADOS_MANT_TIENDAS, COLUMN_EMOJI, COLUMNAS_CON_SEMAFORO),
         unsafe_allow_html=True,
     )
 
@@ -89,7 +156,7 @@ with tab_tablero:
 
     cols = st.columns(len(ESTADOS_MANT_TIENDAS))
     for col, estado in zip(cols, ESTADOS_MANT_TIENDAS):
-        items = [r for r in rows if r.get("estado") == estado]
+        items = [r for r in rows_tablero if r.get("estado") == estado]
         with col:
             st.markdown(f"##### {COLUMN_EMOJI.get(estado, '')} {estado} ({len(items)})")
             if not items:
@@ -100,14 +167,15 @@ with tab_tablero:
                     editando_key = f"mt_editando_{mid}"
                     puede_editar_esta = puede_crear and (user["rol"] == "admin" or r.get("creado_por_id") == user["id"])
                     puede_editar_este = puede_editar_esta or puede_mover
+                    numero_txt = _label_numero(r.get("numero_solicitud"))
 
                     title_col, edit_col = st.columns([5, 1])
                     with title_col:
                         if estado in COLUMNAS_CON_SEMAFORO:
                             semaforo = "🔴" if r.get("detenido_emergencia") else "🟢"
-                            st.markdown(f"{semaforo} **{r.get('tienda') or 'Sin tienda'}**")
+                            st.markdown(f"{semaforo} **{numero_txt}{r.get('tienda') or 'Sin tienda'}**")
                         else:
-                            st.markdown(f"**{r.get('tienda') or 'Sin tienda'}**")
+                            st.markdown(f"**{numero_txt}{r.get('tienda') or 'Sin tienda'}**")
                     with edit_col:
                         if puede_editar_este:
                             if st.button("✏️", key=f"mt_editar_{mid}", help="Editar esta solicitud"):
@@ -118,6 +186,12 @@ with tab_tablero:
                         st.caption(f"📝 {r['descripcion']}")
                     st.caption(f"🕒 {(r.get('creado_en') or '')[:16].replace('T', ' ')}")
 
+                    st.download_button(
+                        "📄 Orden de trabajo (PDF)", data=mant_tienda_pdf_bytes(r),
+                        file_name=f"orden_trabajo_{r.get('numero_solicitud') or mid}.pdf", mime="application/pdf",
+                        use_container_width=True, key=f"mt_pdf_{mid}",
+                    )
+
                     for i, foto in enumerate(r.get("fotos") or []):
                         st.download_button(
                             f"📷 {foto['nombre']}",
@@ -126,6 +200,15 @@ with tab_tablero:
                             mime=foto.get("tipo") or "application/octet-stream",
                             use_container_width=True, key=f"mt_foto_{mid}_{i}",
                         )
+
+                    siguiente = MANT_TIENDA_SIGUIENTE_ESTADO.get(r.get("estado"))
+                    if puede_mover and siguiente:
+                        if st.button(
+                            f"➡️ Mover a «{siguiente}»", key=f"mt_avanzar_{mid}", use_container_width=True,
+                        ):
+                            db.avanzar_mant_tienda(mid, siguiente)
+                            st.success(f"Solicitud movida a «{siguiente}».")
+                            st.rerun()
 
                     if puede_editar_este and st.session_state.get(editando_key):
                         # ----------------------------------------------------
@@ -170,7 +253,7 @@ with tab_tablero:
                                 )
                                 opciones_semaforo = ["🟢 Sigue en proceso", "🔴 Parado por emergencia"]
                                 semaforo_ed = st.radio(
-                                    "Semáforo (se muestra en las columnas En proceso, Requiere seguimiento y Resuelto)",
+                                    "Semáforo (se muestra en las columnas En cotización, En proceso y Finalizado)",
                                     opciones_semaforo,
                                     index=1 if r.get("detenido_emergencia") else 0,
                                     horizontal=True,
@@ -200,7 +283,7 @@ with tab_tablero:
 
                             if guardar:
                                 error_msg = None
-                                update_kwargs = {"estado": estado_ed}
+                                update_kwargs = {}
                                 if puede_mover:
                                     update_kwargs["detenido_emergencia"] = semaforo_ed.startswith("🔴")
                                 if puede_editar_esta:
@@ -221,7 +304,7 @@ with tab_tablero:
                                 if error_msg:
                                     st.error(error_msg)
                                 else:
-                                    db.update_mant_tienda(mid, **update_kwargs)
+                                    db.avanzar_mant_tienda(mid, estado_ed, extra=update_kwargs)
                                     st.session_state.pop(editando_key, None)
                                     st.success("Solicitud actualizada.")
                                     st.rerun()
@@ -244,7 +327,7 @@ with tab_nueva:
         with st.form("nueva_solicitud_mant_tienda", clear_on_submit=True):
             tipo_solicitud = st.radio(
                 "Tipo de solicitud", ESTADOS_MANT_TIENDAS_INICIALES, horizontal=True,
-                help="'Emergencias' aparece en su propia columna del tablero para que se vea primero.",
+                help="'Emergencia' aparece en su propia columna del tablero para que se vea primero.",
             )
             if tienda_usuario:
                 tienda = tienda_usuario
