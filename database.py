@@ -1587,8 +1587,21 @@ def avanzar_mant_tienda(mant_id, nuevo_estado, extra=None):
     cuánto tiempo se tarda cada etapa. Si la solicitud se mueve hacia atrás y
     vuelve a pasar por la misma etapa, NO vuelve a pisar la hora ya guardada.
     'extra' son otros campos a actualizar en la misma escritura (por ejemplo,
-    si también se editaron los datos de la solicitud en el mismo formulario)."""
+    si también se editaron los datos de la solicitud en el mismo formulario).
+
+    Regla de negocio: no se puede entrar a 'En proceso' hasta que un admin
+    autorice la cotización (ver auth.puede_autorizar_cotizacion_mant_tiendas
+    y autorizar_cotizacion_mant_tienda) — lanza ValueError si se intenta sin
+    autorización, para que la página lo muestre con st.error()."""
     actual = get_mant_tienda(mant_id) or {}
+    if (
+        nuevo_estado == "En proceso"
+        and actual.get("estado") != "En proceso"
+        and not actual.get("cotizacion_autorizada")
+    ):
+        raise ValueError(
+            "No se puede mover esta solicitud a «En proceso» hasta que un administrador autorice la cotización."
+        )
     cambios = dict(extra or {})
     cambios["estado"] = nuevo_estado
     if actual.get("estado") != nuevo_estado:
