@@ -86,9 +86,11 @@ if rol == "mercadeo":
     pages = [mercadeo, tickets_tienda, mant_tiendas]
 elif rol == "jefe_planta":
     # El rol 'jefe_planta' tiene acceso a Reclamos (donde puede cambiar el
-    # estado de cada reclamo) y a Mantenimiento de Maquinaria (donde puede
-    # registrar máquinas y sus mantenimientos preventivos/correctivos).
-    pages = [reclamos, mantenimiento]
+    # estado de cada reclamo), a Mantenimiento de Maquinaria (donde puede
+    # registrar máquinas y sus mantenimientos preventivos/correctivos) y,
+    # además, a Mant. Tiendas — ahí solo puede subir los PDF de cotización
+    # de una solicitud mientras está en la columna 'En cotización'.
+    pages = [reclamos, mantenimiento, mant_tiendas]
 elif rol == "disenador":
     # El rol 'disenador' solo tiene acceso al tablero de Diseño Gráfico - Nicolás.
     pages = [diseno]
