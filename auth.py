@@ -251,3 +251,24 @@ def puede_mover_mant_tiendas():
     return u is not None and u["rol"] in (
         "admin", "jefe_mantenimiento", "jefe_tienda", "subjefe_tienda", "mercadeo",
     )
+
+
+def puede_subir_cotizacion_mant_tiendas():
+    """Quién puede subir los archivos PDF de cotización dentro de una
+    solicitud de Mantenimiento de Tiendas que está en la columna 'En
+    cotización' — el jefe de planta, que es quien cotiza los trabajos con
+    los proveedores, además de todos los roles que ya tienen acceso total
+    al tablero (ver puede_crear_mant_tiendas)."""
+    u = current_user()
+    return u is not None and u["rol"] in (
+        "admin", "jefe_tienda", "subjefe_tienda", "mercadeo", "jefe_mantenimiento", "jefe_planta",
+    )
+
+
+def puede_autorizar_cotizacion_mant_tiendas():
+    """Solo el administrador puede autorizar la cotización de una solicitud
+    de Mantenimiento de Tiendas — mientras no se autoriza, la tarjeta
+    muestra el semáforo de cotización en rojo; una vez autorizada, en
+    verde."""
+    u = current_user()
+    return u is not None and u["rol"] == "admin"
