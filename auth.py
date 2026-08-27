@@ -220,3 +220,26 @@ def puede_administrar_catalogos_litografia():
     cotizador, pero solo de esa pestaña)."""
     u = current_user()
     return u is not None and u["rol"] in ("admin", "cotizadora")
+
+
+def is_jefe_mantenimiento():
+    u = current_user()
+    return u is not None and u["rol"] == "jefe_mantenimiento"
+
+
+def puede_crear_mant_tiendas():
+    """Quién puede crear solicitudes en el tablero de Mantenimiento de
+    Tiendas — admin y jefe de tienda, que son quienes detectan y reportan
+    qué hay que arreglar en su sucursal (mismo concepto que 'vendedor' en el
+    tablero de Diseño Gráfico)."""
+    u = current_user()
+    return u is not None and u["rol"] in ("admin", "jefe_tienda")
+
+
+def puede_mover_mant_tiendas():
+    """Quién mueve las solicitudes por el tablero de Mantenimiento de
+    Tiendas — admin y 'jefe_mantenimiento', el rol dedicado a darles
+    seguimiento (mismo concepto que 'disenador' en el tablero de Diseño
+    Gráfico)."""
+    u = current_user()
+    return u is not None and u["rol"] in ("admin", "jefe_mantenimiento")
