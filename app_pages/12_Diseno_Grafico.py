@@ -127,7 +127,7 @@ with tab_tablero:
                 with st.container(border=True):
                     did = r["id"]
                     editando_key = f"dis_editando_{did}"
-                    puede_editar_esta = puede_crear and (user["rol"] == "admin" or r["vendedor_id"] == user["id"])
+                    puede_editar_esta = puede_mover or (puede_crear and (user["rol"] == "admin" or r["vendedor_id"] == user["id"]))
                     puede_editar_este = puede_editar_esta or puede_mover
 
                     title_col, edit_col = st.columns([5, 1])
