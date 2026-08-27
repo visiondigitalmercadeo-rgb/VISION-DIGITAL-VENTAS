@@ -46,6 +46,7 @@ ROLES = [
     "admin", "vendedor", "vista", "mercadeo", "jefe_planta", "disenador", "disenador_alvaro",
     "jefe_logistica", "repartidor", "jefe_capacitacion", "asistente_capacitacion",
     "anfitriona", "jefe_tienda", "subjefe_tienda", "asesor_ventas", "cajero", "cotizadora",
+    "jefe_mantenimiento",
 ]
 ROLES_LABEL = {
     "admin": "Administrador",
@@ -65,6 +66,7 @@ ROLES_LABEL = {
     "asesor_ventas": "Asesor de ventas",
     "cajero": "Cajero",
     "cotizadora": "Cotizadora (Litografía)",
+    "jefe_mantenimiento": "Jefe de Mantenimiento",
 }
 
 # Roles que pertenecen a una tienda específica (necesitan el campo "tienda"
@@ -340,6 +342,17 @@ TICKET_SLUG_TIENDA = {v: k for k, v in TICKET_TIENDA_SLUG.items()}
 # enlace de la pantalla "Ahora atendiendo". Si algún día cambia el dominio de
 # Streamlit Cloud, solo hay que actualizar esto.
 APP_URL = "https://vision-digital-ventas.streamlit.app"
+
+# ---------------------------------------------------------------------------
+# Mantenimiento de Tiendas: tablero de solicitudes estilo Trello, mismo
+# concepto que el tablero de Diseño Gráfico — el jefe de tienda (o admin)
+# reporta qué hay que arreglar en su sucursal, y el 'Jefe de Mantenimiento'
+# la va moviendo por el tablero conforme avanza.
+# ---------------------------------------------------------------------------
+ESTADOS_MANT_TIENDAS = ["Lista de tareas", "Emergencias", "En proceso", "Requiere seguimiento", "Resuelto"]
+ESTADOS_MANT_TIENDAS_INICIALES = ["Lista de tareas", "Emergencias"]
+MANT_TIENDAS_FOTO_MAX_BYTES = 900_000  # ~900 KB por foto — mismo límite práctico que Diseño/Capacitación
+MANT_TIENDAS_FOTOS_MAX = 5
 
 # ---------------------------------------------------------------------------
 # Litografía: cotizador técnico (ficha del trabajo + cálculo automático de
