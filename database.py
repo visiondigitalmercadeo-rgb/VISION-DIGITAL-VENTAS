@@ -1478,3 +1478,43 @@ def update_lito_cotizacion(cotizacion_id, **kwargs):
 
 def delete_lito_cotizacion(cotizacion_id):
     get_client().collection("lito_cotizaciones").document(cotizacion_id).delete()
+
+
+# ---------------------------------------------------------------------------
+# Mantenimiento de Tiendas: tablero de solicitudes estilo Trello, mismo
+# concepto que el tablero de Diseño Gráfico ("disenos") — el jefe de tienda
+# (o admin) reporta qué hay que arreglar, y el 'Jefe de Mantenimiento' la va
+# moviendo por el tablero conforme avanza.
+# ---------------------------------------------------------------------------
+def list_mant_tiendas(tienda=None):
+    client = get_client()
+    rows = [_doc_to_dict(s) for s in client.collection("mant_tiendas").stream()]
+    if tienda:
+        rows = [r for r in rows if r.get("tienda") == tienda]
+    rows.sort(key=lambda r: r.get("creado_en") or "", reverse=True)
+    return rows
+
+
+def get_mant_tienda(mant_id):
+    snap = get_client().collection("mant_tiendas").document(mant_id).get()
+    return _doc_to_dict(snap) if snap.exists else None
+
+
+def create_mant_tienda(creado_por_id, tienda, quien_solicita, descripcion, estado, fotos=None):
+    doc_ref = get_client().collection("mant_tiendas").document()
+    doc_ref.set({
+        "creado_por_id": creado_por_id, "tienda": tienda, "quien_solicita": quien_solicita,
+        "descripcion": descripcion, "estado": estado, "detenido_emergencia": False,
+        "fotos": fotos or [],
+        "creado_en": ahora_guatemala().isoformat(timespec="seconds"),
+    })
+    return doc_ref.id
+
+
+def update_mant_tienda(mant_id, **kwargs):
+    if kwargs:
+        get_client().collection("mant_tiendas").document(mant_id).update(kwargs)
+
+
+def delete_mant_tienda(mant_id):
+    get_client().collection("mant_tiendas").document(mant_id).delete()
