@@ -209,7 +209,13 @@ ESTADOS_DISENO = ["Lista de tareas", "Emergencias", "En proceso", "Cambios", "En
 ESTADOS_DISENO_INICIALES = ["Lista de tareas", "Emergencias"]
 # Columnas que solo el diseñador (o el administrador) puede asignar después.
 ESTADOS_DISENO_DISENADOR = ["Lista de tareas", "Emergencias", "En proceso", "Cambios", "Entregado"]
-DISENO_ARCHIVO_MAX_BYTES = 900_000  # ~900 KB — límite práctico por archivo en Firestore
+DISENO_ARCHIVO_MAX_BYTES = 900_000  # ~900 KB — límite práctico por archivo cuando se guarda
+# dentro del documento de Firestore (formato viejo, y respaldo automático si Firebase
+# Storage todavía no está configurado — ver database.py: storage_disponible()).
+DISENO_ARCHIVO_MAX_BYTES_STORAGE = 200_000_000  # 200 MB — límite cuando el archivo se sube a
+# Firebase Storage (permite PSD, AI y otros archivos de diseño pesados). Coincide con el
+# límite de subida por defecto de Streamlit; para permitir archivos más grandes también
+# hay que agregar [server] maxUploadSize = <MB> en .streamlit/config.toml.
 DISENO_ARCHIVOS_MAX = 3  # máximo de archivos adjuntos por solicitud
 
 # ---------------------------------------------------------------------------
