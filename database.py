@@ -19,11 +19,12 @@ Cómo se eligen las credenciales, en este orden:
 
 import math
 import os
+import uuid
 from datetime import date, datetime, timedelta, timezone
 
 import bcrypt
 import firebase_admin
-from firebase_admin import credentials, firestore
+from firebase_admin import credentials, firestore, storage
 
 import fake_firestore
 from config import (
@@ -34,6 +35,7 @@ SERVICE_ACCOUNT_PATH = os.path.join(BASE_DIR, "serviceAccountKey.json")
 
 _client = None
 MODO_PRACTICA = False  # se actualiza la primera vez que se pide el cliente
+_bucket = None  # se actualiza la primera vez que se pide el bucket de Storage
 
 
 def hash_password(raw: str) -> str:
@@ -97,6 +99,138 @@ def firebase_conectado() -> bool:
     de práctica). Se usa en app.py para mostrar el aviso correspondiente."""
     get_client()
     return not MODO_PRACTICA
+
+
+# ---------------------------------------------------------------------------
+# Firebase Storage — para archivos grandes que no caben dentro de un
+# documento de Firestore (por ejemplo, PSD/AI de Diseño Gráfico). El nombre
+# del bucket se lee de `st.secrets["firebase_storage_bucket"]` (un texto que
+# empieza con "gs://", tal como aparece en la consola de Firebase → Storage).
+# Si esa clave no está configurada, o la app está en modo de práctica,
+# `storage_disponible()` devuelve False y las páginas que usan Storage caen
+# automáticamente al guardado anterior (base64 dentro del documento).
+# ---------------------------------------------------------------------------
+def _nombre_bucket_storage():
+    try:
+        import streamlit as st
+        if "firebase_storage_bucket" in st.secrets and st.secrets["firebase_storage_bucket"]:
+            return st.secrets["firebase_storage_bucket"]
+    except Exception:
+        pass
+    return None
+
+
+def _storage_bucket():
+    """Devuelve el bucket de Firebase Storage, o None si no está disponible
+    (todavía no se configuró `firebase_storage_bucket` en los secretos, o la
+    app está en modo de práctica). Se crea una sola vez y se reutiliza."""
+    global _bucket
+    if _bucket is not None:
+        return _bucket
+
+    get_client()  # asegura que firebase_admin ya está inicializado
+    if MODO_PRACTICA:
+        return None
+
+    nombre_bucket = _nombre_bucket_storage()
+    if not nombre_bucket:
+        return None
+
+    try:
+        _bucket = storage.bucket(nombre_bucket.replace("gs://", ""), app=firebase_admin.get_app())
+    except Exception as e:
+        print("ERROR AL CONECTAR CON FIREBASE STORAGE:", e)
+        return None
+    return _bucket
+
+
+def storage_disponible() -> bool:
+    """True si Firebase Storage está listo para usarse (bucket configurado y
+    conectado). Las páginas lo usan para decidir si suben archivos grandes a
+    Storage o si caen al guardado anterior dentro del documento."""
+    return _storage_bucket() is not None
+
+
+def subir_archivo_storage(carpeta: str, archivo_subido) -> dict:
+    """Sube un archivo (de st.file_uploader) a Firebase Storage, dentro de
+    'carpeta/', con un nombre único para que dos archivos con el mismo
+    nombre no se sobrescriban. Retorna {"nombre", "tipo", "tamano",
+    "storage_path"} para guardar en Firestore — SIN el contenido del
+    archivo, así el documento se mantiene liviano. Lanza ValueError si
+    Storage no está disponible."""
+    bucket = _storage_bucket()
+    if bucket is None:
+        raise ValueError(
+            "El almacenamiento de archivos grandes (Firebase Storage) todavía no está "
+            "configurado en esta plataforma."
+        )
+    datos = archivo_subido.getvalue()
+    ruta = f"{carpeta}/{uuid.uuid4().hex}_{archivo_subido.name}"
+    blob = bucket.blob(ruta)
+    blob.upload_from_string(datos, content_type=archivo_subido.type or "application/octet-stream")
+    return {
+        "nombre": archivo_subido.name, "tipo": archivo_subido.type or "application/octet-stream",
+        "tamano": len(datos), "storage_path": ruta,
+    }
+
+
+def subir_archivos_storage_lista(carpeta: str, archivos_subidos, max_bytes, max_archivos=3) -> list:
+    """Versión de subir_archivo_storage() para varios archivos a la vez
+    (st.file_uploader con accept_multiple_files=True). Lanza ValueError si
+    se suben más de max_archivos, o si alguno pesa más de max_bytes —
+    ANTES de subir nada, para no dejar archivos huérfanos en Storage."""
+    archivos_subidos = archivos_subidos or []
+    if len(archivos_subidos) > max_archivos:
+        raise ValueError(
+            f"Puedes adjuntar máximo {max_archivos} archivos (subiste {len(archivos_subidos)}). "
+            "Quita alguno e intenta de nuevo."
+        )
+    for archivo in archivos_subidos:
+        if len(archivo.getvalue()) > max_bytes:
+            raise ValueError(
+                f"El archivo '{archivo.name}' pesa {len(archivo.getvalue()) / 1_000_000:.1f} MB; el máximo "
+                f"permitido por archivo es {max_bytes / 1_000_000:.0f} MB."
+            )
+    return [subir_archivo_storage(carpeta, archivo) for archivo in archivos_subidos]
+
+
+def eliminar_archivos_storage(archivos_lista):
+    """Borra de Firebase Storage los archivos de la lista que tengan
+    'storage_path' (los guardados como base64 dentro del documento no se
+    tocan, no hay nada que borrar en Storage). Limpieza best-effort: si
+    Storage no está disponible, o un archivo puntual ya no existe, no
+    lanza error — esto se usa después de reemplazar o eliminar archivos,
+    y no debe poder bloquear esas acciones."""
+    bucket = _storage_bucket()
+    if bucket is None:
+        return
+    for archivo in (archivos_lista or []):
+        ruta = archivo.get("storage_path") if isinstance(archivo, dict) else None
+        if not ruta:
+            continue
+        try:
+            bucket.blob(ruta).delete()
+        except Exception:
+            pass
+
+
+def url_descarga_archivo_storage(storage_path: str, nombre_descarga: str = None, expira_minutos: int = 60):
+    """Genera un enlace temporal de descarga directa (firmado, válido por
+    `expira_minutos`) para un archivo guardado en Firebase Storage. Retorna
+    None si Storage no está disponible o si algo falla al generarlo."""
+    bucket = _storage_bucket()
+    if bucket is None:
+        return None
+    try:
+        blob = bucket.blob(storage_path)
+        disposicion = f'attachment; filename="{nombre_descarga}"' if nombre_descarga else None
+        return blob.generate_signed_url(
+            version="v4", expiration=timedelta(minutes=expira_minutos), method="GET",
+            response_disposition=disposicion,
+        )
+    except Exception as e:
+        print("ERROR AL GENERAR URL DE DESCARGA DE STORAGE:", e)
+        return None
 
 
 def _doc_to_dict(snapshot):
@@ -758,6 +892,9 @@ def update_diseno(diseno_id, **kwargs):
 
 
 def delete_diseno(diseno_id):
+    d = get_diseno(diseno_id)
+    if d:
+        eliminar_archivos_storage(d.get("archivos"))
     get_client().collection("disenos").document(diseno_id).delete()
 
 
@@ -801,6 +938,9 @@ def update_diseno_alvaro(diseno_id, **kwargs):
 
 
 def delete_diseno_alvaro(diseno_id):
+    d = get_diseno_alvaro(diseno_id)
+    if d:
+        eliminar_archivos_storage(d.get("archivos"))
     get_client().collection("disenos_alvaro").document(diseno_id).delete()
 
 
