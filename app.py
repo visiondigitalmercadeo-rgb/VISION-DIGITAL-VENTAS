@@ -3,7 +3,7 @@ import streamlit as st
 import auth
 import database as db
 import public_tickets
-from config import EMPRESA_NOMBRE, FAVICON_PATH, LOGO_PATH
+from config import EMPRESA_NOMBRE, FAVICON_PATH, LOGO_PATH, PAGINAS_REGISTRO
 
 st.set_page_config(page_title=f"{EMPRESA_NOMBRE} — Plataforma Comercial", page_icon=FAVICON_PATH, layout="wide")
 
@@ -57,26 +57,35 @@ if not auth.require_login():
 user = auth.current_user()
 rol = user["rol"]
 
-inicio = st.Page("app_pages/1_Inicio.py", title="Inicio", icon="🏠", default=True)
-prospectos = st.Page("app_pages/2_Prospectos_CRM.py", title="Prospección (CRM)", icon="🧾")
-llamadas = st.Page("app_pages/11_Llamadas.py", title="Llamadas", icon="📞")
-citas = st.Page("app_pages/3_Citas_Vendedores.py", title="Citas y visitas de vendedores", icon="📅")
-mercadeo = st.Page("app_pages/4_Visitas_Mercadeo.py", title="Visitas de mercadeo", icon="🏪")
-cotizaciones = st.Page("app_pages/5_Cotizaciones.py", title="Cotizaciones", icon="💰")
-reclamos = st.Page("app_pages/6_Reclamos.py", title="Reclamos", icon="⚠️")
-diseno = st.Page("app_pages/12_Diseno_Grafico.py", title="Diseño Gráfico - Nicolás", icon="🎨")
-diseno_alvaro = st.Page("app_pages/14_Diseno_Grafico_Alvaro.py", title="Diseño Gráfico - Álvaro", icon="🖌️")
-logistica = st.Page("app_pages/13_Logistica.py", title="Logística", icon="🚚")
-ventas = st.Page("app_pages/7_Ventas_Diarias.py", title="Venta del día", icon="🧮")
-ventas_mes = st.Page("app_pages/15_Ventas_Por_Mes.py", title="Ventas por mes", icon="📅")
-capacitacion = st.Page("app_pages/16_Capacitacion.py", title="Capacitación", icon="🎓")
-tickets_tienda = st.Page("app_pages/17_Tickets_Tienda.py", title="Sistema Tickets Tiendas", icon="🎫")
-mantenimiento = st.Page("app_pages/18_Mantenimiento_Maquinaria.py", title="Mantenimiento de Maquinaria", icon="🔧")
-litografia = st.Page("app_pages/19_Litografia.py", title="Litografía", icon="🖨️")
-mant_tiendas = st.Page("app_pages/20_Mant_Tiendas.py", title="Mant. Tiendas", icon="🏬")
-generales = st.Page("app_pages/8_Prospectos_Generales.py", title="Prospectos generales (todos)", icon="🌐")
-kpis = st.Page("app_pages/9_KPIs.py", title="KPIs", icon="📊")
-admin = st.Page("app_pages/10_Administracion.py", title="Administración de usuarios", icon="👥")
+# Todas las páginas se construyen a partir de config.PAGINAS_REGISTRO (una
+# sola fuente de verdad), para que Administración de usuarios pueda ofrecer
+# exactamente esas mismas pestañas como "acceso extra" por usuario, más
+# abajo. Las variables sueltas (inicio, prospectos, etc.) se mantienen igual
+# que antes para no tener que tocar todo el bloque de roles de aquí abajo.
+paginas_por_key = {
+    p["key"]: st.Page(p["path"], title=p["title"], icon=p["icon"], default=(p["key"] == "inicio"))
+    for p in PAGINAS_REGISTRO
+}
+inicio = paginas_por_key["inicio"]
+prospectos = paginas_por_key["prospectos"]
+llamadas = paginas_por_key["llamadas"]
+citas = paginas_por_key["citas"]
+mercadeo = paginas_por_key["mercadeo"]
+cotizaciones = paginas_por_key["cotizaciones"]
+reclamos = paginas_por_key["reclamos"]
+diseno = paginas_por_key["diseno"]
+diseno_alvaro = paginas_por_key["diseno_alvaro"]
+logistica = paginas_por_key["logistica"]
+ventas = paginas_por_key["ventas"]
+ventas_mes = paginas_por_key["ventas_mes"]
+capacitacion = paginas_por_key["capacitacion"]
+tickets_tienda = paginas_por_key["tickets_tienda"]
+mantenimiento = paginas_por_key["mantenimiento"]
+litografia = paginas_por_key["litografia"]
+mant_tiendas = paginas_por_key["mant_tiendas"]
+generales = paginas_por_key["generales"]
+kpis = paginas_por_key["kpis"]
+admin = paginas_por_key["administracion"]
 
 if rol == "mercadeo":
     # El rol 'mercadeo' tiene acceso a Visitas de mercadeo y, además, a
@@ -137,6 +146,25 @@ else:
     ]
     if rol == "admin":
         pages.append(admin)
+
+# ---------------------------------------------------------------------------
+# Acceso extra por usuario (independiente del rol) — un admin puede darle a
+# un usuario en particular acceso a pestañas puntuales que su rol no incluye
+# por defecto, sin tener que crear un rol nuevo (ver Administración de
+# usuarios → 'Acceso extra a otras pestañas'). Dentro de cada pestaña extra
+# el usuario sigue viendo solo lo que su rol normalmente le permite hacer —
+# esto solo le abre la puerta para entrar a verla. 'administracion' se
+# excluye explícitamente aquí (además de no ofrecerse en la UI) para que
+# esta vía nunca pueda usarse para dar acceso de administrador completo.
+# ---------------------------------------------------------------------------
+paginas_ya_incluidas = set(pages)
+for key_extra in (user.get("paginas_extra") or []):
+    if key_extra == "administracion":
+        continue
+    pagina_extra = paginas_por_key.get(key_extra)
+    if pagina_extra and pagina_extra not in paginas_ya_incluidas:
+        pages.append(pagina_extra)
+        paginas_ya_incluidas.add(pagina_extra)
 
 nav = st.navigation(pages)
 nav.run()
