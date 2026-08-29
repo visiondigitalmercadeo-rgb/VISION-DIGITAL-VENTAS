@@ -25,74 +25,101 @@ mes_sel = st.date_input(
 anio_mes = mes_sel.strftime("%Y-%m")
 st.markdown(f"##### {mes_sel.strftime('%B %Y').capitalize()}")
 
-registros = db.get_ventas_mensuales_planta(anio_mes)
 todos_los_vendedores = db.list_vendedores(solo_activos=False)
-columnas_planta = [f"Venta {p}" for p in PLANTAS]
 
-st.markdown("##### Totales del mes por planta (todos los vendedores)")
-cols_tot = st.columns(len(PLANTAS))
-for col, p in zip(cols_tot, PLANTAS):
-    total_planta = sum(float((r.get("montos") or {}).get(p, 0) or 0) for r in registros.values())
-    col.metric(p, money(total_planta))
+
+def _render_seccion(titulo, prefijo_columna, registros, key_prefix, upsert_fn, texto_boton, texto_exito):
+    """Dibuja una sección completa (totales por planta, desglose por vendedor
+    y formulario de captura para el admin) — misma estructura para Ventas y
+    para Utilidades, solo cambia de dónde vienen y a dónde se guardan los
+    datos."""
+    st.markdown(titulo)
+
+    columnas_planta = [f"{prefijo_columna} {p}" for p in PLANTAS]
+
+    st.markdown("###### Totales del mes por planta (todos los vendedores)")
+    cols_tot = st.columns(len(PLANTAS))
+    for col, p in zip(cols_tot, PLANTAS):
+        total_planta = sum(float((r.get("montos") or {}).get(p, 0) or 0) for r in registros.values())
+        col.metric(p, money(total_planta))
+
+    st.divider()
+
+    if user["rol"] == "admin":
+        vendedores_tabla = [v for v in todos_los_vendedores if v["activo"]]
+    else:
+        vendedor_id_propio = vendedor_filter_selector(key=f"{key_prefix}_filtro_vendedor")
+        vendedores_tabla = (
+            [v for v in todos_los_vendedores if v["id"] == vendedor_id_propio]
+            if vendedor_id_propio else todos_los_vendedores
+        )
+
+    if not vendedores_tabla:
+        st.info("No hay vendedores para mostrar.")
+    else:
+        st.markdown("###### Desglose por vendedor")
+        filas = []
+        for v in vendedores_tabla:
+            montos = registros.get(v["id"], {}).get("montos", {})
+            fila = {"Vendedor": v["nombre"]}
+            for p in PLANTAS:
+                fila[f"{prefijo_columna} {p}"] = float(montos.get(p, 0) or 0)
+            filas.append(fila)
+        df_display = pd.DataFrame(filas)
+        df_display["Total"] = df_display[columnas_planta].sum(axis=1)
+        for c in columnas_planta + ["Total"]:
+            df_display[c] = df_display[c].apply(money)
+        st.dataframe(df_display, use_container_width=True, hide_index=True)
+
+    if user["rol"] == "admin":
+        st.divider()
+        st.markdown(f"###### ✏️ {texto_boton.replace('💾 ', '')}")
+        vendedores_activos = [v for v in todos_los_vendedores if v["activo"]]
+        if not vendedores_activos:
+            st.info("No hay vendedores activos.")
+        else:
+            opciones_v = {v["nombre"]: v["id"] for v in vendedores_activos}
+            vendedor_nombre_sel = st.selectbox(
+                "Vendedor", list(opciones_v.keys()), key=f"{key_prefix}_vendedor_sel",
+            )
+            vendedor_id_sel = opciones_v[vendedor_nombre_sel]
+            montos_actuales = registros.get(vendedor_id_sel, {}).get("montos", {})
+
+            with st.form(f"{key_prefix}_form"):
+                cols_input = st.columns(len(PLANTAS))
+                valores = {}
+                for col, p in zip(cols_input, PLANTAS):
+                    # La key incluye vendedor y mes para que, al cambiar de
+                    # vendedor o de mes, el campo muestre el valor correcto
+                    # (y no el que quedó escrito para otro vendedor/mes).
+                    valores[p] = col.number_input(
+                        f"{prefijo_columna} {p} (Q)", min_value=0.0, step=100.0,
+                        value=float(montos_actuales.get(p, 0) or 0),
+                        key=f"{key_prefix}_input_{p}_{vendedor_id_sel}_{anio_mes}",
+                    )
+                if st.form_submit_button(texto_boton, use_container_width=True):
+                    upsert_fn(vendedor_id_sel, anio_mes, valores)
+                    st.success(f"{texto_exito} de {vendedor_nombre_sel} actualizada para "
+                               f"{mes_sel.strftime('%B %Y').capitalize()}.")
+                    st.rerun()
+
+
+# --------------------------------------------------------------------------
+# Ventas
+# --------------------------------------------------------------------------
+registros_ventas = db.get_ventas_mensuales_planta(anio_mes)
+_render_seccion(
+    "### 💰 Ventas", "Venta", registros_ventas, "vpm",
+    db.upsert_venta_mensual_planta, "💾 Guardar venta mensual", "Venta mensual",
+)
 
 st.divider()
 
-if user["rol"] == "admin":
-    vendedores_tabla = [v for v in todos_los_vendedores if v["activo"]]
-else:
-    vendedor_id_propio = vendedor_filter_selector(key="vpm_filtro_vendedor")
-    vendedores_tabla = (
-        [v for v in todos_los_vendedores if v["id"] == vendedor_id_propio]
-        if vendedor_id_propio else todos_los_vendedores
-    )
-
-if not vendedores_tabla:
-    st.info("No hay vendedores para mostrar.")
-else:
-    st.markdown("##### Desglose por vendedor")
-    filas = []
-    for v in vendedores_tabla:
-        montos = registros.get(v["id"], {}).get("montos", {})
-        fila = {"Vendedor": v["nombre"]}
-        for p in PLANTAS:
-            fila[f"Venta {p}"] = float(montos.get(p, 0) or 0)
-        filas.append(fila)
-    df_display = pd.DataFrame(filas)
-    df_display["Total"] = df_display[columnas_planta].sum(axis=1)
-    for c in columnas_planta + ["Total"]:
-        df_display[c] = df_display[c].apply(money)
-    st.dataframe(df_display, use_container_width=True, hide_index=True)
-
-if user["rol"] == "admin":
-    st.divider()
-    st.markdown("#### ✏️ Ingresar / actualizar venta mensual de un vendedor")
-    vendedores_activos = [v for v in todos_los_vendedores if v["activo"]]
-    if not vendedores_activos:
-        st.info("No hay vendedores activos.")
-    else:
-        opciones_v = {v["nombre"]: v["id"] for v in vendedores_activos}
-        vendedor_nombre_sel = st.selectbox(
-            "Vendedor", list(opciones_v.keys()), key="vpm_vendedor_sel",
-        )
-        vendedor_id_sel = opciones_v[vendedor_nombre_sel]
-        montos_actuales = registros.get(vendedor_id_sel, {}).get("montos", {})
-
-        with st.form("vpm_form"):
-            cols_input = st.columns(len(PLANTAS))
-            valores = {}
-            for col, p in zip(cols_input, PLANTAS):
-                # La key incluye vendedor y mes para que, al cambiar de
-                # vendedor o de mes, el campo muestre el valor correcto
-                # (y no el que quedó escrito para otro vendedor/mes).
-                valores[p] = col.number_input(
-                    f"Venta {p} (Q)", min_value=0.0, step=100.0,
-                    value=float(montos_actuales.get(p, 0) or 0),
-                    key=f"vpm_input_{p}_{vendedor_id_sel}_{anio_mes}",
-                )
-            if st.form_submit_button("💾 Guardar venta mensual", use_container_width=True):
-                db.upsert_venta_mensual_planta(vendedor_id_sel, anio_mes, valores)
-                st.success(
-                    f"Venta mensual de {vendedor_nombre_sel} actualizada para "
-                    f"{mes_sel.strftime('%B %Y').capitalize()}."
-                )
-                st.rerun()
+# --------------------------------------------------------------------------
+# Utilidades
+# --------------------------------------------------------------------------
+registros_utilidades = db.get_utilidades_mensuales_planta(anio_mes)
+_render_seccion(
+    "### 📈 Utilidades", "Utilidad", registros_utilidades, "upm",
+    db.upsert_utilidad_mensual_planta, "💾 Guardar utilidad mensual", "Utilidad mensual",
+)
