@@ -16,6 +16,7 @@ def do_login(username: str, password: str) -> bool:
         "username": user["username"],
         "rol": user["rol"],
         "tienda": user.get("tienda"),
+        "paginas_extra": user.get("paginas_extra") or [],
     }
     return True
 
