@@ -196,7 +196,8 @@ with tab_tablero:
                                 )
                                 nuevos_archivos = st.file_uploader(
                                     f"Reemplazar archivos adjuntos (opcional, máximo {DISENO_ARCHIVOS_MAX})",
-                                    type=["pdf", "png", "jpg", "jpeg"], accept_multiple_files=True,
+                                    type=["pdf", "png", "jpg", "jpeg", "doc", "docx", "xls", "xlsx"],
+                                    accept_multiple_files=True,
                                     key=f"disA_archivo_ed_{did}",
                                     help="Si subes archivos aquí, reemplazan a TODOS los actuales. Déjalo vacío para no cambiarlos.",
                                 )
@@ -317,8 +318,9 @@ with tab_nueva:
                 help="Déjalo en blanco si es una solicitud nueva; úsalo si ya hay una versión previa que ajustar.",
             )
             archivos = st.file_uploader(
-                f"Adjuntar archivos de referencia (opcional, máximo {DISENO_ARCHIVOS_MAX}) — PDF, PNG o JPEG",
-                type=["pdf", "png", "jpg", "jpeg"], accept_multiple_files=True,
+                f"Adjuntar archivos de referencia (opcional, máximo {DISENO_ARCHIVOS_MAX}) — "
+                "PDF, PNG, JPEG, Word o Excel",
+                type=["pdf", "png", "jpg", "jpeg", "doc", "docx", "xls", "xlsx"], accept_multiple_files=True,
             )
             st.caption(f"Tamaño máximo por archivo: {DISENO_ARCHIVO_MAX_BYTES // 1000} KB.")
 
