@@ -28,13 +28,11 @@ st.markdown(f"##### {mes_sel.strftime('%B %Y').capitalize()}")
 todos_los_vendedores = db.list_vendedores(solo_activos=False)
 
 
-def _render_seccion(titulo, prefijo_columna, registros, key_prefix, upsert_fn, texto_boton, texto_exito):
+def _render_seccion(prefijo_columna, registros, key_prefix, upsert_fn, texto_boton, texto_exito):
     """Dibuja una sección completa (totales por planta, desglose por vendedor
     y formulario de captura para el admin) — misma estructura para Ventas y
     para Utilidades, solo cambia de dónde vienen y a dónde se guardan los
-    datos."""
-    st.markdown(titulo)
-
+    datos. Se llama una vez por pestaña."""
     columnas_planta = [f"{prefijo_columna} {p}" for p in PLANTAS]
 
     st.markdown("###### Totales del mes por planta (todos los vendedores)")
@@ -104,22 +102,18 @@ def _render_seccion(titulo, prefijo_columna, registros, key_prefix, upsert_fn, t
                     st.rerun()
 
 
-# --------------------------------------------------------------------------
-# Ventas
-# --------------------------------------------------------------------------
-registros_ventas = db.get_ventas_mensuales_planta(anio_mes)
-_render_seccion(
-    "### 💰 Ventas", "Venta", registros_ventas, "vpm",
-    db.upsert_venta_mensual_planta, "💾 Guardar venta mensual", "Venta mensual",
-)
+tab_ventas, tab_utilidades = st.tabs(["💰 Ventas", "📈 Utilidades"])
 
-st.divider()
+with tab_ventas:
+    registros_ventas = db.get_ventas_mensuales_planta(anio_mes)
+    _render_seccion(
+        "Venta", registros_ventas, "vpm",
+        db.upsert_venta_mensual_planta, "💾 Guardar venta mensual", "Venta mensual",
+    )
 
-# --------------------------------------------------------------------------
-# Utilidades
-# --------------------------------------------------------------------------
-registros_utilidades = db.get_utilidades_mensuales_planta(anio_mes)
-_render_seccion(
-    "### 📈 Utilidades", "Utilidad", registros_utilidades, "upm",
-    db.upsert_utilidad_mensual_planta, "💾 Guardar utilidad mensual", "Utilidad mensual",
-)
+with tab_utilidades:
+    registros_utilidades = db.get_utilidades_mensuales_planta(anio_mes)
+    _render_seccion(
+        "Utilidad", registros_utilidades, "upm",
+        db.upsert_utilidad_mensual_planta, "💾 Guardar utilidad mensual", "Utilidad mensual",
+    )
