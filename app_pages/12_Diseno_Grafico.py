@@ -6,11 +6,34 @@ import streamlit as st
 
 import auth
 import database as db
-from config import DISENO_ARCHIVO_MAX_BYTES, DISENO_ARCHIVOS_MAX, ESTADOS_DISENO, ESTADOS_DISENO_INICIALES, LINEAS_VENTA
+from config import (
+    DISENO_ARCHIVO_MAX_BYTES, DISENO_ARCHIVO_MAX_BYTES_STORAGE, DISENO_ARCHIVOS_MAX, ESTADOS_DISENO,
+    ESTADOS_DISENO_INICIALES, LINEAS_VENTA,
+)
 from utils import (
     archivos_a_b64_lista, diseno_archivos_lista, diseno_pdf_bytes, diseno_resumen_html, download_excel_button,
     sidebar_user_box, vendedor_filter_selector,
 )
+
+_usa_storage = db.storage_disponible()
+_diseno_max_bytes_archivo = DISENO_ARCHIVO_MAX_BYTES_STORAGE if _usa_storage else DISENO_ARCHIVO_MAX_BYTES
+
+
+def _caption_limite_archivo():
+    if _usa_storage:
+        st.caption(f"Tamaño máximo por archivo: {_diseno_max_bytes_archivo // 1_000_000} MB.")
+    else:
+        st.caption(f"Tamaño máximo por archivo: {_diseno_max_bytes_archivo // 1000} KB.")
+
+
+def _subir_archivos_diseno(archivos_subidos):
+    """Sube los archivos adjuntos a Firebase Storage si está disponible;
+    si no, cae al guardado anterior (base64 dentro del documento)."""
+    if _usa_storage:
+        return db.subir_archivos_storage_lista(
+            "disenos", archivos_subidos, _diseno_max_bytes_archivo, DISENO_ARCHIVOS_MAX,
+        )
+    return archivos_a_b64_lista(archivos_subidos, _diseno_max_bytes_archivo, DISENO_ARCHIVOS_MAX)
 
 user = auth.current_user()
 sidebar_user_box()
@@ -156,13 +179,25 @@ with tab_tablero:
                         mime="application/pdf", use_container_width=True, key=f"dis_pdf_{r['id']}",
                     )
                     for i, arch in enumerate(diseno_archivos_lista(r)):
-                        st.download_button(
-                            f"📎 {arch['nombre']}",
-                            data=base64.b64decode(arch["b64"]),
-                            file_name=arch["nombre"],
-                            mime=arch.get("tipo") or "application/octet-stream",
-                            use_container_width=True, key=f"dis_file_{r['id']}_{i}",
-                        )
+                        if arch.get("storage_path"):
+                            url_archivo = db.url_descarga_archivo_storage(
+                                arch["storage_path"], nombre_descarga=arch["nombre"],
+                            )
+                            if url_archivo:
+                                st.link_button(
+                                    f"📎 {arch['nombre']}", url_archivo,
+                                    use_container_width=True, key=f"dis_file_{r['id']}_{i}",
+                                )
+                            else:
+                                st.caption(f"📎 {arch['nombre']} (no se pudo generar el enlace de descarga)")
+                        else:
+                            st.download_button(
+                                f"📎 {arch['nombre']}",
+                                data=base64.b64decode(arch["b64"]),
+                                file_name=arch["nombre"],
+                                mime=arch.get("tipo") or "application/octet-stream",
+                                use_container_width=True, key=f"dis_file_{r['id']}_{i}",
+                            )
 
                     if puede_editar_este and st.session_state.get(editando_key):
                         # ----------------------------------------------------
@@ -196,12 +231,12 @@ with tab_tablero:
                                 )
                                 nuevos_archivos = st.file_uploader(
                                     f"Reemplazar archivos adjuntos (opcional, máximo {DISENO_ARCHIVOS_MAX})",
-                                    type=["pdf", "png", "jpg", "jpeg", "doc", "docx", "xls", "xlsx"],
+                                    type=["pdf", "png", "jpg", "jpeg", "doc", "docx", "xls", "xlsx", "psd", "ai"],
                                     accept_multiple_files=True,
                                     key=f"dis_archivo_ed_{did}",
                                     help="Si subes archivos aquí, reemplazan a TODOS los actuales. Déjalo vacío para no cambiarlos.",
                                 )
-                                st.caption(f"Tamaño máximo por archivo: {DISENO_ARCHIVO_MAX_BYTES // 1000} KB.")
+                                _caption_limite_archivo()
                             else:
                                 nuevos_archivos = None
                                 st.caption(f"Cliente: **{r.get('cliente') or '—'}**")
@@ -249,6 +284,7 @@ with tab_tablero:
                             if guardar:
                                 error_msg = None
                                 update_kwargs = {"estado": estado_ed}
+                                archivos_a_reemplazar = None
                                 if puede_mover:
                                     update_kwargs["detenido_emergencia"] = semaforo_ed.startswith("🔴")
                                 if puede_editar_esta:
@@ -263,15 +299,18 @@ with tab_tablero:
                                         )
                                         if nuevos_archivos:
                                             try:
-                                                update_kwargs["archivos"] = archivos_a_b64_lista(
-                                                    nuevos_archivos, DISENO_ARCHIVO_MAX_BYTES, DISENO_ARCHIVOS_MAX,
-                                                )
+                                                update_kwargs["archivos"] = _subir_archivos_diseno(nuevos_archivos)
+                                                # Los archivos actuales se borran de Storage recién
+                                                # después de guardar el reemplazo con éxito (más abajo).
+                                                archivos_a_reemplazar = archivos_actuales
                                             except ValueError as e:
                                                 error_msg = str(e)
                                 if error_msg:
                                     st.error(error_msg)
                                 else:
                                     db.update_diseno(did, **update_kwargs)
+                                    if archivos_a_reemplazar:
+                                        db.eliminar_archivos_storage(archivos_a_reemplazar)
                                     st.session_state.pop(editando_key, None)
                                     st.success("Solicitud actualizada.")
                                     st.rerun()
@@ -319,17 +358,18 @@ with tab_nueva:
             )
             archivos = st.file_uploader(
                 f"Adjuntar archivos de referencia (opcional, máximo {DISENO_ARCHIVOS_MAX}) — "
-                "PDF, PNG, JPEG, Word o Excel",
-                type=["pdf", "png", "jpg", "jpeg", "doc", "docx", "xls", "xlsx"], accept_multiple_files=True,
+                "PDF, PNG, JPEG, Word, Excel, PSD o AI",
+                type=["pdf", "png", "jpg", "jpeg", "doc", "docx", "xls", "xlsx", "psd", "ai"],
+                accept_multiple_files=True,
             )
-            st.caption(f"Tamaño máximo por archivo: {DISENO_ARCHIVO_MAX_BYTES // 1000} KB.")
+            _caption_limite_archivo()
 
             if st.form_submit_button("Enviar solicitud", use_container_width=True):
                 if not cliente.strip():
                     st.error("El nombre del cliente es obligatorio.")
                 else:
                     try:
-                        archivos_lista = archivos_a_b64_lista(archivos, DISENO_ARCHIVO_MAX_BYTES, DISENO_ARCHIVOS_MAX)
+                        archivos_lista = _subir_archivos_diseno(archivos)
                     except ValueError as e:
                         st.error(str(e))
                     else:
