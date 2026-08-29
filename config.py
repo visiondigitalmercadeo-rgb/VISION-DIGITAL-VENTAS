@@ -78,6 +78,57 @@ ROLES_LABEL = {
 ROLES_DE_TIENDA = ["anfitriona", "jefe_tienda", "subjefe_tienda", "asesor_ventas", "cajero"]
 
 # ---------------------------------------------------------------------------
+# Registro central de todas las pestañas de la plataforma — usado por app.py
+# para construir la navegación (st.Page) y por Administración de usuarios
+# para poder darle a un usuario en particular acceso extra a pestañas que su
+# rol no le da por defecto (ver el campo "paginas_extra" del usuario y
+# auth.paginas_extra_visibles_para). "administracion" queda fuera de lo que
+# se puede asignar como acceso extra — es un permiso de administrador
+# completo (crear/eliminar usuarios, cambiar roles y contraseñas) y nunca
+# debe poder concederse por esta vía.
+# ---------------------------------------------------------------------------
+PAGINAS_REGISTRO = [
+    {"key": "inicio", "path": "app_pages/1_Inicio.py", "title": "Inicio", "icon": "🏠"},
+    {"key": "prospectos", "path": "app_pages/2_Prospectos_CRM.py", "title": "Prospección (CRM)", "icon": "🧾"},
+    {"key": "llamadas", "path": "app_pages/11_Llamadas.py", "title": "Llamadas", "icon": "📞"},
+    {"key": "citas", "path": "app_pages/3_Citas_Vendedores.py", "title": "Citas y visitas de vendedores", "icon": "📅"},
+    {"key": "mercadeo", "path": "app_pages/4_Visitas_Mercadeo.py", "title": "Visitas de mercadeo", "icon": "🏪"},
+    {"key": "cotizaciones", "path": "app_pages/5_Cotizaciones.py", "title": "Cotizaciones", "icon": "💰"},
+    {"key": "reclamos", "path": "app_pages/6_Reclamos.py", "title": "Reclamos", "icon": "⚠️"},
+    {"key": "diseno", "path": "app_pages/12_Diseno_Grafico.py", "title": "Diseño Gráfico - Nicolás", "icon": "🎨"},
+    {
+        "key": "diseno_alvaro", "path": "app_pages/14_Diseno_Grafico_Alvaro.py",
+        "title": "Diseño Gráfico - Álvaro", "icon": "🖌️",
+    },
+    {"key": "logistica", "path": "app_pages/13_Logistica.py", "title": "Logística", "icon": "🚚"},
+    {"key": "ventas", "path": "app_pages/7_Ventas_Diarias.py", "title": "Venta del día", "icon": "🧮"},
+    {"key": "ventas_mes", "path": "app_pages/15_Ventas_Por_Mes.py", "title": "Ventas por mes", "icon": "📅"},
+    {"key": "capacitacion", "path": "app_pages/16_Capacitacion.py", "title": "Capacitación", "icon": "🎓"},
+    {
+        "key": "tickets_tienda", "path": "app_pages/17_Tickets_Tienda.py",
+        "title": "Sistema Tickets Tiendas", "icon": "🎫",
+    },
+    {
+        "key": "mantenimiento", "path": "app_pages/18_Mantenimiento_Maquinaria.py",
+        "title": "Mantenimiento de Maquinaria", "icon": "🔧",
+    },
+    {"key": "litografia", "path": "app_pages/19_Litografia.py", "title": "Litografía", "icon": "🖨️"},
+    {"key": "mant_tiendas", "path": "app_pages/20_Mant_Tiendas.py", "title": "Mant. Tiendas", "icon": "🏬"},
+    {
+        "key": "generales", "path": "app_pages/8_Prospectos_Generales.py",
+        "title": "Prospectos generales (todos)", "icon": "🌐",
+    },
+    {"key": "kpis", "path": "app_pages/9_KPIs.py", "title": "KPIs", "icon": "📊"},
+    {
+        "key": "administracion", "path": "app_pages/10_Administracion.py",
+        "title": "Administración de usuarios", "icon": "👥",
+    },
+]
+# Claves asignables como "acceso extra" en Administración de usuarios — todas
+# menos 'administracion' (ver nota de seguridad arriba).
+PAGINAS_ASIGNABLES_EXTRA = [p["key"] for p in PAGINAS_REGISTRO if p["key"] != "administracion"]
+
+# ---------------------------------------------------------------------------
 # Personal inicial de cada tienda, proporcionado por Steven, para la carga
 # masiva desde 'Administración de usuarios' → 'Carga inicial de personal'.
 # TODAS estas personas quedan como nombre asignado a su tienda (colección
