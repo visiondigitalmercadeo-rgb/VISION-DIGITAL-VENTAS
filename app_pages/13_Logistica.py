@@ -75,15 +75,18 @@ puede_cambiar_estado = rol in ("admin", "jefe_logistica", "repartidor")
 
 
 def _mostrar_foto_entrega(p):
-    """Muestra la foto de comprobante de entrega del pedido, si tiene una."""
+    """Muestra la foto de comprobante de entrega del pedido y el comentario
+    que haya dejado el repartidor al confirmarla, si los tiene."""
     b64 = p.get("foto_entrega_b64")
-    if not b64:
-        return
-    st.caption("📸 Foto de entrega:")
-    try:
-        st.image(base64.b64decode(b64), width=220)
-    except Exception:
-        st.caption("(no se pudo mostrar la foto — el archivo podría estar dañado)")
+    if b64:
+        st.caption("📸 Foto de entrega:")
+        try:
+            st.image(base64.b64decode(b64), width=220)
+        except Exception:
+            st.caption("(no se pudo mostrar la foto — el archivo podría estar dañado)")
+    comentario = p.get("comentario_entrega")
+    if comentario:
+        st.caption(f"💬 Comentario de entrega: {comentario}")
 
 
 def _productos_column_config():
@@ -144,6 +147,10 @@ def _render_confirmar_entrega(p, siguiente, cancelar_key):
         foto = st.file_uploader(
             "Foto del pedido entregado", type=["jpg", "jpeg", "png"], key=f"log_foto_archivo_{pid}",
         )
+    comentario_entrega = st.text_area(
+        "Comentario (opcional)", key=f"log_comentario_entrega_{pid}",
+        help="Puedes dejar alguna nota sobre la entrega, por ejemplo quién la recibió o alguna novedad.",
+    )
 
     colc1, colc2 = st.columns(2)
     confirmar = colc1.button("✅ Confirmar entrega", key=f"log_confirmar_entrega_{pid}", use_container_width=True)
@@ -161,6 +168,7 @@ def _render_confirmar_entrega(p, siguiente, cancelar_key):
                 db.update_pedido(
                     pid, estado=siguiente,
                     foto_entrega_nombre=nombre, foto_entrega_tipo=tipo, foto_entrega_b64=b64,
+                    comentario_entrega=comentario_entrega.strip() or None,
                 )
                 st.session_state.pop(cancelar_key, None)
                 st.success("Pedido marcado como entregado.")
@@ -464,6 +472,7 @@ with tab_vista:
                 "Vendedor": db.nombre_vendedor(p.get("vendedor_id"), lookup_vendedores),
                 "Repartidor": db.nombre_vendedor(p.get("repartidor_id"), todos_usuarios),
                 "Estado": p.get("estado"), "Notas": p.get("notas") or "—",
+                "Comentario de entrega": p.get("comentario_entrega") or "—",
             } for p in todos_los_pedidos]),
             "pedidos_logistica.xlsx", key="log_descargar_excel",
         )
@@ -629,6 +638,7 @@ with tab_historial:
             "Vendedor": db.nombre_vendedor(p.get("vendedor_id"), lookup_vendedores),
             "Repartidor": db.nombre_vendedor(p.get("repartidor_id"), todos_usuarios),
             "N° envío": p.get("numero_envio") or "—",
+            "Comentario de entrega": p.get("comentario_entrega") or "—",
         } for p in entregados])
         st.markdown(f"##### 📦 {len(entregados)} pedido(s) entregado(s)")
         st.dataframe(df_hist, use_container_width=True, hide_index=True)
