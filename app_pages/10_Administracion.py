@@ -7,7 +7,8 @@ import streamlit as st
 import auth
 import database as db
 from config import (
-    PERSONAL_TIENDA_INICIAL, ROLES, ROLES_DE_TIENDA, ROLES_LABEL, TICKET_TIENDA_SLUG, TICKET_TIENDAS,
+    PAGINAS_ASIGNABLES_EXTRA, PAGINAS_REGISTRO, PERSONAL_TIENDA_INICIAL, ROLES, ROLES_DE_TIENDA, ROLES_LABEL,
+    TICKET_TIENDA_SLUG, TICKET_TIENDAS,
 )
 from utils import download_excel_button, sidebar_user_box
 
@@ -94,6 +95,27 @@ with tab_lista:
                         st.success("Usuario actualizado.")
                         st.rerun()
 
+        st.markdown("#### 🔓 Acceso extra a otras pestañas")
+        st.caption(
+            "Además de las pestañas que ya le da su rol, puedes darle a este usuario acceso a otras "
+            "pestañas específicas — por ejemplo, si necesita consultar o usar algo puntual sin tener "
+            "que crear un rol nuevo o cambiarle el suyo. Dentro de cada pestaña extra, el usuario sigue "
+            "viendo y pudiendo hacer solo lo que su rol normalmente permite ahí — esto únicamente le "
+            "abre la puerta para entrar a verla. El usuario debe cerrar sesión y volver a entrar para "
+            "que el cambio se vea reflejado."
+        )
+        etiquetas_paginas = {p["key"]: f"{p['icon']} {p['title']}" for p in PAGINAS_REGISTRO}
+        paginas_extra_actuales = [k for k in (u.get("paginas_extra") or []) if k in PAGINAS_ASIGNABLES_EXTRA]
+        with st.form(f"paginas_extra_{uid}"):
+            seleccion_paginas_extra = st.multiselect(
+                "Pestañas adicionales", PAGINAS_ASIGNABLES_EXTRA, default=paginas_extra_actuales,
+                format_func=lambda k: etiquetas_paginas.get(k, k),
+            )
+            if st.form_submit_button("💾 Guardar acceso extra", use_container_width=True):
+                db.update_usuario(uid, paginas_extra=seleccion_paginas_extra)
+                st.success("Acceso extra actualizado.")
+                st.rerun()
+
         st.markdown("#### 🗑️ Eliminar usuario")
         st.caption(
             "Esto borra el acceso de este usuario por completo (no se puede deshacer). Los prospectos, "
@@ -128,6 +150,11 @@ with tab_nueva:
             "Tienda (solo aplica a Anfitriona, Jefe de tienda o Asesor de ventas)",
             ["—"] + TICKET_TIENDAS,
         )
+        etiquetas_paginas_nuevo = {p["key"]: f"{p['icon']} {p['title']}" for p in PAGINAS_REGISTRO}
+        paginas_extra_nuevo = st.multiselect(
+            "Acceso extra a otras pestañas (opcional, además de lo que ya da el rol elegido)",
+            PAGINAS_ASIGNABLES_EXTRA, format_func=lambda k: etiquetas_paginas_nuevo.get(k, k),
+        )
 
         if st.form_submit_button("Crear usuario", use_container_width=True):
             if not nombre.strip() or not username.strip() or len(password) < 4:
@@ -140,6 +167,7 @@ with tab_nueva:
                 db.create_usuario(
                     nombre.strip(), username.strip().lower(), password, rol,
                     tienda=None if tienda_nueva == "—" else tienda_nueva,
+                    paginas_extra=paginas_extra_nuevo,
                 )
                 st.success(f"Usuario '{username}' creado como {ROLES_LABEL.get(rol, rol)}.")
                 st.rerun()
