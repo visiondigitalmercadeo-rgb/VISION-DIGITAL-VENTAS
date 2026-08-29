@@ -313,11 +313,15 @@ def list_repartidores(solo_activos=True):
     return rows
 
 
-def create_usuario(nombre, username, password, rol, tienda=None):
+def create_usuario(nombre, username, password, rol, tienda=None, paginas_extra=None):
+    """'paginas_extra': claves de config.PAGINAS_REGISTRO a las que este
+    usuario tiene acceso ADEMÁS de lo que ya le da su rol — ver
+    Administración de usuarios → 'Acceso extra a otras pestañas'."""
     client = get_client()
     client.collection("usuarios").document().set({
         "nombre": nombre, "username": username, "password_hash": hash_password(password),
         "rol": rol, "activo": True, "fecha_creacion": str(date.today()), "tienda": tienda,
+        "paginas_extra": paginas_extra or [],
     })
 
 
