@@ -65,9 +65,26 @@ def _render_seccion(prefijo_columna, registros, key_prefix, upsert_fn, texto_bot
             filas.append(fila)
         df_display = pd.DataFrame(filas)
         df_display["Total"] = df_display[columnas_planta].sum(axis=1)
+
+        # Fila de totales por columna, al final de la tabla.
+        fila_total = {"Vendedor": "Total"}
+        for c in columnas_planta:
+            fila_total[c] = df_display[c].sum()
+        fila_total["Total"] = df_display["Total"].sum()
+        df_display = pd.concat([df_display, pd.DataFrame([fila_total])], ignore_index=True)
+
         for c in columnas_planta + ["Total"]:
             df_display[c] = df_display[c].apply(money)
-        st.dataframe(df_display, use_container_width=True, hide_index=True)
+
+        # Resaltado en magenta leve: la columna "Total" (a la derecha, por
+        # fila) y la fila "Total" (al final, por columna).
+        MAGENTA_LEVE = "#fbe3f2"
+        styler = df_display.style.set_properties(subset=["Total"], **{"background-color": MAGENTA_LEVE})
+        styler = styler.set_properties(
+            subset=pd.IndexSlice[df_display.index[-1], :],
+            **{"background-color": MAGENTA_LEVE, "font-weight": "bold"},
+        )
+        st.dataframe(styler, use_container_width=True, hide_index=True)
 
     if user["rol"] == "admin":
         st.divider()
