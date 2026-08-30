@@ -114,6 +114,7 @@ PAGINAS_REGISTRO = [
     },
     {"key": "litografia", "path": "app_pages/19_Litografia.py", "title": "Litografía", "icon": "🖨️"},
     {"key": "mant_tiendas", "path": "app_pages/20_Mant_Tiendas.py", "title": "Mant. Tiendas", "icon": "🏬"},
+    {"key": "drive", "path": "app_pages/21_Drive.py", "title": "Drive", "icon": "📁"},
     {
         "key": "generales", "path": "app_pages/8_Prospectos_Generales.py",
         "title": "Prospectos generales (todos)", "icon": "🌐",
@@ -464,3 +465,56 @@ LITO_TINTAS_PRESETS = {
 
 # Estados de una cotización técnica de litografía.
 ESTADOS_LITO_COTIZACION = ["Borrador", "Cotizado", "Aprobado", "Rechazado"]
+
+# ---------------------------------------------------------------------------
+# Drive: pestaña solo para admin, mercadeo y jefes de tienda (jefe_tienda /
+# subjefe_tienda) — trae en la plataforma los números que Steven llevaba en
+# un Google Sheet aparte ("DASHBOARD VD"), tabla "DATOS GENERALES" y tabla
+# "KRISPY 2", con vista numérica y gráfica, y totalmente editable desde aquí
+# (no hay sincronización en vivo con el Google Sheet original — los datos
+# históricos se cargan una sola vez, la primera vez que arranca la app con
+# esta pestaña, y de ahí en adelante se editan directamente aquí).
+# ---------------------------------------------------------------------------
+DG_MESES = [
+    "ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO",
+    "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE",
+]
+# Categorías de la pestaña "Datos generales" (mismo orden en que aparecen en
+# el Google Sheet original) y, para cada una, las "entidades" (tienda/línea/
+# total) que se pueden consultar por separado.
+DG_CATEGORIAS = ["ventas_totales", "por_linea", "flujo", "ticket_promedio"]
+DG_CATEGORIA_LABEL = {
+    "ventas_totales": "Ventas totales",
+    "por_linea": "Ventas por línea",
+    "flujo": "Flujo (clientes atendidos)",
+    "ticket_promedio": "Ticket promedio",
+}
+DG_ENTIDADES = {
+    "ventas_totales": ["GENERAL", "CAYALA", "VISTA HERMOSA", "MAJADAS", "CAES"],
+    "por_linea": ["TIENDA", "DIGITAL", "OFFSET", "COLORADO", "VALLOY"],
+    "flujo": ["TOTAL"],
+    "ticket_promedio": ["TOTAL"],
+}
+# Nombre bonito para mostrar en pantalla (las claves de arriba son las que
+# usa el Google Sheet original / los datos guardados).
+DG_ENTIDAD_LABEL = {
+    "GENERAL": "General (todas las tiendas)", "CAYALA": "Cayalá", "VISTA HERMOSA": "Vista Hermosa",
+    "MAJADAS": "Majadas", "CAES": "CAES", "TOTAL": "Total",
+    "TIENDA": "Tienda", "DIGITAL": "Digital", "OFFSET": "Offset", "COLORADO": "Colorado", "VALLOY": "Valloy",
+}
+# Años a los que se limita la GRÁFICA (la tabla numérica sí muestra todos los
+# años disponibles) — pedido explícito de Steven.
+DG_ANIOS_GRAFICA = [2024, 2025, 2026]
+
+# Pestaña "Krispy 2": desglose mensual por tienda y por producto (Bites/Mini).
+KRISPY_TIENDAS = ["CAYALA", "VISTA HERMOSA", "CAES"]
+KRISPY_TIENDA_LABEL = {"CAYALA": "Cayalá", "VISTA HERMOSA": "Vista Hermosa", "CAES": "CAES"}
+KRISPY_PRODUCTOS = ["bites", "mini"]
+KRISPY_PRODUCTO_LABEL = {"bites": "Bites", "mini": "Mini"}
+KRISPY_METRICAS = ["unidades", "dinero", "utilidad"]
+KRISPY_METRICA_LABEL = {"unidades": "Unidades", "dinero": "Dinero (Q)", "utilidad": "Utilidad (Q)"}
+# El Google Sheet original ("KRISPY 2") no tiene ninguna columna de año — los
+# datos cargados (Enero a Julio) se guardaron asumiendo que corresponden a
+# 2026 (coincide con el lanzamiento de la tienda CAES). Si esto no es
+# correcto, se puede corregir año por año directamente desde la pestaña.
+KRISPY_ANIO_ASUMIDO = 2026
