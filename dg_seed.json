@@ -1,0 +1,1750 @@
+{
+  "ventas_totales": {
+    "GENERAL": [
+      {
+        "anio": 2018,
+        "meta": false,
+        "valores": {
+          "ENERO": 1015987.0,
+          "FEBRERO": 1096277.0,
+          "MARZO": 1090312.0,
+          "ABRIL": 1091561.0,
+          "MAYO": 1312951.0,
+          "JUNIO": 1014793.0,
+          "JULIO": 1114237.0,
+          "AGOSTO": 1150427.0,
+          "SEPTIEMBRE": 1006509.0,
+          "OCTUBRE": 1239117.0,
+          "NOVIEMBRE": 1392082.0,
+          "DICIEMBRE": 1030964.0
+        }
+      },
+      {
+        "anio": 2019,
+        "meta": false,
+        "valores": {
+          "ENERO": 1049581.0,
+          "FEBRERO": 1265659.0,
+          "MARZO": 1223085.0,
+          "ABRIL": 968928.0,
+          "MAYO": 1358708.0,
+          "JUNIO": 1012640.0,
+          "JULIO": 1180505.0,
+          "AGOSTO": 1215427.0,
+          "SEPTIEMBRE": 1257830.0,
+          "OCTUBRE": 1362274.0,
+          "NOVIEMBRE": 1724846.0,
+          "DICIEMBRE": 1196798.0
+        }
+      },
+      {
+        "anio": 2020,
+        "meta": false,
+        "valores": {
+          "ENERO": 1261231.0,
+          "FEBRERO": 1471676.0,
+          "MARZO": 983020.0,
+          "ABRIL": 549003.0,
+          "MAYO": 553609.0,
+          "JUNIO": 804391.0,
+          "JULIO": 810669.0,
+          "AGOSTO": 861962.0,
+          "SEPTIEMBRE": 947935.0,
+          "OCTUBRE": 1006884.0,
+          "NOVIEMBRE": 1180110.0,
+          "DICIEMBRE": 1190039.0
+        }
+      },
+      {
+        "anio": 2021,
+        "meta": false,
+        "valores": {
+          "ENERO": 669770.0,
+          "FEBRERO": 666977.0,
+          "MARZO": 752171.0,
+          "ABRIL": 640324.0,
+          "MAYO": 713728.0,
+          "JUNIO": 798483.0,
+          "JULIO": 627363.0,
+          "AGOSTO": 673582.0,
+          "SEPTIEMBRE": 686224.0,
+          "OCTUBRE": 750697.0,
+          "NOVIEMBRE": 949455.0,
+          "DICIEMBRE": 791311.0
+        }
+      },
+      {
+        "anio": 2022,
+        "meta": false,
+        "valores": {
+          "ENERO": 666132.0,
+          "FEBRERO": 780879.0,
+          "MARZO": 840827.0,
+          "ABRIL": 733470.0,
+          "MAYO": 913136.0,
+          "JUNIO": 815326.02,
+          "JULIO": 924514.48,
+          "AGOSTO": 900842.05,
+          "SEPTIEMBRE": 908591.55,
+          "OCTUBRE": 998378.75,
+          "NOVIEMBRE": 1199754.42,
+          "DICIEMBRE": 902075.26
+        }
+      },
+      {
+        "anio": 2023,
+        "meta": false,
+        "valores": {
+          "ENERO": 994374.0,
+          "FEBRERO": 1043785.0,
+          "MARZO": 1275055.0,
+          "ABRIL": 996935.0,
+          "MAYO": 1126105.0,
+          "JUNIO": 978514.0,
+          "JULIO": 1142600.0,
+          "AGOSTO": 1006768.0,
+          "SEPTIEMBRE": 1062362.0,
+          "OCTUBRE": 961555.0,
+          "NOVIEMBRE": 1316222.0,
+          "DICIEMBRE": 978588.0
+        }
+      },
+      {
+        "anio": 2024,
+        "meta": false,
+        "valores": {
+          "ENERO": 981191.0,
+          "FEBRERO": 1020285.0,
+          "MARZO": 888333.0,
+          "ABRIL": 1103158.0,
+          "MAYO": 1240534.0,
+          "JUNIO": 969951.14,
+          "JULIO": 1084429.87,
+          "AGOSTO": 1130459.75,
+          "SEPTIEMBRE": 1057899.65,
+          "OCTUBRE": 1264474.86,
+          "NOVIEMBRE": 1402855.46,
+          "DICIEMBRE": 952827.0
+        }
+      },
+      {
+        "anio": 2025,
+        "meta": false,
+        "valores": {
+          "ENERO": 1107675.0,
+          "FEBRERO": 1119717.46,
+          "MARZO": 1081114.4,
+          "ABRIL": 1030473.0,
+          "MAYO": 1182765.0,
+          "JUNIO": 936370.0,
+          "JULIO": 1073261.87,
+          "AGOSTO": 1088210.02,
+          "SEPTIEMBRE": 1028683.0,
+          "OCTUBRE": 1239972.16,
+          "NOVIEMBRE": 1305271.25,
+          "DICIEMBRE": 701644.55
+        }
+      },
+      {
+        "anio": 2026,
+        "meta": true,
+        "valores": {
+          "ENERO": 1345000.0,
+          "FEBRERO": 1370000.0,
+          "MARZO": 1520000.0,
+          "ABRIL": 1520000.0,
+          "MAYO": 1885000.0,
+          "JUNIO": 1670000.0,
+          "JULIO": 1760000.0,
+          "AGOSTO": 1840000.0,
+          "SEPTIEMBRE": 1820000.0,
+          "OCTUBRE": 1945000.0,
+          "NOVIEMBRE": 2050000.0,
+          "DICIEMBRE": 1695000.0
+        }
+      },
+      {
+        "anio": 2026,
+        "meta": false,
+        "valores": {
+          "ENERO": 1151844.1,
+          "FEBRERO": 1080577.0,
+          "MARZO": 1211721.0,
+          "ABRIL": 1080413.0,
+          "MAYO": 1326730.0,
+          "JUNIO": 1181976.0,
+          "JULIO": 1305611.0,
+          "AGOSTO": 1269642.0,
+          "SEPTIEMBRE": 0.0,
+          "OCTUBRE": 0.0,
+          "NOVIEMBRE": 0.0,
+          "DICIEMBRE": 0.0
+        }
+      }
+    ],
+    "CAYALA": [
+      {
+        "anio": 2018,
+        "meta": false,
+        "valores": {
+          "ENERO": 575306.0,
+          "FEBRERO": 564038.0,
+          "MARZO": 576324.0,
+          "ABRIL": 606747.0,
+          "MAYO": 839778.0,
+          "JUNIO": 639864.0,
+          "JULIO": 685580.0,
+          "AGOSTO": 701803.0,
+          "SEPTIEMBRE": 639121.0,
+          "OCTUBRE": 675213.0,
+          "NOVIEMBRE": 787330.0,
+          "DICIEMBRE": 651122.0
+        }
+      },
+      {
+        "anio": 2019,
+        "meta": false,
+        "valores": {
+          "ENERO": 669741.0,
+          "FEBRERO": 711434.0,
+          "MARZO": 677882.0,
+          "ABRIL": 556301.0,
+          "MAYO": 831012.0,
+          "JUNIO": 448874.0,
+          "JULIO": 560223.0,
+          "AGOSTO": 562621.0,
+          "SEPTIEMBRE": 567373.0,
+          "OCTUBRE": 631672.0,
+          "NOVIEMBRE": 677221.0,
+          "DICIEMBRE": 507342.0
+        }
+      },
+      {
+        "anio": 2020,
+        "meta": false,
+        "valores": {
+          "ENERO": 590508.0,
+          "FEBRERO": 660508.0,
+          "MARZO": 514476.0,
+          "ABRIL": 401926.0,
+          "MAYO": 280809.0,
+          "JUNIO": 419570.0,
+          "JULIO": 389212.0,
+          "AGOSTO": 453040.0,
+          "SEPTIEMBRE": 451474.0,
+          "OCTUBRE": 508093.0,
+          "NOVIEMBRE": 594066.0,
+          "DICIEMBRE": 596505.0
+        }
+      },
+      {
+        "anio": 2021,
+        "meta": false,
+        "valores": {
+          "ENERO": 398831.0,
+          "FEBRERO": 370848.0,
+          "MARZO": 421917.0,
+          "ABRIL": 329334.0,
+          "MAYO": 411523.0,
+          "JUNIO": 366791.0,
+          "JULIO": 354951.0,
+          "AGOSTO": 401357.0,
+          "SEPTIEMBRE": 379808.0,
+          "OCTUBRE": 400831.0,
+          "NOVIEMBRE": 495279.0,
+          "DICIEMBRE": 388478.0
+        }
+      },
+      {
+        "anio": 2022,
+        "meta": false,
+        "valores": {
+          "ENERO": 392447.0,
+          "FEBRERO": 380416.0,
+          "MARZO": 461595.0,
+          "ABRIL": 391719.0,
+          "MAYO": 480154.0,
+          "JUNIO": 417101.07,
+          "JULIO": 530907.0,
+          "AGOSTO": 483893.0,
+          "SEPTIEMBRE": 481676.0,
+          "OCTUBRE": 543631.0,
+          "NOVIEMBRE": 624319.0,
+          "DICIEMBRE": 406868.0
+        }
+      },
+      {
+        "anio": 2023,
+        "meta": false,
+        "valores": {
+          "ENERO": 535707.0,
+          "FEBRERO": 496452.0,
+          "MARZO": 607817.0,
+          "ABRIL": 562438.0,
+          "MAYO": 577577.0,
+          "JUNIO": 494219.0,
+          "JULIO": 590645.0,
+          "AGOSTO": 532355.0,
+          "SEPTIEMBRE": 543092.0,
+          "OCTUBRE": 515050.0,
+          "NOVIEMBRE": 706673.0,
+          "DICIEMBRE": 502325.0
+        }
+      },
+      {
+        "anio": 2024,
+        "meta": false,
+        "valores": {
+          "ENERO": 572686.0,
+          "FEBRERO": 536304.0,
+          "MARZO": 463033.0,
+          "ABRIL": 549175.0,
+          "MAYO": 703083.0,
+          "JUNIO": 455455.0,
+          "JULIO": 536064.0,
+          "AGOSTO": 581471.0,
+          "SEPTIEMBRE": 497319.0,
+          "OCTUBRE": 620718.0,
+          "NOVIEMBRE": 750710.0,
+          "DICIEMBRE": 511696.0
+        }
+      },
+      {
+        "anio": 2025,
+        "meta": false,
+        "valores": {
+          "ENERO": 652564.0,
+          "FEBRERO": 614741.46,
+          "MARZO": 647875.4,
+          "ABRIL": 481397.0,
+          "MAYO": 628751.0,
+          "JUNIO": 485145.0,
+          "JULIO": 546777.87,
+          "AGOSTO": 570696.02,
+          "SEPTIEMBRE": 599221.27,
+          "OCTUBRE": 642009.16,
+          "NOVIEMBRE": 719667.25,
+          "DICIEMBRE": 509056.55
+        }
+      },
+      {
+        "anio": 2026,
+        "meta": true,
+        "valores": {
+          "ENERO": 680000.0,
+          "FEBRERO": 705000.0,
+          "MARZO": 705000.0,
+          "ABRIL": 580000.0,
+          "MAYO": 750000.0,
+          "JUNIO": 580000.0,
+          "JULIO": 625000.0,
+          "AGOSTO": 655000.0,
+          "SEPTIEMBRE": 685000.0,
+          "OCTUBRE": 730000.0,
+          "NOVIEMBRE": 835000.0,
+          "DICIEMBRE": 605000.0
+        }
+      },
+      {
+        "anio": 2026,
+        "meta": false,
+        "valores": {
+          "ENERO": 559164.1,
+          "FEBRERO": 541984.0,
+          "MARZO": 595879.0,
+          "ABRIL": 503748.0,
+          "MAYO": 610926.0,
+          "JUNIO": 477459.0,
+          "JULIO": 589523.0,
+          "AGOSTO": 540693.0
+        }
+      }
+    ],
+    "VISTA HERMOSA": [
+      {
+        "anio": 2018,
+        "meta": false,
+        "valores": {
+          "ENERO": 440681.0,
+          "FEBRERO": 532239.0,
+          "MARZO": 513988.0,
+          "ABRIL": 484814.0,
+          "MAYO": 473173.0,
+          "JUNIO": 374929.0,
+          "JULIO": 428657.0,
+          "AGOSTO": 448624.0,
+          "SEPTIEMBRE": 367388.0,
+          "OCTUBRE": 563904.0,
+          "NOVIEMBRE": 604752.0,
+          "DICIEMBRE": 379842.0
+        }
+      },
+      {
+        "anio": 2019,
+        "meta": false,
+        "valores": {
+          "ENERO": 379840.0,
+          "FEBRERO": 554225.0,
+          "MARZO": 545203.0,
+          "ABRIL": 412627.0,
+          "MAYO": 527696.0,
+          "JUNIO": 437365.0,
+          "JULIO": 441815.0,
+          "AGOSTO": 413586.0,
+          "SEPTIEMBRE": 457773.0,
+          "OCTUBRE": 442086.0,
+          "NOVIEMBRE": 586940.0,
+          "DICIEMBRE": 481641.0
+        }
+      },
+      {
+        "anio": 2020,
+        "meta": false,
+        "valores": {
+          "ENERO": 418497.0,
+          "FEBRERO": 528310.0,
+          "MARZO": 292305.0,
+          "ABRIL": 85669.0,
+          "MAYO": 196973.0,
+          "JUNIO": 287641.0,
+          "JULIO": 292745.0,
+          "AGOSTO": 284703.0,
+          "SEPTIEMBRE": 330346.0,
+          "OCTUBRE": 355560.0,
+          "NOVIEMBRE": 437720.0,
+          "DICIEMBRE": 396670.0
+        }
+      },
+      {
+        "anio": 2021,
+        "meta": false,
+        "valores": {
+          "ENERO": 188277.0,
+          "FEBRERO": 204671.0,
+          "MARZO": 218839.0,
+          "ABRIL": 200763.0,
+          "MAYO": 198292.0,
+          "JUNIO": 171734.0,
+          "JULIO": 182833.0,
+          "AGOSTO": 188048.0,
+          "SEPTIEMBRE": 227099.0,
+          "OCTUBRE": 246447.0,
+          "NOVIEMBRE": 304928.0,
+          "DICIEMBRE": 252261.0
+        }
+      },
+      {
+        "anio": 2022,
+        "meta": false,
+        "valores": {
+          "ENERO": 167912.0,
+          "FEBRERO": 264340.0,
+          "MARZO": 240181.0,
+          "ABRIL": 215857.0,
+          "MAYO": 271590.0,
+          "JUNIO": 261055.24,
+          "JULIO": 241043.0,
+          "AGOSTO": 245785.0,
+          "SEPTIEMBRE": 274870.0,
+          "OCTUBRE": 277710.0,
+          "NOVIEMBRE": 334727.0,
+          "DICIEMBRE": 247585.0
+        }
+      },
+      {
+        "anio": 2023,
+        "meta": false,
+        "valores": {
+          "ENERO": 293616.0,
+          "FEBRERO": 364277.0,
+          "MARZO": 468807.0,
+          "ABRIL": 295765.0,
+          "MAYO": 345659.0,
+          "JUNIO": 307420.0,
+          "JULIO": 401439.0,
+          "AGOSTO": 310961.0,
+          "SEPTIEMBRE": 342387.0,
+          "OCTUBRE": 311972.0,
+          "NOVIEMBRE": 375076.0,
+          "DICIEMBRE": 266403.0
+        }
+      },
+      {
+        "anio": 2024,
+        "meta": false,
+        "valores": {
+          "ENERO": 258341.0,
+          "FEBRERO": 300919.0,
+          "MARZO": 276543.0,
+          "ABRIL": 350992.0,
+          "MAYO": 332979.0,
+          "JUNIO": 294796.0,
+          "JULIO": 334485.87,
+          "AGOSTO": 380710.75,
+          "SEPTIEMBRE": 338676.65,
+          "OCTUBRE": 413411.86,
+          "NOVIEMBRE": 428330.35,
+          "DICIEMBRE": 259703.0
+        }
+      },
+      {
+        "anio": 2025,
+        "meta": false,
+        "valores": {
+          "ENERO": 295172.0,
+          "FEBRERO": 300919.0,
+          "MARZO": 276543.0,
+          "ABRIL": 348506.0,
+          "MAYO": 325991.0,
+          "JUNIO": 254882.0,
+          "JULIO": 312104.0,
+          "AGOSTO": 315367.0,
+          "SEPTIEMBRE": 301474.0,
+          "OCTUBRE": 350139.0,
+          "NOVIEMBRE": 357734.0
+        }
+      },
+      {
+        "anio": 2026,
+        "meta": true,
+        "valores": {
+          "ENERO": 405000.0,
+          "FEBRERO": 405000.0,
+          "MARZO": 455000.0,
+          "ABRIL": 340000.0,
+          "MAYO": 405000.0,
+          "JUNIO": 405000.0,
+          "JULIO": 405000.0,
+          "AGOSTO": 455000.0,
+          "SEPTIEMBRE": 405000.0,
+          "OCTUBRE": 485000.0,
+          "NOVIEMBRE": 485000.0,
+          "DICIEMBRE": 405000.0
+        }
+      },
+      {
+        "anio": 2026,
+        "meta": false,
+        "valores": {
+          "ENERO": 411176.0,
+          "FEBRERO": 311584.0,
+          "MARZO": 404022.0,
+          "ABRIL": 304117.0,
+          "MAYO": 312277.0,
+          "JUNIO": 329083.0,
+          "JULIO": 328492.0,
+          "AGOSTO": 281793.0
+        }
+      }
+    ],
+    "MAJADAS": [
+      {
+        "anio": 2019,
+        "meta": false,
+        "valores": {
+          "JUNIO": 126401.0,
+          "JULIO": 178467.0,
+          "AGOSTO": 239220.0,
+          "SEPTIEMBRE": 232684.0,
+          "OCTUBRE": 288516.0,
+          "NOVIEMBRE": 460685.0,
+          "DICIEMBRE": 207815.0
+        }
+      },
+      {
+        "anio": 2020,
+        "meta": false,
+        "valores": {
+          "ENERO": 252226.0,
+          "FEBRERO": 282858.0,
+          "MARZO": 176239.0,
+          "ABRIL": 61408.0,
+          "MAYO": 75827.0,
+          "JUNIO": 97180.0,
+          "JULIO": 128712.0,
+          "AGOSTO": 124219.0,
+          "SEPTIEMBRE": 166115.0,
+          "OCTUBRE": 143231.0,
+          "NOVIEMBRE": 148324.0,
+          "DICIEMBRE": 196864.0
+        }
+      },
+      {
+        "anio": 2021,
+        "meta": false,
+        "valores": {
+          "ENERO": 82662.0,
+          "FEBRERO": 91458.0,
+          "MARZO": 111415.0,
+          "ABRIL": 110227.0,
+          "MAYO": 103913.0,
+          "JUNIO": 259958.0,
+          "JULIO": 89579.0,
+          "AGOSTO": 84177.0,
+          "SEPTIEMBRE": 79317.0,
+          "OCTUBRE": 103419.0,
+          "NOVIEMBRE": 149248.0,
+          "DICIEMBRE": 150572.0
+        }
+      },
+      {
+        "anio": 2022,
+        "meta": false,
+        "valores": {
+          "ENERO": 105773.0,
+          "FEBRERO": 136118.0,
+          "MARZO": 139052.0,
+          "ABRIL": 124904.0,
+          "MAYO": 161392.0,
+          "JUNIO": 137169.71,
+          "JULIO": 152564.48,
+          "AGOSTO": 171164.05,
+          "SEPTIEMBRE": 152045.55,
+          "OCTUBRE": 177037.75,
+          "NOVIEMBRE": 240708.42,
+          "DICIEMBRE": 247622.26
+        }
+      },
+      {
+        "anio": 2023,
+        "meta": false,
+        "valores": {
+          "ENERO": 165051.0,
+          "FEBRERO": 183056.0,
+          "MARZO": 198431.0,
+          "ABRIL": 138732.0,
+          "MAYO": 202869.0,
+          "JUNIO": 176875.0,
+          "JULIO": 150516.0,
+          "AGOSTO": 163452.0,
+          "SEPTIEMBRE": 176883.0,
+          "OCTUBRE": 134533.0,
+          "NOVIEMBRE": 234473.0,
+          "DICIEMBRE": 209860.0
+        }
+      },
+      {
+        "anio": 2024,
+        "meta": false,
+        "valores": {
+          "ENERO": 150164.0,
+          "FEBRERO": 183062.0,
+          "MARZO": 148757.0,
+          "ABRIL": 202991.0,
+          "MAYO": 204472.0,
+          "JUNIO": 219700.14,
+          "JULIO": 213880.0,
+          "AGOSTO": 168278.0,
+          "SEPTIEMBRE": 221904.0,
+          "OCTUBRE": 230345.0,
+          "NOVIEMBRE": 223815.11,
+          "DICIEMBRE": 192588.0
+        }
+      },
+      {
+        "anio": 2025,
+        "meta": false,
+        "valores": {
+          "ENERO": 159939.0,
+          "FEBRERO": 204057.0,
+          "MARZO": 156696.0,
+          "ABRIL": 200570.0,
+          "MAYO": 228023.0,
+          "JUNIO": 196343.0,
+          "JULIO": 214380.0,
+          "AGOSTO": 202147.0,
+          "SEPTIEMBRE": 229890.0,
+          "OCTUBRE": 247824.0,
+          "NOVIEMBRE": 227870.0,
+          "DICIEMBRE": 192588.0
+        }
+      },
+      {
+        "anio": 2026,
+        "meta": true,
+        "valores": {
+          "ENERO": 260000.0,
+          "FEBRERO": 260000.0,
+          "MARZO": 260000.0,
+          "ABRIL": 225000.0,
+          "MAYO": 305000.0,
+          "JUNIO": 260000.0,
+          "JULIO": 305000.0,
+          "AGOSTO": 305000.0,
+          "SEPTIEMBRE": 305000.0,
+          "OCTUBRE": 305000.0,
+          "NOVIEMBRE": 305000.0,
+          "DICIEMBRE": 260000.0
+        }
+      },
+      {
+        "anio": 2026,
+        "meta": false,
+        "valores": {
+          "ENERO": 181504.0,
+          "FEBRERO": 227009.0,
+          "MARZO": 193034.0,
+          "ABRIL": 166346.0,
+          "MAYO": 206682.0,
+          "JUNIO": 198074.0,
+          "JULIO": 195915.0,
+          "AGOSTO": 195221.0
+        }
+      }
+    ],
+    "CAES": [
+      {
+        "anio": 2026,
+        "meta": true,
+        "valores": {
+          "ENERO": 0.0,
+          "FEBRERO": 0.0,
+          "MARZO": 100000.0,
+          "ABRIL": 375000.0,
+          "MAYO": 425000.0,
+          "JUNIO": 425000.0,
+          "JULIO": 425000.0,
+          "AGOSTO": 425000.0,
+          "SEPTIEMBRE": 425000.0,
+          "OCTUBRE": 425000.0,
+          "NOVIEMBRE": 425000.0,
+          "DICIEMBRE": 425000.0
+        }
+      },
+      {
+        "anio": 2026,
+        "meta": false,
+        "valores": {
+          "MARZO": 18786.0,
+          "ABRIL": 106202.0,
+          "MAYO": 196845.0,
+          "JUNIO": 177360.0,
+          "JULIO": 191681.0,
+          "AGOSTO": 251935.0
+        }
+      }
+    ]
+  },
+  "por_linea": {
+    "TIENDA": [
+      {
+        "anio": 2018,
+        "meta": false,
+        "valores": {
+          "ENERO": 715120.0,
+          "FEBRERO": 812698.0,
+          "MARZO": 710093.0,
+          "ABRIL": 761740.0,
+          "MAYO": 904649.0,
+          "JUNIO": 690369.0,
+          "JULIO": 768661.0,
+          "AGOSTO": 769300.0,
+          "SEPTIEMBRE": 794327.0,
+          "OCTUBRE": 910017.0,
+          "NOVIEMBRE": 1036014.0,
+          "DICIEMBRE": 634228.0
+        }
+      },
+      {
+        "anio": 2019,
+        "meta": false,
+        "valores": {
+          "ENERO": 705758.0,
+          "FEBRERO": 925409.0,
+          "MARZO": 920489.0,
+          "ABRIL": 753610.0,
+          "MAYO": 1048506.0,
+          "JUNIO": 770273.0,
+          "JULIO": 867497.0,
+          "AGOSTO": 887653.0,
+          "SEPTIEMBRE": 881397.0,
+          "OCTUBRE": 926400.0,
+          "NOVIEMBRE": 1082699.0,
+          "DICIEMBRE": 795442.0
+        }
+      },
+      {
+        "anio": 2020,
+        "meta": false,
+        "valores": {
+          "ENERO": 867177.0,
+          "FEBRERO": 898337.0,
+          "MARZO": 624642.0,
+          "ABRIL": 321910.0,
+          "MAYO": 350131.0,
+          "JUNIO": 449486.0,
+          "JULIO": 556398.0,
+          "AGOSTO": 583251.0,
+          "SEPTIEMBRE": 608051.0,
+          "OCTUBRE": 591044.0,
+          "NOVIEMBRE": 650617.0,
+          "DICIEMBRE": 688793.0
+        }
+      },
+      {
+        "anio": 2021,
+        "meta": false,
+        "valores": {
+          "ENERO": 622825.0,
+          "FEBRERO": 628719.0,
+          "MARZO": 693450.0,
+          "ABRIL": 587643.0,
+          "MAYO": 658609.0,
+          "JUNIO": 589126.0,
+          "JULIO": 573035.0,
+          "AGOSTO": 578553.0,
+          "SEPTIEMBRE": 607619.0,
+          "OCTUBRE": 676554.0,
+          "NOVIEMBRE": 874043.0,
+          "DICIEMBRE": 741369.0
+        }
+      },
+      {
+        "anio": 2022,
+        "meta": false,
+        "valores": {
+          "ENERO": 611020.0,
+          "FEBRERO": 722762.0,
+          "MARZO": 787416.0,
+          "ABRIL": 694228.0,
+          "MAYO": 877819.0,
+          "JUNIO": 773023.27,
+          "JULIO": 766541.48,
+          "AGOSTO": 856675.17,
+          "SEPTIEMBRE": 864916.48,
+          "OCTUBRE": 949460.52,
+          "NOVIEMBRE": 1106525.12,
+          "DICIEMBRE": 853986.45
+        }
+      },
+      {
+        "anio": 2023,
+        "meta": false,
+        "valores": {
+          "ENERO": 926859.0,
+          "FEBRERO": 990329.0,
+          "MARZO": 1198505.0,
+          "ABRIL": 916139.0,
+          "MAYO": 1071145.0,
+          "JUNIO": 905422.0,
+          "JULIO": 1036606.0,
+          "AGOSTO": 961754.0,
+          "SEPTIEMBRE": 984429.0,
+          "OCTUBRE": 887331.0,
+          "NOVIEMBRE": 1277392.0,
+          "DICIEMBRE": 942901.0
+        }
+      },
+      {
+        "anio": 2024,
+        "meta": false,
+        "valores": {
+          "ENERO": 940208.0,
+          "FEBRERO": 1001413.0,
+          "MARZO": 874548.0,
+          "ABRIL": 1076097.0,
+          "MAYO": 1180369.0,
+          "JUNIO": 905430.0,
+          "JULIO": 1026567.0,
+          "AGOSTO": 1048425.0,
+          "SEPTIEMBRE": 1006510.0,
+          "OCTUBRE": 1155320.0,
+          "NOVIEMBRE": 1314928.0,
+          "DICIEMBRE": 952827.0
+        }
+      },
+      {
+        "anio": 2025,
+        "meta": false,
+        "valores": {
+          "ENERO": 997320.0,
+          "FEBRERO": 1065699.46,
+          "MARZO": 1093638.11,
+          "ABRIL": 782562.0,
+          "MAYO": 1049547.0,
+          "JUNIO": 862833.0,
+          "JULIO": 1035784.0,
+          "AGOSTO": 1041284.0,
+          "SEPTIEMBRE": 1045828.0,
+          "OCTUBRE": 1142989.0,
+          "NOVIEMBRE": 1202642.0,
+          "DICIEMBRE": 0.0
+        }
+      },
+      {
+        "anio": 2026,
+        "meta": true,
+        "valores": {
+          "ENERO": 1150000.0,
+          "FEBRERO": 1200000.0,
+          "MARZO": 1200000.0,
+          "ABRIL": 1000000.0,
+          "MAYO": 1280000.0,
+          "JUNIO": 1075000.0,
+          "JULIO": 1155000.0,
+          "AGOSTO": 1205000.0,
+          "SEPTIEMBRE": 1210000.0,
+          "OCTUBRE": 1305000.0,
+          "NOVIEMBRE": 1410000.0,
+          "DICIEMBRE": 1095000.0
+        }
+      },
+      {
+        "anio": 2026,
+        "meta": false,
+        "valores": {
+          "ENERO": 986721.85,
+          "FEBRERO": 1000706.0,
+          "MARZO": 1051767.0,
+          "ABRIL": 998488.0,
+          "MAYO": 1215391.0,
+          "JUNIO": 1064421.0,
+          "JULIO": 1156167.0,
+          "AGOSTO": 947776.0,
+          "SEPTIEMBRE": 0.0,
+          "OCTUBRE": 0.0,
+          "NOVIEMBRE": 0.0,
+          "DICIEMBRE": 0.0
+        }
+      }
+    ],
+    "DIGITAL": [
+      {
+        "anio": 2018,
+        "meta": false,
+        "valores": {
+          "ENERO": 189077.0,
+          "FEBRERO": 213334.0,
+          "MARZO": 299878.0,
+          "ABRIL": 209657.0,
+          "MAYO": 236954.0,
+          "JUNIO": 218523.0,
+          "JULIO": 237200.0,
+          "AGOSTO": 214827.0,
+          "SEPTIEMBRE": 148473.0,
+          "OCTUBRE": 284035.0,
+          "NOVIEMBRE": 300439.0,
+          "DICIEMBRE": 254296.0
+        }
+      },
+      {
+        "anio": 2019,
+        "meta": false,
+        "valores": {
+          "ENERO": 250985.0,
+          "FEBRERO": 335005.0,
+          "MARZO": 281336.0,
+          "ABRIL": 202188.0,
+          "MAYO": 289485.0,
+          "JUNIO": 238772.0,
+          "JULIO": 258117.0,
+          "AGOSTO": 268580.0,
+          "SEPTIEMBRE": 353097.0,
+          "OCTUBRE": 378816.0,
+          "NOVIEMBRE": 633637.0,
+          "DICIEMBRE": 384938.0
+        }
+      },
+      {
+        "anio": 2020,
+        "meta": false,
+        "valores": {
+          "ENERO": 360479.0,
+          "FEBRERO": 503548.0,
+          "MARZO": 343410.0,
+          "ABRIL": 201569.0,
+          "MAYO": 170487.0,
+          "JUNIO": 337464.0,
+          "JULIO": 218623.0,
+          "AGOSTO": 276255.0,
+          "SEPTIEMBRE": 324499.0,
+          "OCTUBRE": 398436.0,
+          "NOVIEMBRE": 529105.0,
+          "DICIEMBRE": 469660.0
+        }
+      },
+      {
+        "anio": 2021,
+        "meta": false,
+        "valores": {
+          "ENERO": 21307.0,
+          "FEBRERO": 25173.0,
+          "MARZO": 56310.0,
+          "ABRIL": 34154.0,
+          "MAYO": 51106.0,
+          "JUNIO": 45071.0,
+          "JULIO": 54328.0,
+          "AGOSTO": 92323.0,
+          "SEPTIEMBRE": 67445.0,
+          "OCTUBRE": 74143.0,
+          "NOVIEMBRE": 71974.0,
+          "DICIEMBRE": 47286.0
+        }
+      },
+      {
+        "anio": 2022,
+        "meta": false,
+        "valores": {
+          "ENERO": 55112.0,
+          "FEBRERO": 28850.0,
+          "MARZO": 53411.0,
+          "ABRIL": 39252.0,
+          "MAYO": 35317.0,
+          "JUNIO": 42302.75,
+          "JULIO": 56902.0,
+          "AGOSTO": 28541.88,
+          "SEPTIEMBRE": 42984.07,
+          "OCTUBRE": 48918.23,
+          "NOVIEMBRE": 83854.3,
+          "DICIEMBRE": 42838.81
+        }
+      },
+      {
+        "anio": 2023,
+        "meta": false,
+        "valores": {
+          "ENERO": 64461.0,
+          "FEBRERO": 50268.0,
+          "MARZO": 67622.0,
+          "ABRIL": 71868.0,
+          "MAYO": 49519.0,
+          "JUNIO": 47000.0,
+          "JULIO": 105994.0,
+          "AGOSTO": 45014.0,
+          "SEPTIEMBRE": 77933.0,
+          "OCTUBRE": 74224.0,
+          "NOVIEMBRE": 38830.0,
+          "DICIEMBRE": 35687.0
+        }
+      },
+      {
+        "anio": 2024,
+        "meta": false,
+        "valores": {
+          "ENERO": 84018.0,
+          "FEBRERO": 39867.0,
+          "MARZO": 21724.0,
+          "ABRIL": 22154.0,
+          "MAYO": 49182.0,
+          "JUNIO": 1250.0,
+          "JULIO": 35981.0,
+          "AGOSTO": 17422.0,
+          "SEPTIEMBRE": 22173.0,
+          "OCTUBRE": 59437.0,
+          "NOVIEMBRE": 21386.0,
+          "DICIEMBRE": 11160.0
+        }
+      },
+      {
+        "anio": 2025,
+        "meta": false,
+        "valores": {
+          "ENERO": 37885.0,
+          "FEBRERO": 17794.0,
+          "MARZO": 20089.0,
+          "ABRIL": 27525.0,
+          "MAYO": 26943.0,
+          "JUNIO": 69338.14,
+          "JULIO": 32194.41,
+          "AGOSTO": 72141.96,
+          "SEPTIEMBRE": 42649.07,
+          "OCTUBRE": 97093.75,
+          "NOVIEMBRE": 91677.46,
+          "DICIEMBRE": 0.0
+        }
+      },
+      {
+        "anio": 2026,
+        "meta": true,
+        "valores": {
+          "ENERO": 95000.0,
+          "FEBRERO": 70000.0,
+          "MARZO": 120000.0,
+          "ABRIL": 50000.0,
+          "MAYO": 75000.0,
+          "JUNIO": 60000.0,
+          "JULIO": 65000.0,
+          "AGOSTO": 90000.0,
+          "SEPTIEMBRE": 65000.0,
+          "OCTUBRE": 95000.0,
+          "NOVIEMBRE": 95000.0,
+          "DICIEMBRE": 60000.0
+        }
+      },
+      {
+        "anio": 2026,
+        "meta": false,
+        "valores": {
+          "ENERO": 115232.56,
+          "FEBRERO": 26274.0,
+          "MARZO": 79758.0,
+          "ABRIL": 30480.0,
+          "MAYO": 51092.0,
+          "JUNIO": 60097.0,
+          "JULIO": 51267.0,
+          "AGOSTO": 55422.0,
+          "SEPTIEMBRE": 0.0,
+          "OCTUBRE": 0.0,
+          "NOVIEMBRE": 0.0,
+          "DICIEMBRE": 0.0
+        }
+      }
+    ],
+    "OFFSET": [
+      {
+        "anio": 2018,
+        "meta": false,
+        "valores": {
+          "ENERO": 111790.0,
+          "FEBRERO": 70245.0,
+          "MARZO": 80341.0,
+          "ABRIL": 120164.0,
+          "MAYO": 171348.0,
+          "JUNIO": 105901.0,
+          "JULIO": 108376.0,
+          "AGOSTO": 166300.0,
+          "SEPTIEMBRE": 63709.0,
+          "OCTUBRE": 45065.0,
+          "NOVIEMBRE": 55629.0,
+          "DICIEMBRE": 142440.0
+        }
+      },
+      {
+        "anio": 2019,
+        "meta": false,
+        "valores": {
+          "ENERO": 92838.0,
+          "FEBRERO": 5245.0,
+          "MARZO": 21260.0,
+          "ABRIL": 13130.0,
+          "MAYO": 20717.0,
+          "JUNIO": 3595.0,
+          "JULIO": 54891.0,
+          "AGOSTO": 59194.0,
+          "SEPTIEMBRE": 23336.0,
+          "OCTUBRE": 57058.0,
+          "NOVIEMBRE": 8510.0,
+          "DICIEMBRE": 16418.0
+        }
+      },
+      {
+        "anio": 2020,
+        "meta": false,
+        "valores": {
+          "ENERO": 33575.0,
+          "FEBRERO": 69791.0,
+          "MARZO": 14968.0,
+          "ABRIL": 25524.0,
+          "MAYO": 32991.0,
+          "JUNIO": 17441.0,
+          "JULIO": 35648.0,
+          "AGOSTO": 2456.0,
+          "SEPTIEMBRE": 15385.0,
+          "OCTUBRE": 17404.0,
+          "NOVIEMBRE": 388.0,
+          "DICIEMBRE": 31586.0
+        }
+      },
+      {
+        "anio": 2021,
+        "meta": false,
+        "valores": {
+          "ENERO": 25638.0,
+          "FEBRERO": 13085.0,
+          "MARZO": 2411.0,
+          "ABRIL": 18527.0,
+          "MAYO": 4013.0,
+          "JUNIO": 164286.0,
+          "AGOSTO": 2706.0,
+          "SEPTIEMBRE": 11161.0,
+          "NOVIEMBRE": 3438.0,
+          "DICIEMBRE": 2656.0
+        }
+      },
+      {
+        "anio": 2022,
+        "meta": false,
+        "valores": {
+          "ENERO": 0.0,
+          "FEBRERO": 24092.0,
+          "MARZO": 0.0,
+          "ABRIL": 0.0,
+          "MAYO": 0.0,
+          "JUNIO": 0.0,
+          "JULIO": 101071.0,
+          "AGOSTO": 15625.0,
+          "SEPTIEMBRE": 691.0,
+          "OCTUBRE": 0.0,
+          "NOVIEMBRE": 9375.0,
+          "DICIEMBRE": 5250.0
+        }
+      },
+      {
+        "anio": 2023,
+        "meta": false,
+        "valores": {
+          "ENERO": 3054.0,
+          "FEBRERO": 3188.0,
+          "MARZO": 8928.0,
+          "ABRIL": 8928.0,
+          "MAYO": 5441.0,
+          "JUNIO": 0.0,
+          "JULIO": 0.0,
+          "AGOSTO": 0.0,
+          "SEPTIEMBRE": 0.0,
+          "OCTUBRE": 0.0,
+          "NOVIEMBRE": 0.0,
+          "DICIEMBRE": 0.0
+        }
+      },
+      {
+        "anio": 2024,
+        "meta": false,
+        "valores": {
+          "ENERO": 3571.0,
+          "FEBRERO": 0.0,
+          "MARZO": 0.0,
+          "ABRIL": 0.0,
+          "MAYO": 0.0,
+          "JUNIO": 0.0,
+          "JULIO": 0.0,
+          "AGOSTO": 0.0,
+          "SEPTIEMBRE": 0.0,
+          "OCTUBRE": 3924.0,
+          "NOVIEMBRE": 0.0,
+          "DICIEMBRE": 0.0
+        }
+      },
+      {
+        "anio": 2025,
+        "meta": false,
+        "valores": {
+          "ENERO": 56421.0,
+          "FEBRERO": 0.0,
+          "MARZO": 13214.0,
+          "ABRIL": 0.0,
+          "MAYO": 3393.0,
+          "JUNIO": 0.0,
+          "JULIO": 3348.21,
+          "AGOSTO": 11187.0,
+          "SEPTIEMBRE": 0.0,
+          "OCTUBRE": 17890.17,
+          "NOVIEMBRE": 8325.9,
+          "DICIEMBRE": 0.0
+        }
+      },
+      {
+        "anio": 2026,
+        "meta": true,
+        "valores": {
+          "ENERO": 20000.0,
+          "FEBRERO": 20000.0,
+          "MARZO": 20000.0,
+          "ABRIL": 20000.0,
+          "MAYO": 25000.0,
+          "JUNIO": 20000.0,
+          "JULIO": 25000.0,
+          "AGOSTO": 25000.0,
+          "SEPTIEMBRE": 25000.0,
+          "OCTUBRE": 25000.0,
+          "NOVIEMBRE": 25000.0,
+          "DICIEMBRE": 20000.0
+        }
+      },
+      {
+        "anio": 2026,
+        "meta": false,
+        "valores": {
+          "ENERO": 15152.0,
+          "FEBRERO": 17280.0,
+          "MARZO": 18196.0,
+          "ABRIL": 0.0,
+          "MAYO": 5134.0,
+          "JUNIO": 10894.0,
+          "JULIO": 4465.0,
+          "AGOSTO": 23063.0,
+          "SEPTIEMBRE": 0.0,
+          "OCTUBRE": 0.0,
+          "NOVIEMBRE": 0.0,
+          "DICIEMBRE": 0.0
+        }
+      }
+    ],
+    "COLORADO": [
+      {
+        "anio": 2025,
+        "meta": false,
+        "valores": {
+          "ENERO": 35445.59,
+          "FEBRERO": 32220.77,
+          "MARZO": 32372.29,
+          "ABRIL": 28333.0,
+          "MAYO": 34959.0,
+          "JUNIO": 30811.0,
+          "JULIO": 38944.61,
+          "AGOSTO": 36172.25,
+          "SEPTIEMBRE": 57530.01,
+          "OCTUBRE": 34650.02,
+          "NOVIEMBRE": 48329.61,
+          "DICIEMBRE": 0.0
+        }
+      },
+      {
+        "anio": 2026,
+        "meta": true,
+        "valores": {
+          "ENERO": 65000.0,
+          "FEBRERO": 65000.0,
+          "MARZO": 65000.0,
+          "ABRIL": 60000.0,
+          "MAYO": 65000.0,
+          "JUNIO": 75000.0,
+          "JULIO": 75000.0,
+          "AGOSTO": 80000.0,
+          "SEPTIEMBRE": 80000.0,
+          "OCTUBRE": 80000.0,
+          "NOVIEMBRE": 80000.0,
+          "DICIEMBRE": 80000.0
+        }
+      },
+      {
+        "anio": 2026,
+        "meta": false,
+        "valores": {
+          "ENERO": 28451.69,
+          "FEBRERO": 30371.0,
+          "MARZO": 43876.0,
+          "ABRIL": 38911.0,
+          "MAYO": 51176.0,
+          "JUNIO": 42162.0,
+          "JULIO": 61188.0,
+          "AGOSTO": 39395.0,
+          "SEPTIEMBRE": 0.0,
+          "OCTUBRE": 0.0,
+          "NOVIEMBRE": 0.0,
+          "DICIEMBRE": 0.0
+        }
+      }
+    ],
+    "VALLOY": [
+      {
+        "anio": 2025,
+        "meta": false,
+        "valores": {
+          "ENERO": 0.0,
+          "FEBRERO": 0.0,
+          "MARZO": 4688.0,
+          "ABRIL": 0.0,
+          "MAYO": 13585.0,
+          "JUNIO": 11569.0,
+          "JULIO": 1750.0,
+          "AGOSTO": 4174.11,
+          "SEPTIEMBRE": 24035.29,
+          "OCTUBRE": 8186.61,
+          "NOVIEMBRE": 8910.72,
+          "DICIEMBRE": 0.0
+        }
+      },
+      {
+        "anio": 2026,
+        "meta": true,
+        "valores": {
+          "ENERO": 15000.0,
+          "FEBRERO": 15000.0,
+          "MARZO": 15000.0,
+          "ABRIL": 15000.0,
+          "MAYO": 15000.0,
+          "JUNIO": 15000.0,
+          "JULIO": 15000.0,
+          "AGOSTO": 15000.0,
+          "SEPTIEMBRE": 15000.0,
+          "OCTUBRE": 15000.0,
+          "NOVIEMBRE": 15000.0,
+          "DICIEMBRE": 15000.0
+        }
+      },
+      {
+        "anio": 2026,
+        "meta": false,
+        "valores": {
+          "ENERO": 6286.0,
+          "FEBRERO": 5946.0,
+          "MARZO": 18124.0,
+          "ABRIL": 12534.0,
+          "MAYO": 3937.0,
+          "JUNIO": 4402.0,
+          "JULIO": 12134.0,
+          "AGOSTO": 965.0,
+          "SEPTIEMBRE": 0.0,
+          "OCTUBRE": 0.0,
+          "NOVIEMBRE": 0.0,
+          "DICIEMBRE": 0.0
+        }
+      }
+    ]
+  },
+  "flujo": {
+    "TOTAL": [
+      {
+        "anio": 2018,
+        "meta": false,
+        "valores": {
+          "ENERO": 8131.0,
+          "FEBRERO": 8246.0,
+          "MARZO": 7323.0,
+          "ABRIL": 8227.0,
+          "MAYO": 8992.0,
+          "JUNIO": 7636.0,
+          "JULIO": 9128.0,
+          "AGOSTO": 8816.0,
+          "SEPTIEMBRE": 8130.0,
+          "OCTUBRE": 8791.0,
+          "NOVIEMBRE": 8973.0,
+          "DICIEMBRE": 4940.0
+        }
+      },
+      {
+        "anio": 2019,
+        "meta": false,
+        "valores": {
+          "ENERO": 8998.0,
+          "FEBRERO": 9162.0,
+          "MARZO": 9285.0,
+          "ABRIL": 6851.0,
+          "MAYO": 9384.0,
+          "JUNIO": 8307.0,
+          "JULIO": 9870.0,
+          "AGOSTO": 9326.0,
+          "SEPTIEMBRE": 9263.0,
+          "OCTUBRE": 9423.0,
+          "NOVIEMBRE": 9640.0,
+          "DICIEMBRE": 7175.0
+        }
+      },
+      {
+        "anio": 2020,
+        "meta": false,
+        "valores": {
+          "ENERO": 9800.0,
+          "FEBRERO": 10509.0,
+          "MARZO": 6539.0,
+          "ABRIL": 3452.0,
+          "MAYO": 3836.0,
+          "JUNIO": 5213.0,
+          "JULIO": 6145.0,
+          "AGOSTO": 6772.0,
+          "SEPTIEMBRE": 6845.0,
+          "OCTUBRE": 7388.0,
+          "NOVIEMBRE": 7248.0,
+          "DICIEMBRE": 7361.0
+        }
+      },
+      {
+        "anio": 2021,
+        "meta": false,
+        "valores": {
+          "ENERO": 7742.0,
+          "FEBRERO": 7735.0,
+          "MARZO": 6945.0,
+          "ABRIL": 6945.0,
+          "MAYO": 7548.0,
+          "JUNIO": 7613.0,
+          "JULIO": 8328.0,
+          "AGOSTO": 7904.0,
+          "SEPTIEMBRE": 7380.0,
+          "OCTUBRE": 7644.0,
+          "NOVIEMBRE": 8033.0,
+          "DICIEMBRE": 7800.0
+        }
+      },
+      {
+        "anio": 2022,
+        "meta": false,
+        "valores": {
+          "ENERO": 7678.0,
+          "FEBRERO": 7532.0,
+          "MARZO": 8670.0,
+          "ABRIL": 6659.0,
+          "MAYO": 8417.0,
+          "JUNIO": 7721.0,
+          "JULIO": 7665.0,
+          "AGOSTO": 8294.0,
+          "SEPTIEMBRE": 7703.0,
+          "OCTUBRE": 8060.0,
+          "NOVIEMBRE": 7718.0,
+          "DICIEMBRE": 6490.0
+        }
+      },
+      {
+        "anio": 2023,
+        "meta": false,
+        "valores": {
+          "ENERO": 7605.0,
+          "FEBRERO": 7675.0,
+          "MARZO": 8375.0,
+          "ABRIL": 7337.0,
+          "MAYO": 8377.0,
+          "JUNIO": 7605.0,
+          "JULIO": 8011.0,
+          "AGOSTO": 8589.0,
+          "SEPTIEMBRE": 7383.0,
+          "OCTUBRE": 5943.0,
+          "NOVIEMBRE": 8043.0,
+          "DICIEMBRE": 6528.0
+        }
+      },
+      {
+        "anio": 2024,
+        "meta": false,
+        "valores": {
+          "ENERO": 7803.0,
+          "FEBRERO": 7915.0,
+          "MARZO": 6408.0,
+          "ABRIL": 7806.0,
+          "MAYO": 8152.0,
+          "JUNIO": 5226.0,
+          "JULIO": 8305.0,
+          "AGOSTO": 8754.0,
+          "SEPTIEMBRE": 8257.0,
+          "OCTUBRE": 8836.0,
+          "NOVIEMBRE": 8203.0,
+          "DICIEMBRE": 7142.0
+        }
+      },
+      {
+        "anio": 2025,
+        "meta": false,
+        "valores": {
+          "ENERO": 8398.0,
+          "FEBRERO": 7996.0,
+          "MARZO": 8275.0,
+          "ABRIL": 6724.0,
+          "MAYO": 8894.0,
+          "JUNIO": 7149.0,
+          "JULIO": 8689.0,
+          "AGOSTO": 8331.0,
+          "SEPTIEMBRE": 7970.0,
+          "OCTUBRE": 7910.0,
+          "NOVIEMBRE": 7411.0,
+          "DICIEMBRE": 6047.0
+        }
+      },
+      {
+        "anio": 2026,
+        "meta": true,
+        "valores": {
+          "ENERO": 9068.4,
+          "FEBRERO": 9086.0,
+          "MARZO": 8168.6,
+          "ABRIL": 10476.0,
+          "MAYO": 12365.4,
+          "JUNIO": 9810.4,
+          "JULIO": 12450.1,
+          "AGOSTO": 13248.4,
+          "SEPTIEMBRE": 12553.5,
+          "OCTUBRE": 13513.2,
+          "NOVIEMBRE": 13176.6,
+          "DICIEMBRE": 11641.9
+        }
+      },
+      {
+        "anio": 2026,
+        "meta": false,
+        "valores": {
+          "ENERO": 7371.0,
+          "FEBRERO": 7038.0,
+          "MARZO": 7634.0,
+          "ABRIL": 7821.0,
+          "MAYO": 9464.0,
+          "JUNIO": 8764.0,
+          "JULIO": 9902.0,
+          "AGOSTO": 9183.0,
+          "SEPTIEMBRE": 0.0,
+          "OCTUBRE": 0.0,
+          "NOVIEMBRE": 0.0,
+          "DICIEMBRE": 0.0
+        }
+      }
+    ]
+  },
+  "ticket_promedio": {
+    "TOTAL": [
+      {
+        "anio": 2018,
+        "meta": false,
+        "valores": {
+          "ENERO": 89.0,
+          "FEBRERO": 100.0,
+          "MARZO": 99.0,
+          "ABRIL": 92.0,
+          "MAYO": 101.0,
+          "JUNIO": 90.0,
+          "JULIO": 84.0,
+          "AGOSTO": 88.0,
+          "SEPTIEMBRE": 97.0,
+          "OCTUBRE": 104.0,
+          "NOVIEMBRE": 114.0,
+          "DICIEMBRE": 117.0
+        }
+      },
+      {
+        "anio": 2019,
+        "meta": false,
+        "valores": {
+          "ENERO": 92.0,
+          "FEBRERO": 102.0,
+          "MARZO": 100.0,
+          "ABRIL": 110.0,
+          "MAYO": 111.0,
+          "JUNIO": 96.0,
+          "JULIO": 94.0,
+          "AGOSTO": 99.0,
+          "SEPTIEMBRE": 94.0,
+          "OCTUBRE": 95.0,
+          "NOVIEMBRE": 114.0,
+          "DICIEMBRE": 110.0
+        }
+      },
+      {
+        "anio": 2020,
+        "meta": false,
+        "valores": {
+          "ENERO": 90.0,
+          "FEBRERO": 92.0,
+          "MARZO": 97.0,
+          "ABRIL": 54.0,
+          "MAYO": 94.0,
+          "JUNIO": 84.0,
+          "JULIO": 84.0,
+          "AGOSTO": 82.0,
+          "SEPTIEMBRE": 89.0,
+          "OCTUBRE": 78.0,
+          "NOVIEMBRE": 87.0,
+          "DICIEMBRE": 94.0
+        }
+      },
+      {
+        "anio": 2021,
+        "meta": false,
+        "valores": {
+          "ENERO": 76.0,
+          "FEBRERO": 83.0,
+          "MARZO": 87.0,
+          "ABRIL": 94.0,
+          "MAYO": 82.0,
+          "JUNIO": 72.0,
+          "JULIO": 82.0,
+          "AGOSTO": 67.0,
+          "SEPTIEMBRE": 81.0,
+          "OCTUBRE": 88.0,
+          "NOVIEMBRE": 111.0,
+          "DICIEMBRE": 110.0
+        }
+      },
+      {
+        "anio": 2022,
+        "meta": false,
+        "valores": {
+          "ENERO": 81.0,
+          "FEBRERO": 101.0,
+          "MARZO": 94.0,
+          "ABRIL": 111.0,
+          "MAYO": 116.0,
+          "JUNIO": 107.0,
+          "JULIO": 102.99,
+          "AGOSTO": 112.86,
+          "SEPTIEMBRE": 120.87,
+          "OCTUBRE": 125.0,
+          "NOVIEMBRE": 149.33,
+          "DICIEMBRE": 151.33
+        }
+      },
+      {
+        "anio": 2023,
+        "meta": false,
+        "valores": {
+          "ENERO": 123.33,
+          "FEBRERO": 134.0,
+          "MARZO": 149.67,
+          "ABRIL": 141.67,
+          "MAYO": 133.0,
+          "JUNIO": 123.33,
+          "JULIO": 130.0,
+          "AGOSTO": 117.0,
+          "SEPTIEMBRE": 134.0,
+          "OCTUBRE": 152.67,
+          "NOVIEMBRE": 168.0,
+          "DICIEMBRE": 158.0
+        }
+      },
+      {
+        "anio": 2024,
+        "meta": false,
+        "valores": {
+          "ENERO": 118.33,
+          "FEBRERO": 134.0,
+          "MARZO": 143.0,
+          "ABRIL": 145.33,
+          "MAYO": 142.0,
+          "JUNIO": 139.33,
+          "JULIO": 136.16,
+          "AGOSTO": 124.18,
+          "SEPTIEMBRE": 136.71,
+          "OCTUBRE": 128.26,
+          "NOVIEMBRE": 155.51,
+          "DICIEMBRE": 165.27
+        }
+      },
+      {
+        "anio": 2025,
+        "meta": false,
+        "valores": {
+          "ENERO": 122.98,
+          "FEBRERO": 137.31,
+          "MARZO": 136.07,
+          "ABRIL": 120.6,
+          "MAYO": 121.94,
+          "JUNIO": 125.0,
+          "JULIO": 123.69,
+          "AGOSTO": 129.33,
+          "SEPTIEMBRE": 138.44,
+          "OCTUBRE": 148.88,
+          "NOVIEMBRE": 168.8,
+          "DICIEMBRE": 0.0
+        }
+      },
+      {
+        "anio": 2026,
+        "meta": true,
+        "valores": {
+          "ENERO": 150.0,
+          "FEBRERO": 150.0,
+          "MARZO": 150.0,
+          "ABRIL": 150.0,
+          "MAYO": 150.0,
+          "JUNIO": 150.0,
+          "JULIO": 150.0,
+          "AGOSTO": 150.0,
+          "SEPTIEMBRE": 150.0,
+          "OCTUBRE": 150.0,
+          "NOVIEMBRE": 150.0,
+          "DICIEMBRE": 150.0
+        }
+      },
+      {
+        "anio": 2026,
+        "meta": false,
+        "valores": {
+          "ENERO": 137.73,
+          "FEBRERO": 146.5,
+          "MARZO": 143.52,
+          "ABRIL": 132.64,
+          "MAYO": 133.83,
+          "JUNIO": 126.26,
+          "JULIO": 122.94,
+          "AGOSTO": 107.5
+        }
+      }
+    ]
+  }
+}
