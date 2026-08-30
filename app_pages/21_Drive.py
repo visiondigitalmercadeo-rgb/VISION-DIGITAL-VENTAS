@@ -219,79 +219,65 @@ with tab_krispy:
     if KRISPY_ANIO_ASUMIDO not in anios_existentes:
         anios_existentes = sorted(set(anios_existentes) | {KRISPY_ANIO_ASUMIDO})
     anio_k = col_anio_k.selectbox("Año", anios_existentes, index=anios_existentes.index(KRISPY_ANIO_ASUMIDO), key="drive_kr_anio")
-    tiendas_sel_k = col_tienda_k.multiselect(
-        "Tienda(s) — puedes elegir una, varias, o todas", KRISPY_TIENDAS,
-        default=[KRISPY_TIENDAS[0]], format_func=lambda t: KRISPY_TIENDA_LABEL.get(t, t), key="drive_kr_tienda",
+    tienda_k = col_tienda_k.selectbox(
+        "Tienda", ["TODOS"] + KRISPY_TIENDAS,
+        format_func=lambda t: "Todos (dato general)" if t == "TODOS" else KRISPY_TIENDA_LABEL.get(t, t),
+        key="drive_kr_tienda",
     )
     metrica_k = col_metrica_k.selectbox(
         "Métrica", KRISPY_METRICAS, format_func=lambda m: KRISPY_METRICA_LABEL.get(m, m), key="drive_kr_metrica",
     )
 
-    hay_varias_tiendas_k = len(tiendas_sel_k) > 1
     orden_mes_k = {m: i for i, m in enumerate(DG_MESES)}
-    registros_k = [r for t in tiendas_sel_k for r in db.get_krispy_datos(anio=anio_k, tienda=t)]
+    if tienda_k == "TODOS":
+        # "Todos" no es una tienda guardada — se calcula sumando, mes por
+        # mes, los datos de las 3 tiendas.
+        registros_por_tienda = [r for t in KRISPY_TIENDAS for r in db.get_krispy_datos(anio=anio_k, tienda=t)]
+        acumulado_por_mes = {}
+        for r in registros_por_tienda:
+            acc = acumulado_por_mes.setdefault(r["mes"], {})
+            for campo, v in (r.get("valores") or {}).items():
+                acc[campo] = acc.get(campo, 0) + float(v or 0)
+        registros_k = sorted(
+            [{"mes": m, "valores": v} for m, v in acumulado_por_mes.items()],
+            key=lambda r: orden_mes_k.get(r["mes"], 99),
+        )
+    else:
+        registros_k = sorted(
+            db.get_krispy_datos(anio=anio_k, tienda=tienda_k), key=lambda r: orden_mes_k.get(r["mes"], 99),
+        )
     es_dinero_k = metrica_k in ("dinero", "utilidad")
 
     st.markdown("###### Tabla")
-    if not tiendas_sel_k:
-        st.info("Elige al menos una tienda arriba para ver sus datos.")
-    elif not registros_k:
+    if not registros_k:
         st.info("Todavía no hay datos guardados para esta tienda y año.")
     else:
-        registros_k_ordenados = sorted(
-            registros_k,
-            key=lambda r: (
-                KRISPY_TIENDAS.index(r["tienda"]) if r["tienda"] in KRISPY_TIENDAS else 99,
-                orden_mes_k.get(r["mes"], 99),
-            ),
-        )
         filas_k = []
-        for r in registros_k_ordenados:
+        for r in registros_k:
             valores = r.get("valores") or {}
             v_bites = float(valores.get(f"{metrica_k}_bites", 0) or 0)
             v_mini = float(valores.get(f"{metrica_k}_mini", 0) or 0)
             fmt = money if es_dinero_k else (lambda v: f"{v:,.0f}")
-            fila = {}
-            if hay_varias_tiendas_k:
-                fila["Tienda"] = KRISPY_TIENDA_LABEL.get(r["tienda"], r["tienda"])
-            fila["Mes"] = MESES_LABEL.get(r["mes"], r["mes"])
-            fila[KRISPY_PRODUCTO_LABEL["bites"]] = fmt(v_bites)
-            fila[KRISPY_PRODUCTO_LABEL["mini"]] = fmt(v_mini)
-            fila["Total"] = fmt(v_bites + v_mini)
-            filas_k.append(fila)
+            filas_k.append({
+                "Mes": MESES_LABEL.get(r["mes"], r["mes"]),
+                KRISPY_PRODUCTO_LABEL["bites"]: fmt(v_bites),
+                KRISPY_PRODUCTO_LABEL["mini"]: fmt(v_mini),
+                "Total": fmt(v_bites + v_mini),
+            })
         st.dataframe(pd.DataFrame(filas_k), use_container_width=True, hide_index=True)
 
         st.markdown("###### Gráfica — Bites vs. Mini")
-        # Un color por tienda (igual con 1 o con varias elegidas, para que el
-        # color de cada tienda no cambie según cuántas estén seleccionadas);
-        # Bites siempre línea sólida y Mini punteada, para distinguirlos.
-        color_por_tienda_k = {t: CATEGORICAL[i % len(CATEGORICAL)] for i, t in enumerate(KRISPY_TIENDAS)}
-        tiendas_con_datos = sorted(
-            {r["tienda"] for r in registros_k},
-            key=lambda t: KRISPY_TIENDAS.index(t) if t in KRISPY_TIENDAS else 99,
-        )
+        meses_orden = [r["mes"] for r in registros_k]
         fig_k = go.Figure()
-        for t in tiendas_con_datos:
-            regs_tienda = sorted(
-                (r for r in registros_k if r["tienda"] == t), key=lambda r: orden_mes_k.get(r["mes"], 99),
-            )
-            for prod in KRISPY_PRODUCTOS:
-                y_vals = [float((r.get("valores") or {}).get(f"{metrica_k}_{prod}", 0) or 0) for r in regs_tienda]
-                nombre = (
-                    f"{KRISPY_TIENDA_LABEL.get(t, t)} · {KRISPY_PRODUCTO_LABEL[prod]}"
-                    if hay_varias_tiendas_k else KRISPY_PRODUCTO_LABEL[prod]
-                )
-                fig_k.add_trace(go.Scatter(
-                    x=[MESES_LABEL.get(r["mes"], r["mes"]) for r in regs_tienda], y=y_vals,
-                    mode="lines+markers", name=nombre,
-                    line=dict(color=color_por_tienda_k.get(t, CATEGORICAL[0]), dash="solid" if prod == "bites" else "dot"),
-                ))
-        if len(tiendas_sel_k) <= 3:
-            titulo_tiendas_k = ", ".join(KRISPY_TIENDA_LABEL.get(t, t) for t in tiendas_sel_k)
-        else:
-            titulo_tiendas_k = f"{len(tiendas_sel_k)} tiendas"
+        for i, prod in enumerate(KRISPY_PRODUCTOS):
+            y_vals = [float((r.get("valores") or {}).get(f"{metrica_k}_{prod}", 0) or 0) for r in registros_k]
+            fig_k.add_trace(go.Bar(
+                x=[MESES_LABEL.get(m, m) for m in meses_orden], y=y_vals,
+                name=KRISPY_PRODUCTO_LABEL[prod], marker_color=CATEGORICAL[i % len(CATEGORICAL)],
+            ))
+        titulo_tienda_k = "Todos (dato general)" if tienda_k == "TODOS" else KRISPY_TIENDA_LABEL.get(tienda_k, tienda_k)
         st.plotly_chart(
-            base_layout(fig_k, title=f"{titulo_tiendas_k} — {KRISPY_METRICA_LABEL.get(metrica_k, metrica_k)} ({anio_k})", height=380),
+            base_layout(fig_k, title=f"{titulo_tienda_k} — {KRISPY_METRICA_LABEL.get(metrica_k, metrica_k)} ({anio_k})", height=380),
             use_container_width=True,
         )
 
