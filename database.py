@@ -1807,6 +1807,27 @@ def delete_mant_tienda(mant_id):
 # que arranca la app con esta pestaña (ver _seed_dg_datos / _seed_krispy_datos,
 # llamadas desde init_db, mismo patrón que _seed_logistica_vendedores).
 # ---------------------------------------------------------------------------
+def _slug(texto: str) -> str:
+    """Convierte un texto (nombre de tienda/línea) en algo seguro para usar
+    como parte de un ID de documento de Firestore."""
+    return str(texto).strip().upper().replace(" ", "_")
+
+
+def _dg_doc_id(categoria, entidad, anio, meta) -> str:
+    """ID de documento FIJO (no autogenerado) para un registro de 'Datos
+    generales' — así, guardar dos veces la misma combinación de categoría +
+    entidad + año + tipo (real/meta) siempre cae en el MISMO documento
+    (se sobreescribe) en vez de crear uno nuevo. Esto es lo que evita que se
+    guarden registros duplicados si, por ejemplo, la app arranca dos veces
+    al mismo tiempo (como pasó con la carga inicial de datos)."""
+    return f"{categoria}-{_slug(entidad)}-{int(anio)}-{'meta' if meta else 'real'}"
+
+
+def _krispy_doc_id(tienda, anio, mes) -> str:
+    """Mismo concepto que _dg_doc_id, para un registro de 'Krispy 2'."""
+    return f"{_slug(tienda)}-{int(anio)}-{_slug(mes)}"
+
+
 def get_dg_datos(categoria, entidad=None):
     """Retorna la lista de registros {categoria, entidad, anio, meta, valores,
     ...} de 'Datos generales' para la categoría indicada (y, si se da, solo
@@ -1823,26 +1844,16 @@ def get_dg_datos(categoria, entidad=None):
 
 def upsert_dg_dato(categoria, entidad, anio, meta, valores):
     """valores: dict {MES: monto/cantidad}, con los meses en mayúsculas sin
-    acentos (ver config.DG_MESES). Si ya existe un registro para esa
-    combinación exacta de categoría + entidad + año + tipo (meta o real), lo
-    reemplaza; si no, lo crea."""
+    acentos (ver config.DG_MESES). Guarda siempre en el mismo documento para
+    esa combinación exacta de categoría + entidad + año + tipo (meta o real)
+    — ver _dg_doc_id — así que reemplaza el valor anterior si ya existía, o
+    lo crea si no, sin poder duplicarse."""
     client = get_client()
-    existentes = list(
-        client.collection("dg_datos")
-        .where("categoria", "==", categoria)
-        .where("entidad", "==", entidad)
-        .where("anio", "==", int(anio))
-        .where("meta", "==", bool(meta))
-        .stream()
-    )
     data = {
         "categoria": categoria, "entidad": entidad, "anio": int(anio), "meta": bool(meta),
         "valores": valores, "actualizado_en": datetime.now().isoformat(timespec="seconds"),
     }
-    if existentes:
-        client.collection("dg_datos").document(existentes[0].id).set(data)
-    else:
-        client.collection("dg_datos").document().set(data)
+    client.collection("dg_datos").document(_dg_doc_id(categoria, entidad, anio, meta)).set(data)
 
 
 def get_krispy_datos(anio=None, tienda=None):
@@ -1864,31 +1875,73 @@ def get_krispy_datos(anio=None, tienda=None):
 
 def upsert_krispy_dato(tienda, anio, mes, valores):
     """valores: dict con las claves unidades_bites/unidades_mini/dinero_bites/
-    dinero_mini/utilidad_bites/utilidad_mini. Si ya existe un registro para
-    esa tienda + año + mes, lo reemplaza; si no, lo crea."""
+    dinero_mini/utilidad_bites/utilidad_mini. Guarda siempre en el mismo
+    documento para esa tienda + año + mes (ver _krispy_doc_id), así que
+    reemplaza el valor anterior si ya existía, o lo crea si no, sin poder
+    duplicarse."""
     client = get_client()
-    existentes = list(
-        client.collection("krispy2_datos")
-        .where("tienda", "==", tienda)
-        .where("anio", "==", int(anio))
-        .where("mes", "==", mes)
-        .stream()
-    )
     data = {
         "tienda": tienda, "anio": int(anio), "mes": mes, "valores": valores,
         "actualizado_en": datetime.now().isoformat(timespec="seconds"),
     }
-    if existentes:
-        client.collection("krispy2_datos").document(existentes[0].id).set(data)
-    else:
-        client.collection("krispy2_datos").document().set(data)
+    client.collection("krispy2_datos").document(_krispy_doc_id(tienda, anio, mes)).set(data)
+
+
+def eliminar_duplicados_dg_datos() -> int:
+    """Por un problema ya corregido en la carga inicial (dos arranques de la
+    app al mismo tiempo guardando cada uno su propia copia), es posible que
+    algunos registros de 'Datos generales' hayan quedado duplicados —misma
+    categoría + entidad + año + tipo repetida en más de un documento. Esta
+    función los revisa todos y, donde encuentra más de uno para la misma
+    combinación, se queda con el más reciente y borra el resto. Se puede
+    llamar las veces que sea: si ya no hay duplicados, no borra nada.
+    Retorna cuántos documentos se borraron."""
+    client = get_client()
+    rows = [_doc_to_dict(s) for s in client.collection("dg_datos").stream()]
+    grupos = {}
+    for r in rows:
+        clave = (r.get("categoria"), r.get("entidad"), int(r.get("anio") or 0), bool(r.get("meta")))
+        grupos.setdefault(clave, []).append(r)
+    borrados = 0
+    for docs in grupos.values():
+        if len(docs) <= 1:
+            continue
+        docs_ordenados = sorted(docs, key=lambda d: d.get("actualizado_en") or "", reverse=True)
+        for d in docs_ordenados[1:]:
+            client.collection("dg_datos").document(d["id"]).delete()
+            borrados += 1
+    return borrados
+
+
+def eliminar_duplicados_krispy_datos() -> int:
+    """Mismo concepto que eliminar_duplicados_dg_datos, para 'Krispy 2'
+    (agrupando por tienda + año + mes)."""
+    client = get_client()
+    rows = [_doc_to_dict(s) for s in client.collection("krispy2_datos").stream()]
+    grupos = {}
+    for r in rows:
+        clave = (r.get("tienda"), int(r.get("anio") or 0), r.get("mes"))
+        grupos.setdefault(clave, []).append(r)
+    borrados = 0
+    for docs in grupos.values():
+        if len(docs) <= 1:
+            continue
+        docs_ordenados = sorted(docs, key=lambda d: d.get("actualizado_en") or "", reverse=True)
+        for d in docs_ordenados[1:]:
+            client.collection("krispy2_datos").document(d["id"]).delete()
+            borrados += 1
+    return borrados
 
 
 def _seed_dg_datos(client):
-    """Carga los datos históricos de 'Datos generales' (data/dg_seed.json,
+    """Carga los datos históricos de 'Datos generales' (dg_seed.json,
     extraídos del Google Sheet original 'DASHBOARD VD') la primera vez que
     arranca la app con esta pestaña — no repite nada si ya hay datos
-    guardados (incluyendo si ya se editó algo desde la pestaña Drive)."""
+    guardados (incluyendo si ya se editó algo desde la pestaña Drive). Usa
+    _dg_doc_id (ID fijo) para que, aunque esta función se llegue a ejecutar
+    dos veces al mismo tiempo (dos arranques simultáneos de la app), nunca
+    pueda crear registros duplicados — cada combinación cae siempre en el
+    mismo documento."""
     existentes = list(client.collection("dg_datos").limit(1).stream())
     if existentes:
         return
@@ -1900,18 +1953,20 @@ def _seed_dg_datos(client):
     for categoria, entidades in seed.items():
         for entidad, registros in entidades.items():
             for r in registros:
-                client.collection("dg_datos").document().set({
-                    "categoria": categoria, "entidad": entidad,
-                    "anio": int(r["anio"]), "meta": bool(r["meta"]), "valores": r["valores"],
-                    "actualizado_en": datetime.now().isoformat(timespec="seconds"),
+                anio, meta = int(r["anio"]), bool(r["meta"])
+                client.collection("dg_datos").document(_dg_doc_id(categoria, entidad, anio, meta)).set({
+                    "categoria": categoria, "entidad": entidad, "anio": anio, "meta": meta,
+                    "valores": r["valores"], "actualizado_en": datetime.now().isoformat(timespec="seconds"),
                 })
 
 
 def _seed_krispy_datos(client):
-    """Carga los datos históricos de 'Krispy 2' (data/krispy_seed.json) la
+    """Carga los datos históricos de 'Krispy 2' (krispy_seed.json) la
     primera vez que arranca la app con esta pestaña. El Google Sheet original
     no tiene columna de año — se asumió config.KRISPY_ANIO_ASUMIDO (2026); si
-    no es correcto, se puede corregir mes por mes desde la pestaña Drive."""
+    no es correcto, se puede corregir mes por mes desde la pestaña Drive. Usa
+    _krispy_doc_id (ID fijo) por la misma razón que _seed_dg_datos: para que
+    no pueda crear registros duplicados aunque se ejecute dos veces a la vez."""
     from config import KRISPY_ANIO_ASUMIDO
     existentes = list(client.collection("krispy2_datos").limit(1).stream())
     if existentes:
@@ -1923,7 +1978,7 @@ def _seed_krispy_datos(client):
         seed = json.load(f)
     for tienda, meses in seed.items():
         for mes, valores in meses.items():
-            client.collection("krispy2_datos").document().set({
+            client.collection("krispy2_datos").document(_krispy_doc_id(tienda, KRISPY_ANIO_ASUMIDO, mes)).set({
                 "tienda": tienda, "anio": KRISPY_ANIO_ASUMIDO, "mes": mes, "valores": valores,
                 "actualizado_en": datetime.now().isoformat(timespec="seconds"),
             })
