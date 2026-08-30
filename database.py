@@ -17,6 +17,7 @@ Cómo se eligen las credenciales, en este orden:
                                       avisa que Firebase no está conectado.
 """
 
+import json
 import math
 import os
 import uuid
@@ -250,6 +251,8 @@ def init_db(seed_demo: bool = True):
         _seed(client, seed_demo)
     _seed_logistica_vendedores(client)
     _seed_lito_catalogos(client)
+    _seed_dg_datos(client)
+    _seed_krispy_datos(client)
 
 
 def _seed_logistica_vendedores(client):
@@ -1793,3 +1796,134 @@ def avanzar_mant_tienda(mant_id, nuevo_estado, extra=None):
 
 def delete_mant_tienda(mant_id):
     get_client().collection("mant_tiendas").document(mant_id).delete()
+
+
+# ---------------------------------------------------------------------------
+# Drive — "Datos generales" (ventas totales, por línea, flujo, ticket
+# promedio) y "Krispy 2". Trae a la plataforma los números que Steven llevaba
+# en un Google Sheet aparte ("DASHBOARD VD"); a partir de aquí se editan
+# directamente en la pestaña Drive — no hay sincronización con el Google
+# Sheet original. Los datos históricos se cargan UNA SOLA VEZ, la primera vez
+# que arranca la app con esta pestaña (ver _seed_dg_datos / _seed_krispy_datos,
+# llamadas desde init_db, mismo patrón que _seed_logistica_vendedores).
+# ---------------------------------------------------------------------------
+def get_dg_datos(categoria, entidad=None):
+    """Retorna la lista de registros {categoria, entidad, anio, meta, valores,
+    ...} de 'Datos generales' para la categoría indicada (y, si se da, solo
+    esa entidad) — todos los años disponibles, ordenados por año y con la
+    fila de meta (si existe) después de la real de ese mismo año."""
+    client = get_client()
+    query = client.collection("dg_datos").where("categoria", "==", categoria)
+    if entidad:
+        query = query.where("entidad", "==", entidad)
+    rows = [_doc_to_dict(s) for s in query.stream()]
+    rows.sort(key=lambda r: (int(r.get("anio") or 0), bool(r.get("meta"))))
+    return rows
+
+
+def upsert_dg_dato(categoria, entidad, anio, meta, valores):
+    """valores: dict {MES: monto/cantidad}, con los meses en mayúsculas sin
+    acentos (ver config.DG_MESES). Si ya existe un registro para esa
+    combinación exacta de categoría + entidad + año + tipo (meta o real), lo
+    reemplaza; si no, lo crea."""
+    client = get_client()
+    existentes = list(
+        client.collection("dg_datos")
+        .where("categoria", "==", categoria)
+        .where("entidad", "==", entidad)
+        .where("anio", "==", int(anio))
+        .where("meta", "==", bool(meta))
+        .stream()
+    )
+    data = {
+        "categoria": categoria, "entidad": entidad, "anio": int(anio), "meta": bool(meta),
+        "valores": valores, "actualizado_en": datetime.now().isoformat(timespec="seconds"),
+    }
+    if existentes:
+        client.collection("dg_datos").document(existentes[0].id).set(data)
+    else:
+        client.collection("dg_datos").document().set(data)
+
+
+def get_krispy_datos(anio=None, tienda=None):
+    """Retorna la lista de registros {tienda, anio, mes, valores, ...} de
+    'Krispy 2' (opcionalmente filtrados por año y/o tienda), ordenados por
+    tienda y luego por mes en orden de calendario."""
+    from config import DG_MESES
+    client = get_client()
+    query = client.collection("krispy2_datos")
+    if anio is not None:
+        query = query.where("anio", "==", int(anio))
+    if tienda:
+        query = query.where("tienda", "==", tienda)
+    rows = [_doc_to_dict(s) for s in query.stream()]
+    orden_mes = {m: i for i, m in enumerate(DG_MESES)}
+    rows.sort(key=lambda r: (r.get("tienda", ""), orden_mes.get(r.get("mes"), 99)))
+    return rows
+
+
+def upsert_krispy_dato(tienda, anio, mes, valores):
+    """valores: dict con las claves unidades_bites/unidades_mini/dinero_bites/
+    dinero_mini/utilidad_bites/utilidad_mini. Si ya existe un registro para
+    esa tienda + año + mes, lo reemplaza; si no, lo crea."""
+    client = get_client()
+    existentes = list(
+        client.collection("krispy2_datos")
+        .where("tienda", "==", tienda)
+        .where("anio", "==", int(anio))
+        .where("mes", "==", mes)
+        .stream()
+    )
+    data = {
+        "tienda": tienda, "anio": int(anio), "mes": mes, "valores": valores,
+        "actualizado_en": datetime.now().isoformat(timespec="seconds"),
+    }
+    if existentes:
+        client.collection("krispy2_datos").document(existentes[0].id).set(data)
+    else:
+        client.collection("krispy2_datos").document().set(data)
+
+
+def _seed_dg_datos(client):
+    """Carga los datos históricos de 'Datos generales' (data/dg_seed.json,
+    extraídos del Google Sheet original 'DASHBOARD VD') la primera vez que
+    arranca la app con esta pestaña — no repite nada si ya hay datos
+    guardados (incluyendo si ya se editó algo desde la pestaña Drive)."""
+    existentes = list(client.collection("dg_datos").limit(1).stream())
+    if existentes:
+        return
+    ruta = os.path.join(BASE_DIR, "dg_seed.json")
+    if not os.path.exists(ruta):
+        return
+    with open(ruta, encoding="utf-8") as f:
+        seed = json.load(f)
+    for categoria, entidades in seed.items():
+        for entidad, registros in entidades.items():
+            for r in registros:
+                client.collection("dg_datos").document().set({
+                    "categoria": categoria, "entidad": entidad,
+                    "anio": int(r["anio"]), "meta": bool(r["meta"]), "valores": r["valores"],
+                    "actualizado_en": datetime.now().isoformat(timespec="seconds"),
+                })
+
+
+def _seed_krispy_datos(client):
+    """Carga los datos históricos de 'Krispy 2' (data/krispy_seed.json) la
+    primera vez que arranca la app con esta pestaña. El Google Sheet original
+    no tiene columna de año — se asumió config.KRISPY_ANIO_ASUMIDO (2026); si
+    no es correcto, se puede corregir mes por mes desde la pestaña Drive."""
+    from config import KRISPY_ANIO_ASUMIDO
+    existentes = list(client.collection("krispy2_datos").limit(1).stream())
+    if existentes:
+        return
+    ruta = os.path.join(BASE_DIR, "krispy_seed.json")
+    if not os.path.exists(ruta):
+        return
+    with open(ruta, encoding="utf-8") as f:
+        seed = json.load(f)
+    for tienda, meses in seed.items():
+        for mes, valores in meses.items():
+            client.collection("krispy2_datos").document().set({
+                "tienda": tienda, "anio": KRISPY_ANIO_ASUMIDO, "mes": mes, "valores": valores,
+                "actualizado_en": datetime.now().isoformat(timespec="seconds"),
+            })
