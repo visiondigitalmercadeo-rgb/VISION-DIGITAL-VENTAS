@@ -41,26 +41,62 @@ with tab_generales:
         "Categoría", DG_CATEGORIAS, format_func=lambda c: DG_CATEGORIA_LABEL.get(c, c), key="drive_dg_categoria",
     )
     entidades_disponibles = DG_ENTIDADES.get(categoria, [])
-    if len(entidades_disponibles) > 1:
-        entidad = col_ent.selectbox(
-            "Tienda / línea", entidades_disponibles,
+    hay_varias_entidades = len(entidades_disponibles) > 1
+    if hay_varias_entidades:
+        entidades_sel = col_ent.multiselect(
+            "Tienda(s) / línea(s)", entidades_disponibles,
+            default=[entidades_disponibles[0]],
             format_func=lambda e: DG_ENTIDAD_LABEL.get(e, e), key="drive_dg_entidad",
         )
     else:
-        entidad = entidades_disponibles[0] if entidades_disponibles else None
+        entidades_sel = entidades_disponibles[:]
         col_ent.markdown("&nbsp;")
-        col_ent.caption(f"({DG_ENTIDAD_LABEL.get(entidad, entidad)})")
+        col_ent.caption(f"({DG_ENTIDAD_LABEL.get(entidades_sel[0], entidades_sel[0])})" if entidades_sel else "")
 
-    registros = db.get_dg_datos(categoria, entidad) if entidad else []
     es_dinero = categoria in ("ventas_totales", "por_linea", "ticket_promedio")
 
-    st.markdown("###### Tabla")
-    if not registros:
-        st.info("Todavía no hay datos guardados para esta selección.")
+    # Todos los años que existen guardados para esta categoría (viendo todas
+    # las tiendas/líneas, no solo las elegidas) — así la lista de años no
+    # cambia según qué tiendas/líneas estén elegidas arriba.
+    registros_categoria = [r for ent in entidades_disponibles for r in db.get_dg_datos(categoria, ent)]
+    anios_disponibles = sorted({int(r["anio"]) for r in registros_categoria})
+
+    if not entidades_sel:
+        st.info("Elige al menos una tienda/línea arriba para ver sus datos.")
+        anios_sel = []
+        registros = []
+    elif not anios_disponibles:
+        st.info("Todavía no hay datos guardados para esta categoría.")
+        anios_sel = []
+        registros = []
     else:
+        anios_sel = st.multiselect(
+            "Año(s) a mostrar (tabla y gráfica) — puedes elegir uno o varios",
+            anios_disponibles,
+            default=[a for a in DG_ANIOS_GRAFICA if a in anios_disponibles] or anios_disponibles[-1:],
+            key="drive_dg_anios",
+        )
+        registros = [
+            r for ent in entidades_sel for r in db.get_dg_datos(categoria, ent) if int(r["anio"]) in anios_sel
+        ]
+
+    st.markdown("###### Tabla")
+    if entidades_sel and anios_disponibles and not anios_sel:
+        st.info("Elige al menos un año arriba para ver la tabla y la gráfica.")
+    elif entidades_sel and anios_sel and not registros:
+        st.info("Todavía no hay datos guardados para esta selección.")
+    elif registros:
         filas = []
-        for r in registros:
-            fila = {"Año": int(r["anio"]), "Tipo": "🎯 Meta" if r.get("meta") else "Real"}
+        registros_ordenados = sorted(
+            registros,
+            key=lambda r: (entidades_disponibles.index(r["entidad"]), int(r["anio"]), bool(r.get("meta"))),
+        )
+        for r in registros_ordenados:
+            fila = {}
+            if hay_varias_entidades:
+                fila["Tienda / línea"] = DG_ENTIDAD_LABEL.get(r["entidad"], r["entidad"])
+            fila["Año"] = int(r["anio"])
+            fila["Tipo"] = "🎯 Meta" if r.get("meta") else "Real"
             valores = r.get("valores") or {}
             for m in DG_MESES:
                 v = valores.get(m)
@@ -70,12 +106,29 @@ with tab_generales:
         df_tabla = pd.DataFrame(filas)
         st.dataframe(df_tabla, use_container_width=True, hide_index=True)
 
-    st.markdown("###### Gráfica (2024 – 2026)")
-    registros_grafica = [r for r in registros if int(r["anio"]) in DG_ANIOS_GRAFICA]
+    st.markdown("###### Gráfica")
+    registros_grafica = [r for r in registros if (r.get("valores") or {})]
     if not registros_grafica:
-        st.info("No hay datos de 2024, 2025 o 2026 para mostrar en la gráfica.")
+        st.info("No hay datos para mostrar en la gráfica con esta selección.")
     else:
-        color_por_anio = {anio: CATEGORICAL[i % len(CATEGORICAL)] for i, anio in enumerate(DG_ANIOS_GRAFICA)}
+        # Con una sola tienda/línea elegida: un color por año (igual que
+        # antes). Con varias elegidas a la vez: un color por tienda/línea, y
+        # los años se distinguen por la transparencia (más clarito = año más
+        # antiguo) para no perder de vista cuál es cuál.
+        anios_orden = sorted(anios_sel)
+        if len(entidades_sel) > 1:
+            color_por_entidad = {ent: CATEGORICAL[i % len(CATEGORICAL)] for i, ent in enumerate(entidades_disponibles)}
+            if len(anios_orden) > 1:
+                opacidad_por_anio = {a: 0.4 + 0.6 * (i / (len(anios_orden) - 1)) for i, a in enumerate(anios_orden)}
+            else:
+                opacidad_por_anio = {a: 1.0 for a in anios_orden}
+            color_de = lambda r: color_por_entidad.get(r["entidad"], CATEGORICAL[0])
+            opacidad_de = lambda r: opacidad_por_anio.get(int(r["anio"]), 1.0)
+        else:
+            color_por_anio = {a: CATEGORICAL[i % len(CATEGORICAL)] for i, a in enumerate(anios_orden)}
+            color_de = lambda r: color_por_anio.get(int(r["anio"]), CATEGORICAL[0])
+            opacidad_de = lambda r: 1.0
+
         fig = go.Figure()
         for r in registros_grafica:
             anio = int(r["anio"])
@@ -84,29 +137,49 @@ with tab_generales:
             if not meses_presentes:
                 continue
             es_meta = bool(r.get("meta"))
+            nombre = f"{DG_ENTIDAD_LABEL.get(r['entidad'], r['entidad'])} · {anio}" if len(entidades_sel) > 1 else f"{anio}"
+            if es_meta:
+                nombre += " (meta)"
             fig.add_trace(go.Scatter(
                 x=[MESES_LABEL[m] for m in meses_presentes],
                 y=[valores[m] for m in meses_presentes],
                 mode="lines+markers",
-                name=f"{anio}" + (" (meta)" if es_meta else ""),
-                line=dict(color=color_por_anio[anio], dash="dot" if es_meta else "solid"),
+                name=nombre,
+                line=dict(color=color_de(r), dash="dot" if es_meta else "solid"),
+                opacity=opacidad_de(r),
             ))
+        if len(entidades_sel) <= 3:
+            titulo_entidades = ", ".join(DG_ENTIDAD_LABEL.get(e, e) for e in entidades_sel)
+        else:
+            titulo_entidades = f"{len(entidades_sel)} tiendas/líneas"
         st.plotly_chart(
-            base_layout(fig, title=f"{DG_CATEGORIA_LABEL.get(categoria, categoria)} — {DG_ENTIDAD_LABEL.get(entidad, entidad)}", height=380),
+            base_layout(fig, title=f"{DG_CATEGORIA_LABEL.get(categoria, categoria)} — {titulo_entidades}", height=380),
             use_container_width=True,
         )
 
-    if puede_editar and entidad:
+    if puede_editar and entidades_disponibles:
         st.divider()
         st.markdown("###### ✏️ Agregar o corregir un año")
-        col_anio, col_meta = st.columns(2)
+        if hay_varias_entidades:
+            col_ent_edit, col_anio, col_meta = st.columns(3)
+            entidad_edit = col_ent_edit.selectbox(
+                "Tienda / línea a editar", entidades_disponibles,
+                format_func=lambda e: DG_ENTIDAD_LABEL.get(e, e), key="drive_dg_entidad_edit",
+            )
+        else:
+            entidad_edit = entidades_disponibles[0]
+            col_anio, col_meta = st.columns(2)
         anio_edit = col_anio.number_input(
             "Año", min_value=2015, max_value=2035, value=2026, step=1, key="drive_dg_anio_edit",
         )
         meta_edit = col_meta.checkbox("Es meta (objetivo), no dato real", key="drive_dg_meta_edit")
 
         registro_actual = next(
-            (r for r in registros if int(r["anio"]) == int(anio_edit) and bool(r.get("meta")) == meta_edit), None,
+            (
+                r for r in db.get_dg_datos(categoria, entidad_edit)
+                if int(r["anio"]) == int(anio_edit) and bool(r.get("meta")) == meta_edit
+            ),
+            None,
         )
         valores_actuales = (registro_actual or {}).get("valores") or {}
 
@@ -117,11 +190,11 @@ with tab_generales:
                 nuevos_valores[m] = cols[i % 4].number_input(
                     MESES_LABEL[m], min_value=0.0, step=100.0,
                     value=float(valores_actuales.get(m, 0) or 0),
-                    key=f"drive_dg_input_{m}_{anio_edit}_{meta_edit}",
+                    key=f"drive_dg_input_{m}_{entidad_edit}_{anio_edit}_{meta_edit}",
                 )
             if st.form_submit_button("💾 Guardar", use_container_width=True):
-                db.upsert_dg_dato(categoria, entidad, int(anio_edit), meta_edit, nuevos_valores)
-                st.success(f"{DG_CATEGORIA_LABEL.get(categoria, categoria)} de {DG_ENTIDAD_LABEL.get(entidad, entidad)} — {int(anio_edit)} actualizado.")
+                db.upsert_dg_dato(categoria, entidad_edit, int(anio_edit), meta_edit, nuevos_valores)
+                st.success(f"{DG_CATEGORIA_LABEL.get(categoria, categoria)} de {DG_ENTIDAD_LABEL.get(entidad_edit, entidad_edit)} — {int(anio_edit)} actualizado.")
                 st.rerun()
 
 # =============================================================================
