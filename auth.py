@@ -266,6 +266,15 @@ def puede_subir_cotizacion_mant_tiendas():
     )
 
 
+def puede_editar_drive():
+    """Quién puede editar los números de la pestaña Drive ('Datos generales'
+    y 'Krispy 2') — solo el administrador. Mercadeo, jefe de tienda y sub
+    jefe de tienda también entran a esta pestaña, pero solo para consultar
+    (tabla y gráfica), igual que 'vista' en el resto de la plataforma."""
+    u = current_user()
+    return u is not None and u["rol"] == "admin"
+
+
 def puede_autorizar_cotizacion_mant_tiendas():
     """Solo el administrador puede autorizar la cotización de una solicitud
     de Mantenimiento de Tiendas — mientras no se autoriza, la tarjeta
