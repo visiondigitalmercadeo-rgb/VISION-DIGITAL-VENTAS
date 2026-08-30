@@ -15,6 +15,15 @@ user = auth.current_user()
 sidebar_user_box()
 puede_editar = auth.puede_editar_drive()
 
+# Limpieza automática de registros duplicados (por un problema ya corregido
+# de la carga inicial — ver database.eliminar_duplicados_dg_datos) — se hace
+# como mucho una vez por sesión, y no borra nada si ya está todo limpio.
+if puede_editar and not st.session_state.get("_drive_dedupe_hecho"):
+    _borrados = db.eliminar_duplicados_dg_datos() + db.eliminar_duplicados_krispy_datos()
+    st.session_state["_drive_dedupe_hecho"] = True
+    if _borrados:
+        st.success(f"🧹 Se limpiaron {_borrados} registro(s) duplicado(s) que habían quedado de una carga anterior.")
+
 st.title("📁 Drive")
 st.caption(
     "Los números que antes se llevaban en un Google Sheet aparte, ahora directamente en la "
