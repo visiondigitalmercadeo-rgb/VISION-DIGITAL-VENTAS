@@ -83,6 +83,7 @@ tickets_tienda = paginas_por_key["tickets_tienda"]
 mantenimiento = paginas_por_key["mantenimiento"]
 litografia = paginas_por_key["litografia"]
 mant_tiendas = paginas_por_key["mant_tiendas"]
+drive = paginas_por_key["drive"]
 generales = paginas_por_key["generales"]
 kpis = paginas_por_key["kpis"]
 admin = paginas_por_key["administracion"]
@@ -91,8 +92,9 @@ if rol == "mercadeo":
     # El rol 'mercadeo' tiene acceso a Visitas de mercadeo y, además, a
     # Tickets — Tiendas (solo para configurar los tiempos meta / KPIs; no
     # puede avanzar ni gestionar tickets, eso lo hace el personal de tienda).
-    # También tiene acceso total al tablero de Mantenimiento de Tiendas.
-    pages = [mercadeo, tickets_tienda, mant_tiendas]
+    # También tiene acceso total al tablero de Mantenimiento de Tiendas, y a
+    # la pestaña Drive (ver puede_editar_drive en auth.py).
+    pages = [mercadeo, tickets_tienda, mant_tiendas, drive]
 elif rol == "jefe_planta":
     # El rol 'jefe_planta' tiene acceso a Reclamos (donde puede cambiar el
     # estado de cada reclamo), a Mantenimiento de Maquinaria (donde puede
@@ -120,8 +122,9 @@ elif rol in ("jefe_tienda", "subjefe_tienda"):
     # 'jefe_tienda' y 'subjefe_tienda' tienen acceso al Sistema de Tickets —
     # Tiendas (solo su tienda asignada) y, además, acceso total al tablero
     # de Mantenimiento de Tiendas para su sucursal (crear, editar, mover y
-    # eliminar solicitudes).
-    pages = [tickets_tienda, mant_tiendas]
+    # eliminar solicitudes), y a la pestaña Drive, solo para consulta (ver
+    # puede_editar_drive en auth.py).
+    pages = [tickets_tienda, mant_tiendas, drive]
 elif rol in ("anfitriona", "asesor_ventas", "cajero"):
     # Estos roles solo tienen acceso al Sistema de Tickets — Tiendas (y solo
     # ven la tienda asignada a su usuario). El resto del personal de tienda
@@ -146,6 +149,7 @@ else:
     ]
     if rol == "admin":
         pages.append(admin)
+        pages.append(drive)
 
 # ---------------------------------------------------------------------------
 # Acceso extra por usuario (independiente del rol) — un admin puede darle a
