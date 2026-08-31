@@ -275,6 +275,21 @@ def puede_editar_drive():
     return u is not None and u["rol"] == "admin"
 
 
+def is_cliente_phara():
+    u = current_user()
+    return u is not None and u["rol"] == "cliente_phara"
+
+
+def puede_editar_phara():
+    """Quién puede crear pedidos, editarlos y moverlos por el tablero de la
+    pestaña Phara — todos los que llegan a esta pestaña (admin, o quien
+    tenga acceso extra otorgado desde Administración de usuarios), EXCEPTO
+    el rol 'cliente_phara' (el cliente externo), que solo puede consultar el
+    cronograma y el tablero, sin poder cambiar nada."""
+    u = current_user()
+    return u is not None and u["rol"] != "cliente_phara"
+
+
 def puede_autorizar_cotizacion_mant_tiendas():
     """Solo el administrador puede autorizar la cotización de una solicitud
     de Mantenimiento de Tiendas — mientras no se autoriza, la tarjeta
