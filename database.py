@@ -1982,3 +1982,44 @@ def _seed_krispy_datos(client):
                 "tienda": tienda, "anio": KRISPY_ANIO_ASUMIDO, "mes": mes, "valores": valores,
                 "actualizado_en": datetime.now().isoformat(timespec="seconds"),
             })
+
+
+# ---------------------------------------------------------------------------
+# Phara (cliente): cronograma de entregas + tablero de producción estilo
+# Trello. Cada "pedido" es a la vez una fila del cronograma (tiene fecha de
+# entrega) y una tarjeta del tablero (tiene una etapa — ver config.ESTADOS_PHARA).
+# ---------------------------------------------------------------------------
+def list_phara_pedidos():
+    """Retorna todos los pedidos de Phara, más nuevos primero."""
+    client = get_client()
+    rows = [_doc_to_dict(s) for s in client.collection("phara_pedidos").stream()]
+    rows.sort(key=lambda r: r.get("creado_en") or "", reverse=True)
+    return rows
+
+
+def get_phara_pedido(pedido_id):
+    snap = get_client().collection("phara_pedidos").document(pedido_id).get()
+    return _doc_to_dict(snap) if snap.exists else None
+
+
+def create_phara_pedido(producto, cantidad, fecha_entrega, notas=None, creado_por_id=None):
+    """Todo pedido nuevo entra siempre por la primera columna del tablero
+    ('Pre prensa') — ver config.ESTADOS_PHARA."""
+    from config import ESTADOS_PHARA
+    doc_ref = get_client().collection("phara_pedidos").document()
+    doc_ref.set({
+        "producto": producto, "cantidad": cantidad,
+        "fecha_entrega": str(fecha_entrega) if fecha_entrega else None,
+        "estado": ESTADOS_PHARA[0], "notas": notas or None,
+        "creado_por_id": creado_por_id, "creado_en": datetime.now().isoformat(timespec="seconds"),
+    })
+    return doc_ref.id
+
+
+def update_phara_pedido(pedido_id, **kwargs):
+    if kwargs:
+        get_client().collection("phara_pedidos").document(pedido_id).update(kwargs)
+
+
+def delete_phara_pedido(pedido_id):
+    get_client().collection("phara_pedidos").document(pedido_id).delete()
