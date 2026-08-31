@@ -68,60 +68,6 @@
       }
     },
     {
-      "anio": 2023,
-      "meta": true,
-      "valores": {
-        "ENERO": 2900000.0,
-        "FEBRERO": 2900000.0,
-        "MARZO": 2900000.0,
-        "ABRIL": 2900000.0,
-        "MAYO": 2900000.0,
-        "JUNIO": 2900000.0,
-        "JULIO": 2900000.0,
-        "AGOSTO": 2900000.0,
-        "SEPTIEMBRE": 2900000.0,
-        "OCTUBRE": 2900000.0,
-        "NOVIEMBRE": 2900000.0,
-        "DICIEMBRE": 2900000.0
-      }
-    },
-    {
-      "anio": 2024,
-      "meta": true,
-      "valores": {
-        "ENERO": 2900000.0,
-        "FEBRERO": 2900000.0,
-        "MARZO": 2900000.0,
-        "ABRIL": 2900000.0,
-        "MAYO": 2900000.0,
-        "JUNIO": 2900000.0,
-        "JULIO": 2900000.0,
-        "AGOSTO": 2900000.0,
-        "SEPTIEMBRE": 2900000.0,
-        "OCTUBRE": 2900000.0,
-        "NOVIEMBRE": 2900000.0,
-        "DICIEMBRE": 2900000.0
-      }
-    },
-    {
-      "anio": 2025,
-      "meta": true,
-      "valores": {
-        "ENERO": 2900000.0,
-        "FEBRERO": 2900000.0,
-        "MARZO": 2900000.0,
-        "ABRIL": 2900000.0,
-        "MAYO": 2900000.0,
-        "JUNIO": 2900000.0,
-        "JULIO": 2900000.0,
-        "AGOSTO": 2900000.0,
-        "SEPTIEMBRE": 2900000.0,
-        "OCTUBRE": 2900000.0,
-        "NOVIEMBRE": 2900000.0,
-        "DICIEMBRE": 2900000.0
-      }
-    },
-    {
       "anio": 2026,
       "meta": true,
       "valores": {
@@ -207,60 +153,6 @@
         "JUNIO": 1011496.43,
         "JULIO": 877577.07,
         "AGOSTO": 690947.2
-      }
-    },
-    {
-      "anio": 2023,
-      "meta": true,
-      "valores": {
-        "ENERO": 2900000.0,
-        "FEBRERO": 2900000.0,
-        "MARZO": 2900000.0,
-        "ABRIL": 2900000.0,
-        "MAYO": 2900000.0,
-        "JUNIO": 2900000.0,
-        "JULIO": 2900000.0,
-        "AGOSTO": 2900000.0,
-        "SEPTIEMBRE": 2900000.0,
-        "OCTUBRE": 2900000.0,
-        "NOVIEMBRE": 2900000.0,
-        "DICIEMBRE": 2900000.0
-      }
-    },
-    {
-      "anio": 2024,
-      "meta": true,
-      "valores": {
-        "ENERO": 2900000.0,
-        "FEBRERO": 2900000.0,
-        "MARZO": 2900000.0,
-        "ABRIL": 2900000.0,
-        "MAYO": 2900000.0,
-        "JUNIO": 2900000.0,
-        "JULIO": 2900000.0,
-        "AGOSTO": 2900000.0,
-        "SEPTIEMBRE": 2900000.0,
-        "OCTUBRE": 2900000.0,
-        "NOVIEMBRE": 2900000.0,
-        "DICIEMBRE": 2900000.0
-      }
-    },
-    {
-      "anio": 2025,
-      "meta": true,
-      "valores": {
-        "ENERO": 2900000.0,
-        "FEBRERO": 2900000.0,
-        "MARZO": 2900000.0,
-        "ABRIL": 2900000.0,
-        "MAYO": 2900000.0,
-        "JUNIO": 2900000.0,
-        "JULIO": 2900000.0,
-        "AGOSTO": 2900000.0,
-        "SEPTIEMBRE": 2900000.0,
-        "OCTUBRE": 2900000.0,
-        "NOVIEMBRE": 2900000.0,
-        "DICIEMBRE": 2900000.0
       }
     },
     {
