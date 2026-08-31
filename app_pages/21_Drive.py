@@ -248,6 +248,33 @@ with tab_krispy:
         )
     es_dinero_k = metrica_k in ("dinero", "utilidad")
 
+    # ------------------------------------------------------------------
+    # KPIs del período (arriba de todo, siempre visibles) — respetan el año
+    # y la tienda elegidos arriba, sin importar qué "Métrica" esté elegida
+    # (acá se muestran las 3 a la vez). Tres líneas: General (Bites + Mini
+    # sumados), Bites sola, y Mini sola.
+    # ------------------------------------------------------------------
+    def _suma_campo_k(campo):
+        return sum(float((r.get("valores") or {}).get(campo, 0) or 0) for r in registros_k)
+
+    st.markdown("###### 📊 KPIs del período")
+    for etiqueta_kpi, sufijo_kpi in [("General", None), ("Bites", "bites"), ("Mini", "mini")]:
+        if sufijo_kpi:
+            dinero_kpi = _suma_campo_k(f"dinero_{sufijo_kpi}")
+            unidades_kpi = _suma_campo_k(f"unidades_{sufijo_kpi}")
+            utilidad_kpi = _suma_campo_k(f"utilidad_{sufijo_kpi}")
+        else:
+            dinero_kpi = _suma_campo_k("dinero_bites") + _suma_campo_k("dinero_mini")
+            unidades_kpi = _suma_campo_k("unidades_bites") + _suma_campo_k("unidades_mini")
+            utilidad_kpi = _suma_campo_k("utilidad_bites") + _suma_campo_k("utilidad_mini")
+        st.markdown(f"**{etiqueta_kpi}**")
+        kcols = st.columns(3)
+        kcols[0].metric("Ventas totales — Dinero", money(dinero_kpi))
+        kcols[1].metric("Ventas totales — Unidades", f"{unidades_kpi:,.0f}")
+        kcols[2].metric("Utilidad total", money(utilidad_kpi))
+
+    st.divider()
+
     st.markdown("###### Tabla")
     if not registros_k:
         st.info("Todavía no hay datos guardados para esta tienda y año.")
