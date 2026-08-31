@@ -1,3 +1,4 @@
+import calendar as calendar_mod
 from datetime import date, datetime, timedelta
 
 import pandas as pd
@@ -6,7 +7,7 @@ from streamlit_calendar import calendar as st_calendar
 
 import auth
 import database as db
-from config import ESTADOS_CITA, STATUS, TIPOS_CITA
+from config import DG_MESES, ESTADOS_CITA, STATUS, TIPOS_CITA
 from utils import download_excel_button, hora_24_a_12, selector_hora, sidebar_user_box, vendedor_filter_selector
 
 user = auth.current_user()
@@ -22,6 +23,47 @@ ESTADO_COLOR = {
     "Cancelada": STATUS["critical"],
     "No asistió": STATUS["serious"],
 }
+
+# ---------------------------------------------------------------------------
+# KPIs (arriba de todo) — resumen del mes en curso: cuántas citas/visitas/
+# llamadas hay agendadas en total este mes, y cuántas de las que siguen
+# 'Programada' caen en cada semana del mes (para ver la carga por venir).
+# Respeta el mismo filtro de vendedor que el resto de la pestaña (un
+# vendedor solo ve las suyas; admin/vista pueden elegir "Todos" o uno en
+# particular).
+# ---------------------------------------------------------------------------
+st.markdown("#### 📊 Resumen del mes")
+filtro_vendedor_kpi = vendedor_filter_selector(key="citas_filtro_vendedor_kpi")
+
+hoy = date.today()
+primer_dia_mes = hoy.replace(day=1)
+ultimo_dia_mes = hoy.replace(day=calendar_mod.monthrange(hoy.year, hoy.month)[1])
+
+citas_mes = db.list_citas(filtro_vendedor_kpi, desde=primer_dia_mes, hasta=ultimo_dia_mes)
+citas_programadas_mes = [c for c in citas_mes if c.get("estado") == "Programada"]
+
+nombre_mes = DG_MESES[hoy.month - 1].capitalize()
+st.metric(f"🗓️ Citas/visitas/llamadas agendadas en {nombre_mes} {hoy.year}", len(citas_mes))
+
+# Semanas calendario (lunes a domingo) que caen dentro del mes en curso.
+primer_lunes = primer_dia_mes - timedelta(days=primer_dia_mes.weekday())
+semanas_mes = []
+cursor_semana = primer_lunes
+while cursor_semana <= ultimo_dia_mes:
+    semanas_mes.append(cursor_semana)
+    cursor_semana += timedelta(days=7)
+
+st.caption("Citas con estado 'Programada' por semana, este mes:")
+cols_semanas = st.columns(len(semanas_mes))
+for i, (col_semana, lunes) in enumerate(zip(cols_semanas, semanas_mes), start=1):
+    domingo = lunes + timedelta(days=6)
+    cantidad_semana = sum(
+        1 for c in citas_programadas_mes
+        if lunes <= date.fromisoformat(c["fecha"]) <= domingo
+    )
+    col_semana.metric(f"Semana {i}", cantidad_semana, help=f"{lunes.strftime('%d/%m')} al {domingo.strftime('%d/%m')}")
+
+st.divider()
 
 tab_calendario, tab_lista, tab_nueva = st.tabs(["🗓️ Calendario", "📋 Lista / editar", "➕ Nueva cita"])
 
