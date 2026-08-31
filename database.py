@@ -257,6 +257,7 @@ def init_db(seed_demo: bool = True):
     _seed_lito_catalogos(client)
     _seed_dg_datos(client)
     _seed_krispy_datos(client)
+    _seed_historial_vpm(client)
 
 
 def _seed_logistica_vendedores(client):
@@ -1985,6 +1986,91 @@ def _seed_krispy_datos(client):
             client.collection("krispy2_datos").document(_krispy_doc_id(tienda, KRISPY_ANIO_ASUMIDO, mes)).set({
                 "tienda": tienda, "anio": KRISPY_ANIO_ASUMIDO, "mes": mes, "valores": valores,
                 "actualizado_en": datetime.now().isoformat(timespec="seconds"),
+            })
+
+
+# ---------------------------------------------------------------------------
+# Historial (pestaña "Historial" dentro de "Ventas por mes"): serie
+# histórica año por año, mes por mes, de la Venta total y la Utilidad total
+# de la empresa (viene del Excel aparte que llevaba Steven). Mismo concepto
+# que 'Datos generales' de Drive (fila real + fila opcional de meta, por
+# año), pero en su propia colección — no se mezcla con Drive ni con el
+# desglose por vendedor/planta de 'Ventas por mes'/'Utilidades'.
+# ---------------------------------------------------------------------------
+def _historial_doc_id(categoria, anio, meta) -> str:
+    """Mismo concepto que _dg_doc_id: ID fijo (no autogenerado) para que
+    guardar dos veces la misma categoría + año + tipo (real/meta) siempre
+    caiga en el mismo documento, sin poder duplicarse."""
+    return f"{categoria}-{int(anio)}-{'meta' if meta else 'real'}"
+
+
+def get_historial_datos(categoria):
+    """Retorna la lista de registros {categoria, anio, meta, valores, ...}
+    del Historial para la categoría indicada ('venta' o 'utilidad'), todos
+    los años disponibles, ordenados por año y con la fila de meta (si
+    existe) después de la real de ese mismo año."""
+    client = get_client()
+    query = client.collection("historial_vpm").where("categoria", "==", categoria)
+    rows = [_doc_to_dict(s) for s in query.stream()]
+    rows.sort(key=lambda r: (int(r.get("anio") or 0), bool(r.get("meta"))))
+    return rows
+
+
+def upsert_historial_dato(categoria, anio, meta, valores):
+    """valores: dict {MES: monto}, con los meses en mayúsculas sin acentos
+    (ver config.DG_MESES). Guarda siempre en el mismo documento para esa
+    combinación exacta de categoría + año + tipo (meta o real) — ver
+    _historial_doc_id — así que reemplaza el valor anterior si ya existía,
+    o lo crea si no."""
+    client = get_client()
+    data = {
+        "categoria": categoria, "anio": int(anio), "meta": bool(meta),
+        "valores": valores, "actualizado_en": datetime.now().isoformat(timespec="seconds"),
+    }
+    client.collection("historial_vpm").document(_historial_doc_id(categoria, anio, meta)).set(data)
+
+
+def eliminar_duplicados_historial_vpm() -> int:
+    """Mismo concepto que eliminar_duplicados_dg_datos, para el Historial
+    (agrupando por categoría + año + tipo)."""
+    client = get_client()
+    rows = [_doc_to_dict(s) for s in client.collection("historial_vpm").stream()]
+    grupos = {}
+    for r in rows:
+        clave = (r.get("categoria"), int(r.get("anio") or 0), bool(r.get("meta")))
+        grupos.setdefault(clave, []).append(r)
+    borrados = 0
+    for docs in grupos.values():
+        if len(docs) <= 1:
+            continue
+        docs_ordenados = sorted(docs, key=lambda d: d.get("actualizado_en") or "", reverse=True)
+        for d in docs_ordenados[1:]:
+            client.collection("historial_vpm").document(d["id"]).delete()
+            borrados += 1
+    return borrados
+
+
+def _seed_historial_vpm(client):
+    """Carga los datos históricos del Historial (historial_vpm_seed.json,
+    extraídos del Excel 'VENTAS PARA PLATAFORMA' que mandó Steven) la
+    primera vez que arranca la app con esta pestaña — no repite nada si ya
+    hay datos guardados (incluyendo si ya se editó algo desde la pestaña).
+    Usa _historial_doc_id (ID fijo) para que, aunque esta función se llegue
+    a ejecutar dos veces al mismo tiempo, nunca pueda crear duplicados."""
+    existentes = list(client.collection("historial_vpm").limit(1).stream())
+    if existentes:
+        return
+    ruta = os.path.join(BASE_DIR, "historial_vpm_seed.json")
+    if not os.path.exists(ruta):
+        return
+    with open(ruta, encoding="utf-8") as f:
+        seed = json.load(f)
+    for categoria, registros in seed.items():
+        for r in registros:
+            anio, meta = int(r["anio"]), bool(r["meta"])
+            client.collection("historial_vpm").document(_historial_doc_id(categoria, anio, meta)).set({
+                "categoria": categoria, "anio": anio, "meta": meta,
+                "valores": r["valores"], "actualizado_en": datetime.now().isoformat(timespec="seconds"),
             })
 
 
