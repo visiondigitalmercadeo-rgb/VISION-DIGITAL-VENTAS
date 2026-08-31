@@ -472,6 +472,16 @@ LITO_TINTAS_PRESETS = {
 ESTADOS_LITO_COTIZACION = ["Borrador", "Cotizado", "Aprobado", "Rechazado"]
 
 # ---------------------------------------------------------------------------
+# Historial (pestaña "Historial" dentro de "Ventas por mes"): serie
+# histórica año por año, mes por mes, de la Venta total y la Utilidad total
+# de la empresa — viene del Excel "VENTAS PARA PLATAFORMA" que llevaba
+# Steven aparte. Es independiente del desglose por vendedor/planta que ya
+# tienen las pestañas "Ventas" y "Utilidades" de esa misma página.
+# ---------------------------------------------------------------------------
+HISTORIAL_CATEGORIAS = ["venta", "utilidad"]
+HISTORIAL_CATEGORIA_LABEL = {"venta": "Venta", "utilidad": "Utilidad"}
+
+# ---------------------------------------------------------------------------
 # Phara: pestaña exclusiva para este cliente — cronograma de entregas +
 # tablero de producción estilo Trello (mismo concepto que Diseño Gráfico).
 # Solo la ven admin, quien tenga acceso extra otorgado (ver Administración de
