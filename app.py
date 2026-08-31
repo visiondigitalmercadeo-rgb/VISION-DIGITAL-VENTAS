@@ -85,6 +85,7 @@ litografia = paginas_por_key["litografia"]
 mant_tiendas = paginas_por_key["mant_tiendas"]
 drive = paginas_por_key["drive"]
 phara = paginas_por_key["phara"]
+documentos = paginas_por_key["documentos"]
 generales = paginas_por_key["generales"]
 kpis = paginas_por_key["kpis"]
 admin = paginas_por_key["administracion"]
@@ -93,9 +94,10 @@ if rol == "mercadeo":
     # El rol 'mercadeo' tiene acceso a Visitas de mercadeo y, además, a
     # Tickets — Tiendas (solo para configurar los tiempos meta / KPIs; no
     # puede avanzar ni gestionar tickets, eso lo hace el personal de tienda).
-    # También tiene acceso total al tablero de Mantenimiento de Tiendas, y a
-    # la pestaña Drive (ver puede_editar_drive en auth.py).
-    pages = [mercadeo, tickets_tienda, mant_tiendas, drive]
+    # También tiene acceso total al tablero de Mantenimiento de Tiendas, a
+    # la pestaña Drive (ver puede_editar_drive en auth.py), y a Documentos
+    # (solo consulta/descarga — solo el admin puede subir o eliminar ahí).
+    pages = [mercadeo, tickets_tienda, mant_tiendas, drive, documentos]
 elif rol == "jefe_planta":
     # El rol 'jefe_planta' tiene acceso a Reclamos (donde puede cambiar el
     # estado de cada reclamo), a Mantenimiento de Maquinaria (donde puede
@@ -151,7 +153,7 @@ else:
     pages = [
         inicio, prospectos, llamadas, citas, mercadeo, cotizaciones, reclamos,
         diseno, diseno_alvaro, logistica, ventas, ventas_mes, capacitacion, tickets_tienda,
-        mantenimiento, litografia, mant_tiendas, generales, kpis,
+        mantenimiento, litografia, mant_tiendas, documentos, generales, kpis,
     ]
     if rol == "admin":
         pages.append(admin)
