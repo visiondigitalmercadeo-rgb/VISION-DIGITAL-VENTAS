@@ -496,12 +496,12 @@ ESTADOS_PHARA = ["Sherpa", "Pre prensa", "Impresión", "Acabados", "En logístic
 PHARA_ETAPA_FECHA_OBLIGATORIA = "Pre prensa"
 
 # ---------------------------------------------------------------------------
-# Documentos: biblioteca de PDFs (catálogos, listas de precios, manuales,
-# etc.) organizada por categoría. Solo el administrador puede subir o
-# eliminar documentos; vendedor, vista, mercadeo y administrador pueden
-# consultar y descargar (ver app_pages/23_Documentos.py y app.py).
+# Documentos: biblioteca de PDFs (legales, políticas, presentaciones, etc.)
+# organizada por categoría. Solo el administrador puede subir o eliminar
+# documentos; vendedor, vista, mercadeo y administrador pueden consultar y
+# descargar (ver app_pages/23_Documentos.py y app.py).
 # ---------------------------------------------------------------------------
-DOCUMENTOS_CATEGORIAS = ["Catálogos", "Precios", "Manuales", "Otros"]
+DOCUMENTOS_CATEGORIAS = ["Legal", "Políticas", "Presentaciones", "Otros"]
 DOCUMENTOS_ARCHIVO_MAX_BYTES = 900_000  # ~900 KB — límite práctico dentro del documento de Firestore
 DOCUMENTOS_ARCHIVO_MAX_BYTES_STORAGE = 200_000_000  # 200 MB si Firebase Storage está configurado
 
