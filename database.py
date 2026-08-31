@@ -2182,6 +2182,44 @@ def set_phara_correos_aviso(correos: list):
 
 
 # ---------------------------------------------------------------------------
+# Documentos: biblioteca de PDFs (catálogos, precios, manuales, etc.)
+# organizada por categoría — ver config.DOCUMENTOS_CATEGORIAS. Solo el
+# admin sube/elimina; vendedor, vista, mercadeo y admin pueden consultar y
+# descargar (ver app_pages/23_Documentos.py y app.py). El archivo se guarda
+# en Firebase Storage si está disponible (ver storage_disponible arriba);
+# si no, cae al guardado anterior en base64 dentro del documento.
+# ---------------------------------------------------------------------------
+def list_documentos(categoria=None):
+    """Todos los documentos, más reciente primero; si se pasa categoria,
+    solo los de esa categoría."""
+    rows = [_doc_to_dict(s) for s in get_client().collection("documentos").stream()]
+    if categoria:
+        rows = [r for r in rows if r.get("categoria") == categoria]
+    rows.sort(key=lambda r: r.get("creado_en") or "", reverse=True)
+    return rows
+
+
+def get_documento(documento_id):
+    snap = get_client().collection("documentos").document(documento_id).get()
+    return _doc_to_dict(snap) if snap.exists else None
+
+
+def create_documento(titulo, categoria, descripcion, archivo_info, creado_por_id=None):
+    get_client().collection("documentos").document().set({
+        "titulo": titulo, "categoria": categoria, "descripcion": descripcion or None,
+        **archivo_info,
+        "creado_por_id": creado_por_id, "creado_en": datetime.now().isoformat(timespec="seconds"),
+    })
+
+
+def delete_documento(documento_id):
+    doc = get_documento(documento_id)
+    get_client().collection("documentos").document(documento_id).delete()
+    if doc and doc.get("storage_path"):
+        eliminar_archivos_storage([doc])
+
+
+# ---------------------------------------------------------------------------
 # Avisos por correo (Gmail) — usado por la pestaña Phara para avisar cuando
 # hay un pedido nuevo o un cambio de columna. Mismo patrón que Firebase
 # Storage: si todavía no están las credenciales configuradas, estas
