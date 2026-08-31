@@ -2074,6 +2074,29 @@ def _seed_historial_vpm(client):
             })
 
 
+def delete_historial_dato(categoria, anio, meta):
+    """Borra una fila puntual del Historial (esa categoría + año + tipo
+    real/meta), si existe. Usado desde el botón 'Eliminar' de la pestaña."""
+    get_client().collection("historial_vpm").document(_historial_doc_id(categoria, anio, meta)).delete()
+
+
+def limpiar_historial_metas_fuera_de_2026() -> int:
+    """Corrección puntual (pedido de Steven): la fila de meta (objetivo) del
+    Historial solo aplica al año en curso, 2026 — los años anteriores
+    (2023, 2024, 2025) no deben tener fila de meta propia. Borra cualquier
+    fila de meta que haya quedado guardada para un año distinto de 2026, en
+    Venta y en Utilidad. Se puede llamar las veces que sea: si ya no queda
+    ninguna, no borra nada."""
+    client = get_client()
+    rows = [_doc_to_dict(s) for s in client.collection("historial_vpm").stream()]
+    borrados = 0
+    for r in rows:
+        if r.get("meta") and int(r.get("anio") or 0) != 2026:
+            client.collection("historial_vpm").document(r["id"]).delete()
+            borrados += 1
+    return borrados
+
+
 # ---------------------------------------------------------------------------
 # Phara (cliente): cronograma de entregas + tablero de producción estilo
 # Trello. Cada "pedido" es a la vez una fila del cronograma (tiene fecha de
