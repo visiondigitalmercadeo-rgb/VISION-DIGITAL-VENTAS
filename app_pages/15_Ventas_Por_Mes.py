@@ -149,6 +149,15 @@ def _render_historial():
         "mensual completo, mes a mes y año a año)."
     )
 
+    # Corrección puntual (una sola vez por sesión, no borra nada si ya está
+    # bien): la meta solo aplica a 2026 — los años anteriores no deben tener
+    # fila de meta propia.
+    if user["rol"] == "admin" and not st.session_state.get("_vpm_hist_limpieza_meta_hecha"):
+        _borrados_meta = db.limpiar_historial_metas_fuera_de_2026()
+        st.session_state["_vpm_hist_limpieza_meta_hecha"] = True
+        if _borrados_meta:
+            st.success(f"🧹 Se quitaron {_borrados_meta} fila(s) de meta que no correspondían (solo 2026 lleva meta).")
+
     categoria_hist = st.selectbox(
         "Categoría", HISTORIAL_CATEGORIAS, format_func=lambda c: HISTORIAL_CATEGORIA_LABEL.get(c, c),
         key="vpm_hist_categoria",
@@ -253,11 +262,25 @@ def _render_historial():
                     value=float(valores_actuales.get(m, 0) or 0),
                     key=f"vpm_hist_input_{m}_{categoria_hist}_{anio_edit}_{meta_edit}",
                 )
-            if st.form_submit_button("💾 Guardar", use_container_width=True):
+            colf1, colf2 = st.columns(2)
+            guardar = colf1.form_submit_button("💾 Guardar", use_container_width=True)
+            eliminar = colf2.form_submit_button(
+                "🗑️ Eliminar esta fila", use_container_width=True,
+                disabled=registro_actual is None,
+                help=None if registro_actual else "No hay nada guardado para este año/tipo todavía.",
+            )
+            if guardar:
                 db.upsert_historial_dato(categoria_hist, int(anio_edit), meta_edit, nuevos_valores)
                 st.success(
                     f"{HISTORIAL_CATEGORIA_LABEL.get(categoria_hist, categoria_hist)} "
                     f"{'meta' if meta_edit else 'real'} de {int(anio_edit)} actualizada."
+                )
+                st.rerun()
+            if eliminar:
+                db.delete_historial_dato(categoria_hist, int(anio_edit), meta_edit)
+                st.success(
+                    f"Se eliminó la fila {'meta' if meta_edit else 'real'} de "
+                    f"{HISTORIAL_CATEGORIA_LABEL.get(categoria_hist, categoria_hist).lower()} — {int(anio_edit)}."
                 )
                 st.rerun()
     else:
