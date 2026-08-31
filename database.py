@@ -20,8 +20,11 @@ Cómo se eligen las credenciales, en este orden:
 import json
 import math
 import os
+import smtplib
 import uuid
 from datetime import date, datetime, timedelta, timezone
+from email.mime.text import MIMEText
+from email.utils import formataddr
 
 import bcrypt
 import firebase_admin
@@ -29,7 +32,8 @@ from firebase_admin import credentials, firestore, storage
 
 import fake_firestore
 from config import (
-    BASE_DIR, CHECKLIST_DEFAULT, LITO_MAQUINAS_INICIAL, LITO_PAPELES_INICIAL, LOGISTICA_VENDEDORES_INICIAL,
+    BASE_DIR, CHECKLIST_DEFAULT, EMPRESA_NOMBRE, LITO_MAQUINAS_INICIAL, LITO_PAPELES_INICIAL,
+    LOGISTICA_VENDEDORES_INICIAL,
 )
 
 SERVICE_ACCOUNT_PATH = os.path.join(BASE_DIR, "serviceAccountKey.json")
@@ -2023,3 +2027,74 @@ def update_phara_pedido(pedido_id, **kwargs):
 
 def delete_phara_pedido(pedido_id):
     get_client().collection("phara_pedidos").document(pedido_id).delete()
+
+
+def get_phara_correos_aviso() -> list:
+    """Lista de correos que reciben un aviso automático cuando se agrega un
+    pedido nuevo o una tarjeta cambia de columna en el tablero de Phara (ver
+    22_Phara.py). Vacía si todavía no se ha guardado ninguno."""
+    snap = get_client().collection("phara_config").document("notificaciones").get()
+    data = _doc_to_dict(snap) if snap.exists else None
+    return (data or {}).get("correos") or []
+
+
+def set_phara_correos_aviso(correos: list):
+    get_client().collection("phara_config").document("notificaciones").set({
+        "correos": [c.strip() for c in (correos or []) if c and c.strip()],
+        "actualizado_en": datetime.now().isoformat(timespec="seconds"),
+    })
+
+
+# ---------------------------------------------------------------------------
+# Avisos por correo (Gmail) — usado por la pestaña Phara para avisar cuando
+# hay un pedido nuevo o un cambio de columna. Mismo patrón que Firebase
+# Storage: si todavía no están las credenciales configuradas, estas
+# funciones simplemente no hacen nada (no rompen el resto de la página).
+# ---------------------------------------------------------------------------
+def _smtp_config():
+    """Lee las credenciales de Gmail desde st.secrets['gmail_notificaciones']
+    (tabla con 'usuario' y 'app_password' — ver instrucciones de
+    configuración). Retorna None si todavía no están configuradas."""
+    try:
+        import streamlit as st
+        if "gmail_notificaciones" in st.secrets:
+            conf = st.secrets["gmail_notificaciones"]
+            if conf.get("usuario") and conf.get("app_password"):
+                return {"usuario": conf["usuario"], "app_password": conf["app_password"]}
+    except Exception as e:
+        import traceback
+        print("ERROR AL LEER LAS CREDENCIALES DE CORREO:", e)
+        traceback.print_exc()
+    return None
+
+
+def correo_disponible() -> bool:
+    """True si ya se configuraron las credenciales de Gmail para mandar
+    avisos por correo (ver _smtp_config)."""
+    return _smtp_config() is not None
+
+
+def enviar_correo_aviso(destinatarios, asunto, cuerpo) -> bool:
+    """Manda un correo de texto plano a una lista de direcciones, usando la
+    cuenta de Gmail configurada. Nunca lanza excepción — si algo falla (sin
+    credenciales, sin destinatarios, error de red, etc.) retorna False y el
+    detalle queda solo en el log del servidor, para que un problema de
+    correo nunca tumbe el resto de la página."""
+    destinatarios = [d.strip() for d in (destinatarios or []) if d and d.strip()]
+    conf = _smtp_config()
+    if not destinatarios or not conf:
+        return False
+    try:
+        msg = MIMEText(cuerpo, "plain", "utf-8")
+        msg["Subject"] = asunto
+        msg["From"] = formataddr((EMPRESA_NOMBRE, conf["usuario"]))
+        msg["To"] = ", ".join(destinatarios)
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(conf["usuario"], conf["app_password"])
+            server.sendmail(conf["usuario"], destinatarios, msg.as_string())
+        return True
+    except Exception as e:
+        import traceback
+        print("ERROR AL MANDAR CORREO DE AVISO:", e)
+        traceback.print_exc()
+        return False
