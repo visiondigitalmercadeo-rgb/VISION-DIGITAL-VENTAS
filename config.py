@@ -120,6 +120,7 @@ PAGINAS_REGISTRO = [
     {"key": "mant_tiendas", "path": "app_pages/20_Mant_Tiendas.py", "title": "Mant. Tiendas", "icon": "🏬"},
     {"key": "drive", "path": "app_pages/21_Drive.py", "title": "Drive", "icon": "📁"},
     {"key": "phara", "path": "app_pages/22_Phara.py", "title": "Phara", "icon": "📦"},
+    {"key": "documentos", "path": "app_pages/23_Documentos.py", "title": "Documentos", "icon": "📄"},
     {
         "key": "generales", "path": "app_pages/8_Prospectos_Generales.py",
         "title": "Prospectos generales (todos)", "icon": "🌐",
@@ -493,6 +494,16 @@ ESTADOS_PHARA = ["Sherpa", "Pre prensa", "Impresión", "Acabados", "En logístic
 # cualquier etapa posterior) el sistema exige que se indique la fecha antes
 # de guardar el cambio.
 PHARA_ETAPA_FECHA_OBLIGATORIA = "Pre prensa"
+
+# ---------------------------------------------------------------------------
+# Documentos: biblioteca de PDFs (catálogos, listas de precios, manuales,
+# etc.) organizada por categoría. Solo el administrador puede subir o
+# eliminar documentos; vendedor, vista, mercadeo y administrador pueden
+# consultar y descargar (ver app_pages/23_Documentos.py y app.py).
+# ---------------------------------------------------------------------------
+DOCUMENTOS_CATEGORIAS = ["Catálogos", "Precios", "Manuales", "Otros"]
+DOCUMENTOS_ARCHIVO_MAX_BYTES = 900_000  # ~900 KB — límite práctico dentro del documento de Firestore
+DOCUMENTOS_ARCHIVO_MAX_BYTES_STORAGE = 200_000_000  # 200 MB si Firebase Storage está configurado
 
 # ---------------------------------------------------------------------------
 # Drive: pestaña solo para admin, mercadeo y jefes de tienda (jefe_tienda /
