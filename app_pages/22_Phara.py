@@ -5,7 +5,7 @@ import streamlit as st
 
 import auth
 import database as db
-from config import APP_URL, ESTADOS_PHARA, PHARA_LOGO_PATH
+from config import APP_URL, ESTADOS_PHARA, PHARA_ETAPA_FECHA_OBLIGATORIA, PHARA_LOGO_PATH
 from utils import sidebar_user_box
 
 user = auth.current_user()
@@ -26,7 +26,7 @@ st.caption(
 )
 
 COLUMN_EMOJI = {
-    "Pre prensa": "🖋️", "Impresión": "🖨️", "Acabados": "✂️", "En logística": "🚚", "Entregado": "✅",
+    "Sherpa": "🎒", "Pre prensa": "🖋️", "Impresión": "🖨️", "Acabados": "✂️", "En logística": "🚚", "Entregado": "✅",
 }
 VENCIDO_BG = "#fbe3e3"  # rojo leve — mismo estilo que el resaltado magenta de 'Ventas por mes'
 
@@ -50,6 +50,15 @@ def _siguiente_estado(estado_actual):
         return None
     i = ESTADOS_PHARA.index(estado_actual)
     return ESTADOS_PHARA[i + 1] if i + 1 < len(ESTADOS_PHARA) else None
+
+
+def _requiere_fecha(estado):
+    """A partir de la etapa PHARA_ETAPA_FECHA_OBLIGATORIA (inclusive, y todas
+    las que siguen) es obligatorio tener una fecha de entrega asignada. Solo
+    la etapa inicial 'Sherpa' puede quedar sin fecha."""
+    if estado not in ESTADOS_PHARA or PHARA_ETAPA_FECHA_OBLIGATORIA not in ESTADOS_PHARA:
+        return False
+    return ESTADOS_PHARA.index(estado) >= ESTADOS_PHARA.index(PHARA_ETAPA_FECHA_OBLIGATORIA)
 
 
 def _avisar_por_correo(asunto, cuerpo):
@@ -114,16 +123,18 @@ if puede_editar:
     with st.expander("➕ Agregar pedido nuevo"):
         with st.form("phara_nuevo_pedido", clear_on_submit=True):
             producto_n = st.text_input("Producto / descripción del pedido")
-            c1, c2 = st.columns(2)
-            cantidad_n = c1.number_input("Cantidad (opcional)", min_value=0, step=1, value=0)
-            fecha_entrega_n = c2.date_input("Fecha de entrega programada", value=hoy)
+            cantidad_n = st.number_input("Cantidad (opcional)", min_value=0, step=1, value=0)
             notas_n = st.text_area("Notas (opcional)")
-            if st.form_submit_button("Agregar a Pre prensa", use_container_width=True):
+            st.caption(
+                "La fecha de entrega no se pide aquí — se pedirá más adelante, cuando el pedido pase "
+                "de la columna «Sherpa» a «Pre prensa» en el tablero."
+            )
+            if st.form_submit_button("Agregar a Sherpa", use_container_width=True):
                 if not producto_n.strip():
                     st.error("El producto / descripción del pedido es obligatorio.")
                 else:
                     db.create_phara_pedido(
-                        producto_n.strip(), cantidad_n or None, fecha_entrega_n,
+                        producto_n.strip(), cantidad_n or None, None,
                         notas=notas_n.strip() or None, creado_por_id=user["id"],
                     )
                     _avisar_por_correo(
@@ -131,11 +142,10 @@ if puede_editar:
                         f"Se agregó un nuevo pedido a Phara.\n\n"
                         f"Producto: {producto_n.strip()}\n"
                         f"Cantidad: {cantidad_n or '—'}\n"
-                        f"Fecha de entrega: {fecha_entrega_n}\n"
                         f"Notas: {notas_n.strip() or '—'}\n\n"
-                        f"Etapa: Pre prensa",
+                        f"Etapa: Sherpa",
                     )
-                    st.success("Pedido agregado al cronograma y a la columna 'Pre prensa' del tablero.")
+                    st.success("Pedido agregado al cronograma y a la columna 'Sherpa' del tablero.")
                     st.rerun()
 
 st.divider()
@@ -183,9 +193,10 @@ for col, estado in zip(cols, ESTADOS_PHARA):
                 # ------------------------------------------------------------
                 if puede_editar:
                     siguiente = _siguiente_estado(p.get("estado"))
+                    falta_fecha = bool(siguiente) and _requiere_fecha(siguiente) and not p.get("fecha_entrega")
                     accion_col1, accion_col2 = st.columns(2)
                     with accion_col1:
-                        if siguiente:
+                        if siguiente and not falta_fecha:
                             if st.button(
                                 f"➡️ {siguiente}", key=f"phara_avanzar_{pid}", use_container_width=True,
                                 help=f"Pasar a la columna «{siguiente}»",
@@ -208,6 +219,26 @@ for col, estado in zip(cols, ESTADOS_PHARA):
                             st.success("Pedido eliminado.")
                             st.rerun()
 
+                    if falta_fecha:
+                        with st.form(f"phara_fecha_obligatoria_{pid}"):
+                            st.caption(f"Para pasar a «{siguiente}» hay que indicar la fecha de entrega.")
+                            fecha_avance = st.date_input(
+                                "Fecha de entrega", value=None, key=f"phara_fecha_avance_{pid}",
+                            )
+                            if st.form_submit_button(f"➡️ Pasar a «{siguiente}»", use_container_width=True):
+                                if not fecha_avance:
+                                    st.error("Hay que indicar la fecha de entrega antes de pasar a esta etapa.")
+                                else:
+                                    db.update_phara_pedido(pid, estado=siguiente, fecha_entrega=str(fecha_avance))
+                                    _avisar_por_correo(
+                                        f"Phara — {p.get('producto') or 'Pedido'} pasó a '{siguiente}'",
+                                        f"El pedido '{p.get('producto') or 'Pedido'}' cambió de columna en el tablero.\n\n"
+                                        f"De: {p.get('estado') or '—'}\nA: {siguiente}\n\n"
+                                        f"Fecha de entrega: {fecha_avance}",
+                                    )
+                                    st.success(f"Pedido movido a «{siguiente}».")
+                                    st.rerun()
+
                 if puede_editar and st.session_state.get(editando_key):
                     with st.form(f"phara_gestionar_{pid}"):
                         producto_ed = st.text_input("Producto / descripción", value=p.get("producto") or "")
@@ -216,8 +247,8 @@ for col, estado in zip(cols, ESTADOS_PHARA):
                             "Cantidad (opcional)", min_value=0, step=1, value=int(p.get("cantidad") or 0),
                         )
                         fecha_entrega_ed = c2.date_input(
-                            "Fecha de entrega",
-                            value=date.fromisoformat(p["fecha_entrega"]) if p.get("fecha_entrega") else hoy,
+                            "Fecha de entrega" + ("" if p.get("fecha_entrega") else " (obligatoria salvo en 'Sherpa')"),
+                            value=date.fromisoformat(p["fecha_entrega"]) if p.get("fecha_entrega") else None,
                         )
                         notas_ed = st.text_area("Notas", value=p.get("notas") or "")
                         estado_ed = st.selectbox(
@@ -234,11 +265,17 @@ for col, estado in zip(cols, ESTADOS_PHARA):
                         if guardar:
                             if not producto_ed.strip():
                                 st.error("El producto / descripción del pedido es obligatorio.")
+                            elif _requiere_fecha(estado_ed) and not fecha_entrega_ed:
+                                st.error(
+                                    f"La fecha de entrega es obligatoria para la etapa «{estado_ed}» "
+                                    f"(solo puede quedar sin fecha mientras está en «Sherpa»)."
+                                )
                             else:
                                 cambio_de_columna = estado_ed != p.get("estado")
                                 db.update_phara_pedido(
                                     pid, producto=producto_ed.strip(), cantidad=cantidad_ed or None,
-                                    fecha_entrega=str(fecha_entrega_ed), notas=notas_ed.strip() or None,
+                                    fecha_entrega=str(fecha_entrega_ed) if fecha_entrega_ed else None,
+                                    notas=notas_ed.strip() or None,
                                     estado=estado_ed,
                                 )
                                 if cambio_de_columna:
@@ -247,7 +284,7 @@ for col, estado in zip(cols, ESTADOS_PHARA):
                                         f"El pedido '{producto_ed.strip()}' cambió de columna en el tablero.\n\n"
                                         f"De: {p.get('estado') or '—'}\n"
                                         f"A: {estado_ed}\n\n"
-                                        f"Fecha de entrega: {fecha_entrega_ed}",
+                                        f"Fecha de entrega: {fecha_entrega_ed or 'sin definir'}",
                                     )
                                 st.session_state.pop(editando_key, None)
                                 st.success("Pedido actualizado.")
