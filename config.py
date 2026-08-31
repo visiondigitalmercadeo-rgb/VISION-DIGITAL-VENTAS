@@ -19,6 +19,9 @@ LOGO_PATH = os.path.join(BASE_DIR, "assets", "logo.png")
 # navegador — el logo completo (LOGO_PATH) no es cuadrado, así que para esto
 # se usa una versión aparte.
 FAVICON_PATH = os.path.join(BASE_DIR, "assets", "favicon.png")
+# Logo del cliente Phara — se muestra en la parte superior de la pestaña
+# Phara en vez de un ícono genérico (ver app_pages/22_Phara.py).
+PHARA_LOGO_PATH = os.path.join(BASE_DIR, "assets", "phara_logo.png")
 BRAND_PINK = "#FF0C82"  # color de marca — solo para chrome de la interfaz (botones, acentos),
                          # NO se usa en las gráficas: ahí se mantiene la paleta validada abajo.
 
@@ -474,7 +477,7 @@ ESTADOS_LITO_COTIZACION = ["Borrador", "Cotizado", "Aprobado", "Rechazado"]
 # Solo la ven admin, quien tenga acceso extra otorgado (ver Administración de
 # usuarios) y el rol 'cliente_phara' (que solo puede consultar, no editar).
 # ---------------------------------------------------------------------------
-ESTADOS_PHARA = ["Pre prensa", "Impresión", "Acabados", "En logística"]
+ESTADOS_PHARA = ["Pre prensa", "Impresión", "Acabados", "En logística", "Entregado"]
 
 # ---------------------------------------------------------------------------
 # Drive: pestaña solo para admin, mercadeo y jefes de tienda (jefe_tienda /
