@@ -927,12 +927,28 @@ def create_diseno(
         "estado": estado, "creado_en": datetime.now().isoformat(timespec="seconds"),
         "archivos": archivos or [],
         "cambios_necesarios": cambios_necesarios, "detenido_emergencia": False,
+        # Hora exacta en la que la solicitud llegó por primera vez a
+        # 'Entregado' — se llena sola (ver update_diseno) para poder medir
+        # cuánto tiempo pasa desde que ingresa hasta que se entrega.
+        "fecha_entregado": None,
     })
 
 
 def update_diseno(diseno_id, **kwargs):
-    if kwargs:
-        get_client().collection("disenos").document(diseno_id).update(kwargs)
+    """Si estos cambios incluyen mover la solicitud a 'Entregado' por primera
+    vez, registra la hora exacta en 'fecha_entregado' (mismo reloj que
+    'creado_en', para que el tiempo transcurrido se calcule bien) — así se
+    puede medir cuánto tarda cada solicitud desde que ingresa hasta que se
+    entrega. Si ya tenía fecha_entregado (por ejemplo, se movió hacia atrás y
+    volvió a 'Entregado'), no la vuelve a pisar."""
+    if not kwargs:
+        return
+    if kwargs.get("estado") == "Entregado":
+        actual = get_diseno(diseno_id) or {}
+        if actual.get("estado") != "Entregado" and not actual.get("fecha_entregado"):
+            kwargs = dict(kwargs)
+            kwargs["fecha_entregado"] = datetime.now().isoformat(timespec="seconds")
+    get_client().collection("disenos").document(diseno_id).update(kwargs)
 
 
 def delete_diseno(diseno_id):
@@ -973,12 +989,23 @@ def create_diseno_alvaro(
         "estado": estado, "creado_en": datetime.now().isoformat(timespec="seconds"),
         "archivos": archivos or [],
         "cambios_necesarios": cambios_necesarios, "detenido_emergencia": False,
+        # Hora exacta en la que la solicitud llegó por primera vez a
+        # 'Entregado' — se llena sola (ver update_diseno_alvaro) para poder
+        # medir cuánto tiempo pasa desde que ingresa hasta que se entrega.
+        "fecha_entregado": None,
     })
 
 
 def update_diseno_alvaro(diseno_id, **kwargs):
-    if kwargs:
-        get_client().collection("disenos_alvaro").document(diseno_id).update(kwargs)
+    """Mismo concepto que update_diseno, para el tablero de Álvaro."""
+    if not kwargs:
+        return
+    if kwargs.get("estado") == "Entregado":
+        actual = get_diseno_alvaro(diseno_id) or {}
+        if actual.get("estado") != "Entregado" and not actual.get("fecha_entregado"):
+            kwargs = dict(kwargs)
+            kwargs["fecha_entregado"] = datetime.now().isoformat(timespec="seconds")
+    get_client().collection("disenos_alvaro").document(diseno_id).update(kwargs)
 
 
 def delete_diseno_alvaro(diseno_id):
