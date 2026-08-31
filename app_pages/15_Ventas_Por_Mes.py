@@ -36,10 +36,23 @@ def _render_seccion(prefijo_columna, registros, key_prefix, upsert_fn, texto_bot
     columnas_planta = [f"{prefijo_columna} {p}" for p in PLANTAS]
 
     st.markdown("###### Totales del mes por planta (todos los vendedores)")
-    cols_tot = st.columns(len(PLANTAS))
-    for col, p in zip(cols_tot, PLANTAS):
-        total_planta = sum(float((r.get("montos") or {}).get(p, 0) or 0) for r in registros.values())
-        col.metric(p, money(total_planta))
+    totales_planta = {
+        p: sum(float((r.get("montos") or {}).get(p, 0) or 0) for r in registros.values())
+        for p in PLANTAS
+    }
+    total_general = sum(totales_planta.values())
+
+    # Dos líneas de KPIs (pedido explícito de Steven): arriba el total
+    # general + Offset y Digital; abajo Valloy y Colorado. Asume el orden de
+    # config.PLANTAS = ["Offset", "Digital", "Valloy", "Colorado"].
+    fila1 = st.columns(3)
+    fila1[0].metric(f"{prefijo_columna} total", money(total_general))
+    fila1[1].metric(PLANTAS[0], money(totales_planta[PLANTAS[0]]))
+    fila1[2].metric(PLANTAS[1], money(totales_planta[PLANTAS[1]]))
+
+    fila2 = st.columns(2)
+    fila2[0].metric(PLANTAS[2], money(totales_planta[PLANTAS[2]]))
+    fila2[1].metric(PLANTAS[3], money(totales_planta[PLANTAS[3]]))
 
     st.divider()
 
