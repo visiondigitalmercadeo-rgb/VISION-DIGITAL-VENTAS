@@ -19,20 +19,22 @@ CATEGORIA_EMOJI = {
     "Legal": "⚖️", "Políticas": "📋", "Presentaciones": "📊", "Otros": "🗂️",
 }
 
+TIPOS_ACEPTADOS = ["pdf", "jpg", "jpeg", "png"]
+
 st.title("📄 Documentos")
 st.caption(
-    "Biblioteca de documentos en PDF (legal, políticas, presentaciones) organizados por categoría, "
-    "disponibles para consultar y descargar."
+    "Biblioteca de documentos en PDF, JPG o PNG (legal, políticas, presentaciones) organizados por "
+    "categoría, disponibles para consultar y descargar."
     + ("" if puede_subir else " Tu acceso es solo de consulta: puedes ver y descargar, pero no subir ni eliminar.")
 )
 
 
-def _subir_pdf(archivo_subido):
-    """Sube el PDF a Firebase Storage si está disponible; si no, cae al
+def _subir_documento(archivo_subido):
+    """Sube el archivo a Firebase Storage si está disponible; si no, cae al
     guardado anterior (base64 dentro del documento). Lanza ValueError si el
     archivo pesa más de lo permitido."""
     if archivo_subido is None:
-        raise ValueError("Debes seleccionar un archivo PDF.")
+        raise ValueError("Debes seleccionar un archivo (PDF, JPG o PNG).")
     datos = archivo_subido.getvalue()
     if len(datos) > _documentos_max_bytes:
         if _usa_storage:
@@ -47,7 +49,7 @@ def _subir_pdf(archivo_subido):
     if _usa_storage:
         return db.subir_archivo_storage("documentos", archivo_subido)
     return {
-        "nombre": archivo_subido.name, "tipo": archivo_subido.type or "application/pdf",
+        "nombre": archivo_subido.name, "tipo": archivo_subido.type or "application/octet-stream",
         "b64": base64.b64encode(datos).decode("ascii"),
     }
 
@@ -58,7 +60,7 @@ if puede_subir:
             titulo_n = st.text_input("Título del documento")
             categoria_n = st.selectbox("Categoría", DOCUMENTOS_CATEGORIAS)
             descripcion_n = st.text_area("Descripción (opcional)")
-            archivo_n = st.file_uploader("Archivo PDF", type=["pdf"])
+            archivo_n = st.file_uploader("Archivo (PDF, JPG o PNG)", type=TIPOS_ACEPTADOS)
             if _usa_storage:
                 st.caption(f"Tamaño máximo por archivo: {_documentos_max_bytes // 1_000_000} MB.")
             else:
@@ -67,10 +69,10 @@ if puede_subir:
                 if not titulo_n.strip():
                     st.error("El título del documento es obligatorio.")
                 elif archivo_n is None:
-                    st.error("Debes seleccionar un archivo PDF.")
+                    st.error("Debes seleccionar un archivo (PDF, JPG o PNG).")
                 else:
                     try:
-                        archivo_info = _subir_pdf(archivo_n)
+                        archivo_info = _subir_documento(archivo_n)
                     except ValueError as e:
                         st.error(str(e))
                     else:
@@ -97,6 +99,8 @@ for tab, categoria in zip(tabs, DOCUMENTOS_CATEGORIAS):
                     st.caption(d["descripcion"])
                 st.caption(f"🕒 Subido: {(d.get('creado_en') or '')[:10]}")
 
+                es_imagen = (d.get("tipo") or "").startswith("image/")
+
                 if puede_subir:
                     col_descarga, col_borrar = st.columns([3, 1])
                 else:
@@ -106,6 +110,11 @@ for tab, categoria in zip(tabs, DOCUMENTOS_CATEGORIAS):
                     url_archivo = db.url_descarga_archivo_storage(
                         d["storage_path"], nombre_descarga=d.get("nombre"),
                     )
+                    if es_imagen and url_archivo:
+                        try:
+                            st.image(url_archivo, width=220)
+                        except Exception:
+                            pass
                     with col_descarga:
                         if url_archivo:
                             st.link_button(
@@ -115,11 +124,17 @@ for tab, categoria in zip(tabs, DOCUMENTOS_CATEGORIAS):
                         else:
                             st.caption("📎 No se pudo generar el enlace de descarga.")
                 elif d.get("b64"):
+                    datos_archivo = base64.b64decode(d["b64"])
+                    if es_imagen:
+                        try:
+                            st.image(datos_archivo, width=220)
+                        except Exception:
+                            pass
                     with col_descarga:
                         st.download_button(
                             f"📎 Descargar «{d.get('nombre') or 'documento'}»",
-                            data=base64.b64decode(d["b64"]), file_name=d.get("nombre") or "documento.pdf",
-                            mime=d.get("tipo") or "application/pdf",
+                            data=datos_archivo, file_name=d.get("nombre") or "documento",
+                            mime=d.get("tipo") or "application/octet-stream",
                             use_container_width=True, key=f"doc_dl_{d['id']}",
                         )
                 else:
