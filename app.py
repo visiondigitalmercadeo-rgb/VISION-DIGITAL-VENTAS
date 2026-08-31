@@ -84,6 +84,7 @@ mantenimiento = paginas_por_key["mantenimiento"]
 litografia = paginas_por_key["litografia"]
 mant_tiendas = paginas_por_key["mant_tiendas"]
 drive = paginas_por_key["drive"]
+phara = paginas_por_key["phara"]
 generales = paginas_por_key["generales"]
 kpis = paginas_por_key["kpis"]
 admin = paginas_por_key["administracion"]
@@ -141,6 +142,11 @@ elif rol == "jefe_mantenimiento":
     # Mantenimiento de Tiendas, donde mueve las solicitudes por las columnas
     # (mismo concepto que 'disenador' con el tablero de Diseño Gráfico).
     pages = [mant_tiendas]
+elif rol == "cliente_phara":
+    # El rol 'cliente_phara' (el cliente externo) solo tiene acceso a la
+    # pestaña Phara, y ahí solo puede consultar — no puede crear ni mover
+    # nada (ver auth.puede_editar_phara).
+    pages = [phara]
 else:
     pages = [
         inicio, prospectos, llamadas, citas, mercadeo, cotizaciones, reclamos,
@@ -150,6 +156,7 @@ else:
     if rol == "admin":
         pages.append(admin)
         pages.append(drive)
+        pages.append(phara)
 
 # ---------------------------------------------------------------------------
 # Acceso extra por usuario (independiente del rol) — un admin puede darle a
