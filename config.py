@@ -46,7 +46,7 @@ ROLES = [
     "admin", "vendedor", "vista", "mercadeo", "jefe_planta", "disenador", "disenador_alvaro",
     "jefe_logistica", "repartidor", "jefe_capacitacion", "asistente_capacitacion",
     "anfitriona", "jefe_tienda", "subjefe_tienda", "asesor_ventas", "cajero", "cotizadora",
-    "jefe_mantenimiento",
+    "jefe_mantenimiento", "cliente_phara",
 ]
 ROLES_LABEL = {
     "admin": "Administrador",
@@ -67,6 +67,7 @@ ROLES_LABEL = {
     "cajero": "Cajero",
     "cotizadora": "Cotizadora (Litografía)",
     "jefe_mantenimiento": "Jefe de Mantenimiento",
+    "cliente_phara": "Cliente Phara",
 }
 
 # Roles que pertenecen a una tienda específica (necesitan el campo "tienda"
@@ -115,6 +116,7 @@ PAGINAS_REGISTRO = [
     {"key": "litografia", "path": "app_pages/19_Litografia.py", "title": "Litografía", "icon": "🖨️"},
     {"key": "mant_tiendas", "path": "app_pages/20_Mant_Tiendas.py", "title": "Mant. Tiendas", "icon": "🏬"},
     {"key": "drive", "path": "app_pages/21_Drive.py", "title": "Drive", "icon": "📁"},
+    {"key": "phara", "path": "app_pages/22_Phara.py", "title": "Phara", "icon": "📦"},
     {
         "key": "generales", "path": "app_pages/8_Prospectos_Generales.py",
         "title": "Prospectos generales (todos)", "icon": "🌐",
@@ -465,6 +467,14 @@ LITO_TINTAS_PRESETS = {
 
 # Estados de una cotización técnica de litografía.
 ESTADOS_LITO_COTIZACION = ["Borrador", "Cotizado", "Aprobado", "Rechazado"]
+
+# ---------------------------------------------------------------------------
+# Phara: pestaña exclusiva para este cliente — cronograma de entregas +
+# tablero de producción estilo Trello (mismo concepto que Diseño Gráfico).
+# Solo la ven admin, quien tenga acceso extra otorgado (ver Administración de
+# usuarios) y el rol 'cliente_phara' (que solo puede consultar, no editar).
+# ---------------------------------------------------------------------------
+ESTADOS_PHARA = ["Pre prensa", "Impresión", "Acabados", "En logística"]
 
 # ---------------------------------------------------------------------------
 # Drive: pestaña solo para admin, mercadeo y jefes de tienda (jefe_tienda /
