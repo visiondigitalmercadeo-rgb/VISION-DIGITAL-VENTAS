@@ -5,7 +5,7 @@ import streamlit as st
 
 import auth
 import database as db
-from config import ESTADOS_PHARA
+from config import APP_URL, ESTADOS_PHARA
 from utils import sidebar_user_box
 
 user = auth.current_user()
@@ -30,6 +30,38 @@ hoy = date.today()
 def _es_vencido(p):
     fe = p.get("fecha_entrega")
     return bool(fe) and fe < str(hoy)
+
+
+def _avisar_por_correo(asunto, cuerpo):
+    """Manda un aviso a los correos configurados (ver abajo). No hace nada
+    (ni muestra error) si todavía no hay correos guardados o si el correo
+    remitente no está configurado — ver database.correo_disponible."""
+    correos = db.get_phara_correos_aviso()
+    if correos:
+        db.enviar_correo_aviso(correos, asunto, cuerpo + f"\n\nVer en la plataforma: {APP_URL}")
+
+
+if puede_editar:
+    with st.expander("✉️ Avisos por correo (nuevo pedido o cambio de columna)"):
+        if not db.correo_disponible():
+            st.info(
+                "Todavía no está configurado el correo que manda los avisos (falta conectar una cuenta "
+                "de Gmail en la configuración de la plataforma) — mientras tanto, esta sección no manda "
+                "nada, pero puedes ir guardando los correos de una vez."
+            )
+        correos_actuales = db.get_phara_correos_aviso()
+        with st.form("phara_correos_aviso"):
+            correos_texto = st.text_area(
+                "Correos que reciben el aviso — uno por línea (o separados por coma)",
+                value="\n".join(correos_actuales),
+                help="Se les avisa automáticamente cuando se agrega un pedido nuevo o cuando una tarjeta "
+                     "cambia de columna en el tablero (no en otros cambios menores, como corregir una nota).",
+            )
+            if st.form_submit_button("💾 Guardar correos", use_container_width=True):
+                nuevos_correos = [c.strip() for c in correos_texto.replace(",", "\n").split("\n") if c.strip()]
+                db.set_phara_correos_aviso(nuevos_correos)
+                st.success("Correos actualizados.")
+                st.rerun()
 
 
 # ---------------------------------------------------------------------------
@@ -73,6 +105,15 @@ if puede_editar:
                     db.create_phara_pedido(
                         producto_n.strip(), cantidad_n or None, fecha_entrega_n,
                         notas=notas_n.strip() or None, creado_por_id=user["id"],
+                    )
+                    _avisar_por_correo(
+                        f"Phara — Nuevo pedido: {producto_n.strip()}",
+                        f"Se agregó un nuevo pedido a Phara.\n\n"
+                        f"Producto: {producto_n.strip()}\n"
+                        f"Cantidad: {cantidad_n or '—'}\n"
+                        f"Fecha de entrega: {fecha_entrega_n}\n"
+                        f"Notas: {notas_n.strip() or '—'}\n\n"
+                        f"Etapa: Pre prensa",
                     )
                     st.success("Pedido agregado al cronograma y a la columna 'Pre prensa' del tablero.")
                     st.rerun()
@@ -140,11 +181,20 @@ for col, estado in zip(cols, ESTADOS_PHARA):
                             if not producto_ed.strip():
                                 st.error("El producto / descripción del pedido es obligatorio.")
                             else:
+                                cambio_de_columna = estado_ed != p.get("estado")
                                 db.update_phara_pedido(
                                     pid, producto=producto_ed.strip(), cantidad=cantidad_ed or None,
                                     fecha_entrega=str(fecha_entrega_ed), notas=notas_ed.strip() or None,
                                     estado=estado_ed,
                                 )
+                                if cambio_de_columna:
+                                    _avisar_por_correo(
+                                        f"Phara — {producto_ed.strip()} pasó a '{estado_ed}'",
+                                        f"El pedido '{producto_ed.strip()}' cambió de columna en el tablero.\n\n"
+                                        f"De: {p.get('estado') or '—'}\n"
+                                        f"A: {estado_ed}\n\n"
+                                        f"Fecha de entrega: {fecha_entrega_ed}",
+                                    )
                                 st.session_state.pop(editando_key, None)
                                 st.success("Pedido actualizado.")
                                 st.rerun()
