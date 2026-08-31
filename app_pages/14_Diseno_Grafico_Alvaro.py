@@ -12,7 +12,7 @@ from config import (
 )
 from utils import (
     archivos_a_b64_lista, diseno_archivos_lista, diseno_pdf_bytes, diseno_resumen_html, download_excel_button,
-    sidebar_user_box, vendedor_filter_selector,
+    minutos_entre, minutos_legible, sidebar_user_box, vendedor_filter_selector,
 )
 
 _usa_storage = db.storage_disponible()
@@ -79,9 +79,23 @@ with tab_tablero:
     entregar_hoy = [r for r in pendientes_entrega if r.get("fecha_necesaria") == str(hoy)]
     entregar_manana = [r for r in pendientes_entrega if r.get("fecha_necesaria") == str(manana)]
 
-    kc1, kc2 = st.columns(2)
+    # Tiempo promedio desde que ingresa la solicitud hasta que se entrega —
+    # solo cuenta las que ya tienen 'fecha_entregado' guardada (se llena sola
+    # la primera vez que una solicitud llega a 'Entregado', ver database.update_diseno_alvaro).
+    entregadas_con_tiempo = [r for r in rows if r.get("fecha_entregado")]
+    tiempos_entrega = [
+        minutos_entre(r["creado_en"], r["fecha_entregado"]) for r in entregadas_con_tiempo
+    ]
+    tiempo_promedio_entrega = (sum(tiempos_entrega) / len(tiempos_entrega)) if tiempos_entrega else None
+
+    kc1, kc2, kc3 = st.columns(3)
     kc1.metric("📦 Por entregar hoy", len(entregar_hoy))
     kc2.metric("📦 Por entregar mañana", len(entregar_manana))
+    kc3.metric(
+        "⏱️ Tiempo promedio: ingreso → entregado",
+        minutos_legible(round(tiempo_promedio_entrega)) if tiempo_promedio_entrega is not None else "Sin datos",
+        help=f"Calculado con {len(entregadas_con_tiempo)} solicitud(es) ya entregada(s) (con el filtro de vendedor de arriba).",
+    )
 
     if pendientes_entrega:
         with st.expander(f"Ver detalle de las {len(pendientes_entrega)} solicitudes por entregar (hoy y mañana)"):
