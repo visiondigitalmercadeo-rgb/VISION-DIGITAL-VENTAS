@@ -5,14 +5,19 @@ import streamlit as st
 
 import auth
 import database as db
-from config import APP_URL, ESTADOS_PHARA
+from config import APP_URL, ESTADOS_PHARA, PHARA_LOGO_PATH
 from utils import sidebar_user_box
 
 user = auth.current_user()
 sidebar_user_box()
 puede_editar = auth.puede_editar_phara()
 
-st.title("📦 Phara")
+logo_col, title_col = st.columns([1, 8])
+with logo_col:
+    st.image(PHARA_LOGO_PATH, width=70)
+with title_col:
+    st.markdown("<h1 style='margin-bottom:0;padding-top:0.3rem;'>Phara</h1>", unsafe_allow_html=True)
+
 st.caption(
     "Pestaña exclusiva para el cliente Phara: arriba, el cronograma con la fecha de entrega de cada "
     "pedido; abajo, el tablero de producción (igual que el de Diseño Gráfico) para dar seguimiento a "
@@ -20,7 +25,9 @@ st.caption(
     + ("" if puede_editar else " Tu acceso es solo de consulta: puedes ver todo, pero no crear ni mover nada.")
 )
 
-COLUMN_EMOJI = {"Pre prensa": "🖋️", "Impresión": "🖨️", "Acabados": "✂️", "En logística": "🚚"}
+COLUMN_EMOJI = {
+    "Pre prensa": "🖋️", "Impresión": "🖨️", "Acabados": "✂️", "En logística": "🚚", "Entregado": "✅",
+}
 VENCIDO_BG = "#fbe3e3"  # rojo leve — mismo estilo que el resaltado magenta de 'Ventas por mes'
 
 pedidos = db.list_phara_pedidos()
@@ -28,8 +35,21 @@ hoy = date.today()
 
 
 def _es_vencido(p):
+    # Un pedido ya entregado no cuenta como "vencido" aunque su fecha de
+    # entrega programada haya quedado en el pasado.
+    if p.get("estado") == "Entregado":
+        return False
     fe = p.get("fecha_entrega")
     return bool(fe) and fe < str(hoy)
+
+
+def _siguiente_estado(estado_actual):
+    """Etapa que sigue en el orden del tablero, o None si ya está en la
+    última columna ('Entregado')."""
+    if estado_actual not in ESTADOS_PHARA:
+        return None
+    i = ESTADOS_PHARA.index(estado_actual)
+    return ESTADOS_PHARA[i + 1] if i + 1 < len(ESTADOS_PHARA) else None
 
 
 def _avisar_por_correo(asunto, cuerpo):
@@ -139,8 +159,8 @@ for col, estado in zip(cols, ESTADOS_PHARA):
                 pid = p["id"]
                 editando_key = f"phara_editando_{pid}"
 
-                title_col, edit_col = st.columns([5, 1])
-                with title_col:
+                title_col2, edit_col = st.columns([5, 1])
+                with title_col2:
                     vencido_marca = "🔴 " if _es_vencido(p) else ""
                     st.markdown(f"{vencido_marca}**{p.get('producto') or 'Sin producto'}**")
                 with edit_col:
@@ -154,6 +174,39 @@ for col, estado in zip(cols, ESTADOS_PHARA):
                 if p.get("notas"):
                     st.caption(f"📝 {p['notas']}")
                 st.caption(f"🕒 {(p.get('creado_en') or '')[:16].replace('T', ' ')}")
+
+                # ------------------------------------------------------------
+                # Acciones rápidas: pasar a la siguiente etapa y eliminar,
+                # directo desde la tarjeta (sin tener que abrir el formulario
+                # de edición) — mismo estilo que el botón "➡️ Mover a «...»"
+                # de Mantenimiento de Tiendas.
+                # ------------------------------------------------------------
+                if puede_editar:
+                    siguiente = _siguiente_estado(p.get("estado"))
+                    accion_col1, accion_col2 = st.columns(2)
+                    with accion_col1:
+                        if siguiente:
+                            if st.button(
+                                f"➡️ {siguiente}", key=f"phara_avanzar_{pid}", use_container_width=True,
+                                help=f"Pasar a la columna «{siguiente}»",
+                            ):
+                                db.update_phara_pedido(pid, estado=siguiente)
+                                _avisar_por_correo(
+                                    f"Phara — {p.get('producto') or 'Pedido'} pasó a '{siguiente}'",
+                                    f"El pedido '{p.get('producto') or 'Pedido'}' cambió de columna en el tablero.\n\n"
+                                    f"De: {p.get('estado') or '—'}\nA: {siguiente}\n\n"
+                                    f"Fecha de entrega: {p.get('fecha_entrega') or 'sin definir'}",
+                                )
+                                st.success(f"Pedido movido a «{siguiente}».")
+                                st.rerun()
+                    with accion_col2:
+                        if st.button(
+                            "🗑️ Eliminar", key=f"phara_borrar_{pid}", use_container_width=True,
+                        ):
+                            db.delete_phara_pedido(pid)
+                            st.session_state.pop(editando_key, None)
+                            st.success("Pedido eliminado.")
+                            st.rerun()
 
                 if puede_editar and st.session_state.get(editando_key):
                     with st.form(f"phara_gestionar_{pid}"):
@@ -170,12 +223,13 @@ for col, estado in zip(cols, ESTADOS_PHARA):
                         estado_ed = st.selectbox(
                             "Etapa (columna del tablero)", ESTADOS_PHARA,
                             index=ESTADOS_PHARA.index(p["estado"]) if p.get("estado") in ESTADOS_PHARA else 0,
+                            help="Además de «➡️» (que avanza a la siguiente), aquí puedes mandar el "
+                                 "pedido a cualquier columna, incluso hacia atrás si fue un error.",
                         )
 
-                        colf1, colf2, colf3 = st.columns(3)
+                        colf1, colf2 = st.columns(2)
                         guardar = colf1.form_submit_button("💾 Guardar", use_container_width=True)
-                        eliminar = colf2.form_submit_button("Eliminar", use_container_width=True)
-                        cancelar = colf3.form_submit_button("Cancelar", use_container_width=True)
+                        cancelar = colf2.form_submit_button("Cancelar", use_container_width=True)
 
                         if guardar:
                             if not producto_ed.strip():
@@ -198,11 +252,6 @@ for col, estado in zip(cols, ESTADOS_PHARA):
                                 st.session_state.pop(editando_key, None)
                                 st.success("Pedido actualizado.")
                                 st.rerun()
-                        if eliminar:
-                            db.delete_phara_pedido(pid)
-                            st.session_state.pop(editando_key, None)
-                            st.success("Pedido eliminado.")
-                            st.rerun()
                         if cancelar:
                             st.session_state.pop(editando_key, None)
                             st.rerun()
