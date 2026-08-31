@@ -16,12 +16,12 @@ _usa_storage = db.storage_disponible()
 _documentos_max_bytes = DOCUMENTOS_ARCHIVO_MAX_BYTES_STORAGE if _usa_storage else DOCUMENTOS_ARCHIVO_MAX_BYTES
 
 CATEGORIA_EMOJI = {
-    "Catálogos": "📘", "Precios": "💲", "Manuales": "📖", "Otros": "🗂️",
+    "Legal": "⚖️", "Políticas": "📋", "Presentaciones": "📊", "Otros": "🗂️",
 }
 
 st.title("📄 Documentos")
 st.caption(
-    "Biblioteca de documentos en PDF (catálogos, precios, manuales) organizados por categoría, "
+    "Biblioteca de documentos en PDF (legal, políticas, presentaciones) organizados por categoría, "
     "disponibles para consultar y descargar."
     + ("" if puede_subir else " Tu acceso es solo de consulta: puedes ver y descargar, pero no subir ni eliminar.")
 )
