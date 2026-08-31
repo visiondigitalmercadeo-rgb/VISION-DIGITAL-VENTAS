@@ -487,7 +487,12 @@ HISTORIAL_CATEGORIA_LABEL = {"venta": "Venta", "utilidad": "Utilidad"}
 # Solo la ven admin, quien tenga acceso extra otorgado (ver Administración de
 # usuarios) y el rol 'cliente_phara' (que solo puede consultar, no editar).
 # ---------------------------------------------------------------------------
-ESTADOS_PHARA = ["Pre prensa", "Impresión", "Acabados", "En logística", "Entregado"]
+ESTADOS_PHARA = ["Sherpa", "Pre prensa", "Impresión", "Acabados", "En logística", "Entregado"]
+# A partir de qué etapa es obligatorio tener una fecha de entrega asignada.
+# Un pedido nace en "Sherpa" sin fecha; en cuanto se mueve a "Pre prensa" (o
+# cualquier etapa posterior) el sistema exige que se indique la fecha antes
+# de guardar el cambio.
+PHARA_ETAPA_FECHA_OBLIGATORIA = "Pre prensa"
 
 # ---------------------------------------------------------------------------
 # Drive: pestaña solo para admin, mercadeo y jefes de tienda (jefe_tienda /
