@@ -1,321 +1,358 @@
-from datetime import date
+import re
+import unicodedata
 
 import pandas as pd
-import plotly.graph_objects as go
 import streamlit as st
 
 import auth
 import database as db
-from config import CATEGORICAL, DG_MESES, HISTORIAL_CATEGORIA_LABEL, HISTORIAL_CATEGORIAS, PLANTAS
-from utils import base_layout, money, sidebar_user_box, vendedor_filter_selector
+from config import (
+    PAGINAS_ASIGNABLES_EXTRA, PAGINAS_REGISTRO, PERSONAL_TIENDA_INICIAL, ROLES, ROLES_DE_TIENDA, ROLES_LABEL,
+    TICKET_TIENDA_SLUG, TICKET_TIENDAS,
+)
+from utils import download_excel_button, sidebar_user_box
 
 user = auth.current_user()
 sidebar_user_box()
 
-st.title("📅 Ventas por mes")
-st.caption(
-    "Monto acumulado en el mes, por vendedor y por planta (Offset, Digital, Valloy, Colorado). "
-    "Es un dato que digita el administrador: cada vez que se guarda, **reemplaza** el número "
-    "anterior — no se suma. Esta pestaña es independiente de 'Venta del día', que sigue "
-    "funcionando exactamente igual que antes."
+if not auth.is_admin():
+    st.error("Esta sección es solo para administradores.")
+    st.stop()
+
+st.title("👥 Administración de usuarios")
+st.caption("Crear vendedores y usuarios de solo vista, activar/desactivar accesos y restablecer contraseñas.")
+
+tab_lista, tab_nueva, tab_carga = st.tabs(
+    ["📋 Usuarios", "➕ Nuevo usuario", "📥 Carga inicial de personal"]
 )
 
-# Resaltado en magenta leve — mismo color en todas las tablas de esta
-# página (Ventas, Utilidades e Historial), para la columna/fila "Total".
-MAGENTA_LEVE = "#fbe3f2"
-MESES_LABEL = {m: m.capitalize() for m in DG_MESES}
+with tab_lista:
+    usuarios = db.list_usuarios()
+    df = pd.DataFrame([{
+        "ID": u["id"], "Nombre": u["nombre"], "Usuario": u["username"],
+        "Rol": ROLES_LABEL.get(u["rol"], u["rol"]), "Tienda": u.get("tienda") or "—",
+        "Activo": "Sí" if u["activo"] else "No",
+    } for u in usuarios])
+    st.dataframe(df, use_container_width=True, hide_index=True)
 
-mes_sel = st.date_input(
-    "Mes a consultar (elige cualquier día de ese mes)", value=date.today(), key="vpm_mes",
-)
-anio_mes = mes_sel.strftime("%Y-%m")
-st.markdown(f"##### {mes_sel.strftime('%B %Y').capitalize()}")
+    st.markdown("#### ✏️ Gestionar usuario")
+    opciones = {f"{u['nombre']} ({u['username']})": u["id"] for u in usuarios}
+    elegido = st.selectbox("Selecciona un usuario", ["—"] + list(opciones.keys()))
+    if elegido != "—":
+        uid = opciones[elegido]
+        u = next(x for x in usuarios if x["id"] == uid)
 
-todos_los_vendedores = db.list_vendedores(solo_activos=False)
+        col1, col2 = st.columns(2)
+        with col1:
+            nuevo_estado = st.toggle("Usuario activo", value=bool(u["activo"]), key=f"toggle_{uid}")
+            if nuevo_estado != bool(u["activo"]):
+                db.set_usuario_activo(uid, nuevo_estado)
+                st.success("Estado actualizado.")
+                st.rerun()
+        with col2:
+            with st.form(f"reset_pwd_{uid}"):
+                nueva_pwd = st.text_input("Nueva contraseña", type="password")
+                if st.form_submit_button("Restablecer contraseña"):
+                    if len(nueva_pwd) < 4:
+                        st.error("La contraseña debe tener al menos 4 caracteres.")
+                    else:
+                        db.reset_password(uid, nueva_pwd)
+                        st.success("Contraseña actualizada.")
 
+        st.markdown("#### ✏️ Editar usuario")
+        with st.form(f"editar_usuario_{uid}"):
+            nombre_ed = st.text_input("Nombre completo", value=u["nombre"] or "")
+            username_ed = st.text_input("Usuario (para iniciar sesión)", value=u["username"] or "")
+            es_unico_admin = u["rol"] == "admin" and sum(1 for x in usuarios if x["rol"] == "admin") <= 1
+            if es_unico_admin:
+                st.caption("Este es el único administrador, así que su rol no se puede cambiar aquí.")
+                rol_ed = "admin"
+            else:
+                rol_ed = st.selectbox(
+                    "Rol", ROLES, index=ROLES.index(u["rol"]) if u["rol"] in ROLES else 0,
+                    format_func=lambda r: ROLES_LABEL.get(r, r),
+                )
+            tienda_ed = st.selectbox(
+                "Tienda (solo aplica a Anfitriona, Jefe de tienda o Asesor de ventas)",
+                ["—"] + TICKET_TIENDAS,
+                index=(["—"] + TICKET_TIENDAS).index(u["tienda"]) if u.get("tienda") in TICKET_TIENDAS else 0,
+            )
+            if st.form_submit_button("Guardar cambios", use_container_width=True):
+                username_norm = username_ed.strip().lower()
+                if not nombre_ed.strip() or not username_norm:
+                    st.error("Completa nombre y usuario.")
+                elif rol_ed in ROLES_DE_TIENDA and tienda_ed == "—":
+                    st.error("Este rol necesita una tienda asignada.")
+                else:
+                    existente = db.get_user_by_username(username_norm)
+                    if existente and existente["id"] != uid:
+                        st.error("Ese nombre de usuario ya lo usa otra persona.")
+                    else:
+                        db.update_usuario(
+                            uid, nombre=nombre_ed.strip(), username=username_norm, rol=rol_ed,
+                            tienda=None if tienda_ed == "—" else tienda_ed,
+                        )
+                        st.success("Usuario actualizado.")
+                        st.rerun()
 
-def _render_seccion(prefijo_columna, registros, key_prefix, upsert_fn, texto_boton, texto_exito):
-    """Dibuja una sección completa (totales por planta, desglose por vendedor
-    y formulario de captura para el admin) — misma estructura para Ventas y
-    para Utilidades, solo cambia de dónde vienen y a dónde se guardan los
-    datos. Se llama una vez por pestaña."""
-    columnas_planta = [f"{prefijo_columna} {p}" for p in PLANTAS]
+        if u["rol"] == "vendedor":
+            st.markdown("#### 📅 Visibilidad en 'Ventas por mes'")
+            oculto_vpm_actual = bool(u.get("oculto_ventas_mes"))
+            oculto_vpm_nuevo = st.toggle(
+                "Ocultar en la pestaña 'Ventas por mes'", value=oculto_vpm_actual, key=f"toggle_oculto_vpm_{uid}",
+                help="Si lo activas, este vendedor deja de aparecer en los totales, la tabla y el "
+                     "formulario de captura de 'Ventas por mes' (en sus tres pestañas: Ventas, "
+                     "Utilidades y Proyección) — pero sigue activo en el resto de la plataforma: puede "
+                     "iniciar sesión y se le pueden seguir asignando prospectos, ventas diarias, etc. "
+                     "normalmente. Sus montos ya guardados en 'Ventas por mes' no se borran, solo dejan "
+                     "de mostrarse mientras esté oculto.",
+            )
+            if oculto_vpm_nuevo != oculto_vpm_actual:
+                db.update_usuario(uid, oculto_ventas_mes=oculto_vpm_nuevo)
+                st.success("Visibilidad en 'Ventas por mes' actualizada.")
+                st.rerun()
 
-    st.markdown("###### Totales del mes por planta (todos los vendedores)")
-    totales_planta = {
-        p: sum(float((r.get("montos") or {}).get(p, 0) or 0) for r in registros.values())
-        for p in PLANTAS
-    }
-    total_general = sum(totales_planta.values())
-
-    # Dos líneas de KPIs (pedido explícito de Steven): arriba el total
-    # general + Offset y Digital; abajo Valloy y Colorado. Asume el orden de
-    # config.PLANTAS = ["Offset", "Digital", "Valloy", "Colorado"].
-    fila1 = st.columns(3)
-    fila1[0].metric(f"{prefijo_columna} total", money(total_general))
-    fila1[1].metric(PLANTAS[0], money(totales_planta[PLANTAS[0]]))
-    fila1[2].metric(PLANTAS[1], money(totales_planta[PLANTAS[1]]))
-
-    fila2 = st.columns(2)
-    fila2[0].metric(PLANTAS[2], money(totales_planta[PLANTAS[2]]))
-    fila2[1].metric(PLANTAS[3], money(totales_planta[PLANTAS[3]]))
-
-    st.divider()
-
-    if user["rol"] == "admin":
-        vendedores_tabla = [v for v in todos_los_vendedores if v["activo"]]
-    else:
-        vendedor_id_propio = vendedor_filter_selector(key=f"{key_prefix}_filtro_vendedor")
-        vendedores_tabla = (
-            [v for v in todos_los_vendedores if v["id"] == vendedor_id_propio]
-            if vendedor_id_propio else todos_los_vendedores
+        st.markdown("#### 🔓 Acceso extra a otras pestañas")
+        st.caption(
+            "Además de las pestañas que ya le da su rol, puedes darle a este usuario acceso a otras "
+            "pestañas específicas — por ejemplo, si necesita consultar o usar algo puntual sin tener "
+            "que crear un rol nuevo o cambiarle el suyo. Dentro de cada pestaña extra, el usuario sigue "
+            "viendo y pudiendo hacer solo lo que su rol normalmente permite ahí — esto únicamente le "
+            "abre la puerta para entrar a verla. El usuario debe cerrar sesión y volver a entrar para "
+            "que el cambio se vea reflejado."
         )
+        etiquetas_paginas = {p["key"]: f"{p['icon']} {p['title']}" for p in PAGINAS_REGISTRO}
+        paginas_extra_actuales = [k for k in (u.get("paginas_extra") or []) if k in PAGINAS_ASIGNABLES_EXTRA]
+        with st.form(f"paginas_extra_{uid}"):
+            seleccion_paginas_extra = st.multiselect(
+                "Pestañas adicionales", PAGINAS_ASIGNABLES_EXTRA, default=paginas_extra_actuales,
+                format_func=lambda k: etiquetas_paginas.get(k, k),
+            )
+            if st.form_submit_button("💾 Guardar acceso extra", use_container_width=True):
+                db.update_usuario(uid, paginas_extra=seleccion_paginas_extra)
+                st.success("Acceso extra actualizado.")
+                st.rerun()
 
-    if not vendedores_tabla:
-        st.info("No hay vendedores para mostrar.")
-    else:
-        st.markdown("###### Desglose por vendedor")
-        filas = []
-        for v in vendedores_tabla:
-            montos = registros.get(v["id"], {}).get("montos", {})
-            fila = {"Vendedor": v["nombre"]}
-            for p in PLANTAS:
-                fila[f"{prefijo_columna} {p}"] = float(montos.get(p, 0) or 0)
-            filas.append(fila)
-        df_display = pd.DataFrame(filas)
-        df_display["Total"] = df_display[columnas_planta].sum(axis=1)
-
-        # Fila de totales por columna, al final de la tabla.
-        fila_total = {"Vendedor": "Total"}
-        for c in columnas_planta:
-            fila_total[c] = df_display[c].sum()
-        fila_total["Total"] = df_display["Total"].sum()
-        df_display = pd.concat([df_display, pd.DataFrame([fila_total])], ignore_index=True)
-
-        for c in columnas_planta + ["Total"]:
-            df_display[c] = df_display[c].apply(money)
-
-        # Resaltado en magenta leve: la columna "Total" (a la derecha, por
-        # fila) y la fila "Total" (al final, por columna).
-        styler = df_display.style.set_properties(subset=["Total"], **{"background-color": MAGENTA_LEVE})
-        styler = styler.set_properties(
-            subset=pd.IndexSlice[df_display.index[-1], :],
-            **{"background-color": MAGENTA_LEVE, "font-weight": "bold"},
+        st.markdown("#### 🗑️ Eliminar usuario")
+        st.caption(
+            "Esto borra el acceso de este usuario por completo (no se puede deshacer). Los prospectos, "
+            "citas, cotizaciones, reclamos y ventas que ya haya registrado **no se eliminan**, solo dejan "
+            "de tener un vendedor asignado. Si solo quieres quitarle el acceso temporalmente, mejor usa "
+            "el interruptor de 'Usuario activo' de arriba."
         )
-        st.dataframe(styler, use_container_width=True, hide_index=True)
-
-    if user["rol"] == "admin":
-        st.divider()
-        st.markdown(f"###### ✏️ {texto_boton.replace('💾 ', '')}")
-        vendedores_activos = [v for v in todos_los_vendedores if v["activo"]]
-        if not vendedores_activos:
-            st.info("No hay vendedores activos.")
+        if uid == user["id"]:
+            st.info("No puedes eliminar tu propio usuario mientras tienes la sesión iniciada con él.")
+        elif u["rol"] == "admin" and sum(1 for x in usuarios if x["rol"] == "admin") <= 1:
+            st.info("Este es el único administrador de la plataforma, no se puede eliminar.")
         else:
-            opciones_v = {v["nombre"]: v["id"] for v in vendedores_activos}
-            vendedor_nombre_sel = st.selectbox(
-                "Vendedor", list(opciones_v.keys()), key=f"{key_prefix}_vendedor_sel",
-            )
-            vendedor_id_sel = opciones_v[vendedor_nombre_sel]
-            montos_actuales = registros.get(vendedor_id_sel, {}).get("montos", {})
-
-            with st.form(f"{key_prefix}_form"):
-                cols_input = st.columns(len(PLANTAS))
-                valores = {}
-                for col, p in zip(cols_input, PLANTAS):
-                    # La key incluye vendedor y mes para que, al cambiar de
-                    # vendedor o de mes, el campo muestre el valor correcto
-                    # (y no el que quedó escrito para otro vendedor/mes).
-                    valores[p] = col.number_input(
-                        f"{prefijo_columna} {p} (Q)", min_value=0.0, step=100.0,
-                        value=float(montos_actuales.get(p, 0) or 0),
-                        key=f"{key_prefix}_input_{p}_{vendedor_id_sel}_{anio_mes}",
-                    )
-                if st.form_submit_button(texto_boton, use_container_width=True):
-                    upsert_fn(vendedor_id_sel, anio_mes, valores)
-                    st.success(f"{texto_exito} de {vendedor_nombre_sel} actualizada para "
-                               f"{mes_sel.strftime('%B %Y').capitalize()}.")
-                    st.rerun()
-
-
-def _render_historial():
-    """Pestaña 'Historial': serie histórica año por año, mes por mes, de la
-    Venta total o la Utilidad total de la empresa (viene del Excel aparte
-    que llevaba Steven) — tabla numérica con el mismo formato de totales en
-    magenta que Ventas/Utilidades, gráfica abajo, y editable por el admin."""
-    st.caption(
-        "Serie histórica de Venta y Utilidad totales de la empresa, año por año — el dato que antes "
-        "se llevaba en un Excel aparte. Es independiente de las pestañas 'Ventas' y 'Utilidades' de "
-        "arriba (esas son el detalle del mes elegido por vendedor/planta; esto es el histórico "
-        "mensual completo, mes a mes y año a año)."
-    )
-
-    # Corrección puntual (una sola vez por sesión, no borra nada si ya está
-    # bien): la meta solo aplica a 2026 — los años anteriores no deben tener
-    # fila de meta propia.
-    if user["rol"] == "admin" and not st.session_state.get("_vpm_hist_limpieza_meta_hecha"):
-        _borrados_meta = db.limpiar_historial_metas_fuera_de_2026()
-        st.session_state["_vpm_hist_limpieza_meta_hecha"] = True
-        if _borrados_meta:
-            st.success(f"🧹 Se quitaron {_borrados_meta} fila(s) de meta que no correspondían (solo 2026 lleva meta).")
-
-    categoria_hist = st.selectbox(
-        "Categoría", HISTORIAL_CATEGORIAS, format_func=lambda c: HISTORIAL_CATEGORIA_LABEL.get(c, c),
-        key="vpm_hist_categoria",
-    )
-    registros = db.get_historial_datos(categoria_hist)
-    anios_disponibles = sorted({int(r["anio"]) for r in registros})
-
-    st.markdown("###### Tabla")
-    if not registros:
-        st.info("Todavía no hay datos de historial guardados para esta categoría.")
-    else:
-        filas = []
-        for r in sorted(registros, key=lambda r: (int(r["anio"]), bool(r.get("meta")))):
-            valores = r.get("valores") or {}
-            # "Año" como texto (no número) para que la columna no mezcle
-            # tipos con la fila "Total" de más abajo (evita una advertencia
-            # de Streamlit al convertir la tabla).
-            fila = {"Año": str(int(r["anio"])), "Tipo": "🎯 Meta" if r.get("meta") else "Real"}
-            for m in DG_MESES:
-                v = valores.get(m)
-                fila[MESES_LABEL[m]] = money(v) if v is not None else "—"
-            fila["Total"] = money(sum(float(v or 0) for v in valores.values()))
-            filas.append(fila)
-        df_hist = pd.DataFrame(filas)
-
-        # Fila de totales al final, sumando solo los años "Real" (no mezcla
-        # las filas de meta) — mismo formato que Ventas/Utilidades arriba.
-        suma_meses = {m: 0.0 for m in DG_MESES}
-        for r in registros:
-            if r.get("meta"):
-                continue
-            valores = r.get("valores") or {}
-            for m in DG_MESES:
-                suma_meses[m] += float(valores.get(m, 0) or 0)
-        fila_total = {"Año": "Total", "Tipo": ""}
-        for m in DG_MESES:
-            fila_total[MESES_LABEL[m]] = money(suma_meses[m])
-        fila_total["Total"] = money(sum(suma_meses.values()))
-        df_hist = pd.concat([df_hist, pd.DataFrame([fila_total])], ignore_index=True)
-
-        styler = df_hist.style.set_properties(subset=["Total"], **{"background-color": MAGENTA_LEVE})
-        styler = styler.set_properties(
-            subset=pd.IndexSlice[df_hist.index[-1], :],
-            **{"background-color": MAGENTA_LEVE, "font-weight": "bold"},
-        )
-        st.dataframe(styler, use_container_width=True, hide_index=True)
-
-    st.markdown("###### Gráfica")
-    registros_grafica = [r for r in registros if (r.get("valores") or {})]
-    if not registros_grafica:
-        st.info("No hay datos para mostrar en la gráfica todavía.")
-    else:
-        anios_orden = sorted(anios_disponibles)
-        color_por_anio = {a: CATEGORICAL[i % len(CATEGORICAL)] for i, a in enumerate(anios_orden)}
-        fig = go.Figure()
-        for r in sorted(registros_grafica, key=lambda r: (int(r["anio"]), bool(r.get("meta")))):
-            anio = int(r["anio"])
-            valores = r.get("valores") or {}
-            meses_presentes = [m for m in DG_MESES if valores.get(m) is not None]
-            if not meses_presentes:
-                continue
-            es_meta = bool(r.get("meta"))
-            nombre = f"{anio}" + (" (meta)" if es_meta else "")
-            fig.add_trace(go.Scatter(
-                x=[MESES_LABEL[m] for m in meses_presentes],
-                y=[valores[m] for m in meses_presentes],
-                mode="lines+markers",
-                name=nombre,
-                line=dict(color=color_por_anio.get(anio, CATEGORICAL[0]), dash="dot" if es_meta else "solid"),
-            ))
-        st.plotly_chart(
-            base_layout(fig, title=f"{HISTORIAL_CATEGORIA_LABEL.get(categoria_hist, categoria_hist)} histórica — por año", height=380),
-            use_container_width=True,
-        )
-
-    if user["rol"] == "admin":
-        st.divider()
-        st.markdown("###### ✏️ Agregar o corregir un año")
-        col_anio, col_meta = st.columns(2)
-        anio_edit = col_anio.number_input(
-            "Año", min_value=2015, max_value=2035,
-            value=anios_disponibles[-1] if anios_disponibles else date.today().year,
-            step=1, key="vpm_hist_anio_edit",
-        )
-        meta_edit = col_meta.checkbox("Es meta (objetivo), no dato real", key="vpm_hist_meta_edit")
-
-        registro_actual = next(
-            (
-                r for r in registros
-                if int(r["anio"]) == int(anio_edit) and bool(r.get("meta")) == meta_edit
-            ),
-            None,
-        )
-        valores_actuales = (registro_actual or {}).get("valores") or {}
-
-        with st.form("vpm_hist_form"):
-            nuevos_valores = {}
-            cols = st.columns(4)
-            for i, m in enumerate(DG_MESES):
-                nuevos_valores[m] = cols[i % 4].number_input(
-                    MESES_LABEL[m], min_value=0.0, step=100.0,
-                    value=float(valores_actuales.get(m, 0) or 0),
-                    key=f"vpm_hist_input_{m}_{categoria_hist}_{anio_edit}_{meta_edit}",
+            with st.form(f"eliminar_usuario_{uid}"):
+                confirmar = st.text_input(
+                    f"Escribe el usuario **{u['username']}** para confirmar que deseas eliminarlo"
                 )
-            colf1, colf2 = st.columns(2)
-            guardar = colf1.form_submit_button("💾 Guardar", use_container_width=True)
-            eliminar = colf2.form_submit_button(
-                "🗑️ Eliminar esta fila", use_container_width=True,
-                disabled=registro_actual is None,
-                help=None if registro_actual else "No hay nada guardado para este año/tipo todavía.",
-            )
-            if guardar:
-                db.upsert_historial_dato(categoria_hist, int(anio_edit), meta_edit, nuevos_valores)
-                st.success(
-                    f"{HISTORIAL_CATEGORIA_LABEL.get(categoria_hist, categoria_hist)} "
-                    f"{'meta' if meta_edit else 'real'} de {int(anio_edit)} actualizada."
+                if st.form_submit_button("Eliminar definitivamente", use_container_width=True):
+                    if confirmar.strip() != u["username"]:
+                        st.error("El texto no coincide con el nombre de usuario. No se eliminó nada.")
+                    else:
+                        db.delete_usuario(uid)
+                        st.success(f"Usuario '{u['username']}' eliminado.")
+                        st.rerun()
+
+with tab_nueva:
+    with st.form("nuevo_usuario_form", clear_on_submit=True):
+        nombre = st.text_input("Nombre completo")
+        username = st.text_input("Usuario (para iniciar sesión)")
+        password = st.text_input("Contraseña", type="password")
+        rol = st.selectbox("Rol", ROLES, format_func=lambda r: ROLES_LABEL.get(r, r))
+        tienda_nueva = st.selectbox(
+            "Tienda (solo aplica a Anfitriona, Jefe de tienda o Asesor de ventas)",
+            ["—"] + TICKET_TIENDAS,
+        )
+        etiquetas_paginas_nuevo = {p["key"]: f"{p['icon']} {p['title']}" for p in PAGINAS_REGISTRO}
+        paginas_extra_nuevo = st.multiselect(
+            "Acceso extra a otras pestañas (opcional, además de lo que ya da el rol elegido)",
+            PAGINAS_ASIGNABLES_EXTRA, format_func=lambda k: etiquetas_paginas_nuevo.get(k, k),
+        )
+
+        if st.form_submit_button("Crear usuario", use_container_width=True):
+            if not nombre.strip() or not username.strip() or len(password) < 4:
+                st.error("Completa nombre, usuario y una contraseña de al menos 4 caracteres.")
+            elif db.get_user_by_username(username.strip().lower()):
+                st.error("Ese nombre de usuario ya existe.")
+            elif rol in ROLES_DE_TIENDA and tienda_nueva == "—":
+                st.error("Este rol necesita una tienda asignada.")
+            else:
+                db.create_usuario(
+                    nombre.strip(), username.strip().lower(), password, rol,
+                    tienda=None if tienda_nueva == "—" else tienda_nueva,
+                    paginas_extra=paginas_extra_nuevo,
                 )
+                st.success(f"Usuario '{username}' creado como {ROLES_LABEL.get(rol, rol)}.")
                 st.rerun()
-            if eliminar:
-                db.delete_historial_dato(categoria_hist, int(anio_edit), meta_edit)
-                st.success(
-                    f"Se eliminó la fila {'meta' if meta_edit else 'real'} de "
-                    f"{HISTORIAL_CATEGORIA_LABEL.get(categoria_hist, categoria_hist).lower()} — {int(anio_edit)}."
-                )
-                st.rerun()
-    else:
-        st.caption("Tu rol es de solo vista para el historial.")
 
 
-tab_ventas, tab_utilidades, tab_proyeccion, tab_historial = st.tabs(
-    ["💰 Ventas", "📈 Utilidades", "🎯 Proyección", "📜 Historial"],
-)
+def _slug_simple(texto):
+    """Quita acentos/símbolos y deja solo minúsculas y números — para armar
+    nombres de usuario a partir de un nombre completo."""
+    texto = unicodedata.normalize("NFKD", texto or "").encode("ascii", "ignore").decode("ascii")
+    return re.sub(r"[^a-z0-9]", "", texto.lower())
 
-with tab_ventas:
-    registros_ventas = db.get_ventas_mensuales_planta(anio_mes)
-    _render_seccion(
-        "Venta", registros_ventas, "vpm",
-        db.upsert_venta_mensual_planta, "💾 Guardar venta mensual", "Venta mensual",
-    )
 
-with tab_utilidades:
-    registros_utilidades = db.get_utilidades_mensuales_planta(anio_mes)
-    _render_seccion(
-        "Utilidad", registros_utilidades, "upm",
-        db.upsert_utilidad_mensual_planta, "💾 Guardar utilidad mensual", "Utilidad mensual",
-    )
+def _generar_username(nombre, reservados):
+    """Genera un nombre de usuario nuevo que no esté en 'reservados': primero
+    intenta solo el primer nombre; si ya está reservado, agrega la inicial
+    del primer apellido; si sigue chocando, agrega un número. Reserva el
+    resultado antes de devolverlo."""
+    partes = (nombre or "").strip().split()
+    base = _slug_simple(partes[0]) if partes else "usuario"
+    candidato = base or "usuario"
+    if candidato in reservados and len(partes) > 1:
+        extra = _slug_simple(partes[1])[:1]
+        if extra:
+            candidato = base + extra
+    original = candidato
+    n = 1
+    while candidato in reservados:
+        n += 1
+        candidato = f"{original}{n}"
+    reservados.add(candidato)
+    return candidato
 
-with tab_proyeccion:
+
+# Roles de PERSONAL_TIENDA_INICIAL que además necesitan usuario/contraseña
+# para iniciar sesión (el resto — asesor_ventas / "Diseñador", acabados,
+# express — solo queda como nombre asignado a su tienda, sin acceso).
+ROLES_CON_ACCESO = {"jefe_tienda", "subjefe_tienda", "anfitriona", "cajero"}
+
+
+def _construir_plan_personal():
+    """Arma, una sola vez por ejecución, el plan de carga: TODAS las personas
+    de PERSONAL_TIENDA_INICIAL quedan como nombre asignado a su tienda (para
+    poder elegirlas como quien elabora un pedido); además, solo las que
+    tienen un rol de ROLES_CON_ACCESO reciben usuario/contraseña. Comparar
+    por nombre + tienda (y no solo por el usuario generado) contra lo que ya
+    existe en cada colección es lo que hace seguro volver a presionar el
+    botón: a quien ya esté cargado no se le vuelve a crear ni se le cambia
+    nada."""
+    todos_usuarios = db.list_usuarios()
+    reservados = {u["username"] for u in todos_usuarios}
+    todo_personal = db.list_personal_tiendas(solo_activos=False)
+    plan = []
+    for p in PERSONAL_TIENDA_INICIAL:
+        necesita_acceso = p["rol"] in ROLES_CON_ACCESO
+        ya_en_roster = any(
+            x.get("tienda") == p["tienda"]
+            and (x.get("nombre") or "").strip().lower() == p["nombre"].strip().lower()
+            for x in todo_personal
+        )
+        item = {**p, "ya_en_roster": ya_en_roster, "necesita_acceso": necesita_acceso}
+        if necesita_acceso:
+            existente_usuario = next(
+                (u for u in todos_usuarios if u.get("tienda") == p["tienda"]
+                 and (u.get("nombre") or "").strip().lower() == p["nombre"].strip().lower()),
+                None,
+            )
+            if existente_usuario:
+                item["username"] = existente_usuario["username"]
+                item["ya_existe_usuario"] = True
+            else:
+                item["username"] = _generar_username(p["nombre"], reservados)
+                item["ya_existe_usuario"] = False
+        else:
+            item["username"] = None
+            item["ya_existe_usuario"] = False
+        plan.append(item)
+    return plan
+
+
+with tab_carga:
     st.caption(
-        "Proyección de venta del mes, por vendedor y por planta — misma estructura que la pestaña "
-        "'Ventas', pero es la meta/proyección, no lo que realmente se vendió. Se guarda aparte, así "
-        "que nunca se mezcla con los datos reales."
+        "Personal de tienda que ya nos diste, para dejarlo asignado a su tienda y así poder "
+        "elegir quién elabora cada pedido en el Sistema de Tickets — Tiendas. Nota: en tu lista "
+        "original, el puesto 'Diseñador' corresponde al rol **Asesor de ventas** del sistema "
+        "(no se confunde con los diseñadores del tablero de Diseño Gráfico, que son otra cosa "
+        "aparte)."
     )
-    registros_proyeccion = db.get_proyecciones_mensuales_planta(anio_mes)
-    _render_seccion(
-        "Proyección", registros_proyeccion, "ppm",
-        db.upsert_proyeccion_mensual_planta, "💾 Guardar proyección mensual", "Proyección mensual",
+    st.caption(
+        "Solo Anfitriona, Jefe de tienda, Sub jefe de tienda y Cajero reciben usuario y "
+        "contraseña para iniciar sesión (la contraseña inicial es la misma para todos los de "
+        "una misma tienda, y se puede cambiar después desde 'Gestionar usuario' en la pestaña "
+        "'Usuarios'). El resto del personal (asesores de ventas / 'Diseñador', acabados, "
+        "express) queda solo como nombre asignado a su tienda, sin usuario. Es seguro presionar "
+        "el botón más de una vez: a quien ya esté cargado (se compara por nombre + tienda) no "
+        "se le vuelve a cargar ni se le cambia nada."
     )
 
-with tab_historial:
-    _render_historial()
+    plan_personal = _construir_plan_personal()
+    filas_preview = [{
+        "Tienda": p["tienda"], "Nombre": p["nombre"], "Puesto": p["puesto_original"],
+        "Acceso al sistema": "Sí" if p["necesita_acceso"] else "No",
+        "Usuario": p["username"] or "—",
+        "Contraseña inicial": (
+            f"{TICKET_TIENDA_SLUG.get(p['tienda'], p['tienda'].lower())}2026"
+            if p["necesita_acceso"] else "—"
+        ),
+        "Estado": (
+            "Ya está" if p["ya_en_roster"] and (not p["necesita_acceso"] or p["ya_existe_usuario"])
+            else "Se creará"
+        ),
+    } for p in plan_personal]
+    df_preview = pd.DataFrame(filas_preview)
+    st.dataframe(df_preview, use_container_width=True, hide_index=True)
+    pendientes = sum(1 for f in filas_preview if f["Estado"] == "Se creará")
+    st.caption(f"{pendientes} persona(s) por cargar, de {len(plan_personal)} en total.")
+
+    if pendientes > 0 and st.button("👥 Cargar el personal pendiente", use_container_width=True):
+        creados_roster = 0
+        creados_usuarios = 0
+        for p in plan_personal:
+            if not p["ya_en_roster"]:
+                db.create_personal_tienda(p["nombre"], p["tienda"], p["puesto_original"])
+                creados_roster += 1
+            if p["necesita_acceso"] and not p["ya_existe_usuario"]:
+                password_p = f"{TICKET_TIENDA_SLUG.get(p['tienda'], p['tienda'].lower())}2026"
+                db.create_usuario(p["nombre"], p["username"], password_p, p["rol"], tienda=p["tienda"])
+                creados_usuarios += 1
+        st.success(
+            f"Se agregaron {creados_roster} persona(s) a la lista de personal de tienda y se "
+            f"crearon {creados_usuarios} usuario(s) nuevo(s) con acceso al sistema."
+        )
+        st.rerun()
+
+    download_excel_button(
+        df_preview, "personal_tiendas_credenciales.xlsx", key="admin_descargar_personal_credenciales",
+    )
+
+    # -----------------------------------------------------------------
+    # Limpieza: si esta lista se cargó antes (con una versión anterior de
+    # esta pestaña) creando usuario a TODOS, aquí se puede detectar y
+    # quitarle el acceso a quienes ya no deberían tenerlo, sin perder su
+    # nombre de la lista de personal.
+    # -----------------------------------------------------------------
+    nombres_sin_acceso = {
+        (p["nombre"].strip().lower(), p["tienda"])
+        for p in PERSONAL_TIENDA_INICIAL if p["rol"] not in ROLES_CON_ACCESO
+    }
+    usuarios_de_mas = [
+        u for u in db.list_usuarios()
+        if ((u.get("nombre") or "").strip().lower(), u.get("tienda")) in nombres_sin_acceso
+    ]
+    if usuarios_de_mas:
+        with st.expander(
+            f"🧹 Se encontraron {len(usuarios_de_mas)} usuario(s) que ya no deberían tener acceso"
+        ):
+            st.caption(
+                "Estas personas se habían creado como usuario, pero según la lista más reciente "
+                "solo necesitan quedar como nombre asignado a su tienda (sin iniciar sesión). "
+                "Puedes quitarles el acceso aquí — su nombre sigue disponible para asignarles "
+                "pedidos, solo se elimina su usuario y contraseña."
+            )
+            df_demas = pd.DataFrame([{
+                "Tienda": u.get("tienda") or "—", "Nombre": u["nombre"], "Usuario": u["username"],
+                "Rol actual": ROLES_LABEL.get(u["rol"], u["rol"]),
+            } for u in usuarios_de_mas])
+            st.dataframe(df_demas, use_container_width=True, hide_index=True)
+            if st.button("🗑️ Quitar el acceso a estas personas", use_container_width=True):
+                for u in usuarios_de_mas:
+                    db.delete_usuario(u["id"])
+                st.success(f"Se quitó el acceso de {len(usuarios_de_mas)} persona(s).")
+                st.rerun()
