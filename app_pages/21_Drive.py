@@ -18,11 +18,14 @@ sidebar_user_box()
 puede_editar = auth.puede_editar_drive()
 
 # Limpieza automática de registros duplicados (por un problema ya corregido
-# de la carga inicial — ver database.eliminar_duplicados_dg_datos) — se hace
-# como mucho una vez por sesión, y no borra nada si ya está todo limpio.
-if puede_editar and not st.session_state.get("_drive_dedupe_hecho"):
+# de la carga inicial — ver database.eliminar_duplicados_dg_datos). Se
+# revisa en CADA carga de esta página (es una revisión rápida y no borra
+# nada si ya está todo limpio) — antes se hacía como mucho una vez por
+# sesión, pero esa bandera podía quedar "usada" de una sesión larga del
+# navegador y dejar duplicados nuevos sin limpiar hasta abrir una sesión
+# totalmente nueva, así que se quitó esa limitación.
+if puede_editar:
     _borrados = db.eliminar_duplicados_dg_datos() + db.eliminar_duplicados_krispy_datos()
-    st.session_state["_drive_dedupe_hecho"] = True
     if _borrados:
         st.success(f"🧹 Se limpiaron {_borrados} registro(s) duplicado(s) que habían quedado de una carga anterior.")
 
