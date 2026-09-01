@@ -2454,3 +2454,67 @@ def enviar_correo_aviso(destinatarios, asunto, cuerpo) -> bool:
         print("ERROR AL MANDAR CORREO DE AVISO:", e)
         traceback.print_exc()
         return False
+
+
+# ---------------------------------------------------------------------------
+# NPS (Net Promoter Score): encuesta pública de servicio al cliente, con
+# check-in por QR — una por tienda (ver config.NPS_TIENDA_SLUG). La encuesta
+# la llena el cliente desde su celular, sin iniciar sesión (ver
+# public_nps.py); la parametrización de las preguntas y el dashboard de
+# KPIs se consultan/editan desde la pestaña NPS (app_pages/26_NPS.py).
+# ---------------------------------------------------------------------------
+_NPS_CONFIG_DOC_ID = "preguntas"
+
+
+def get_nps_preguntas():
+    """Retorna la lista de preguntas configuradas — [{"id","tipo","texto",
+    "opciones"?}, ...]. Si todavía no se ha guardado nada (parametrización
+    nunca tocada), retorna el valor de fábrica (config.NPS_PREGUNTAS_INICIAL)
+    sin necesidad de sembrarlo antes en la base de datos."""
+    from config import NPS_PREGUNTAS_INICIAL
+    client = get_client()
+    snap = client.collection("nps_config").document(_NPS_CONFIG_DOC_ID).get()
+    data = _doc_to_dict(snap) if snap.exists else None
+    if data and data.get("preguntas"):
+        return data["preguntas"]
+    return NPS_PREGUNTAS_INICIAL
+
+
+def set_nps_preguntas(preguntas):
+    """Guarda la lista completa de preguntas configuradas (reemplaza todo lo
+    que hubiera guardado antes) — preguntas: lista de dicts con la misma
+    forma que config.NPS_PREGUNTAS_INICIAL."""
+    client = get_client()
+    client.collection("nps_config").document(_NPS_CONFIG_DOC_ID).set({
+        "preguntas": preguntas, "actualizado_en": datetime.now().isoformat(timespec="seconds"),
+    })
+
+
+def create_nps_respuesta(tienda, respuestas):
+    """Guarda una respuesta de la encuesta pública. 'respuestas' es un dict
+    {pregunta_id: valor} — para una pregunta 'carita', valor es uno de
+    'malo'/'regular'/'excelente' (ver config.NPS_CARITAS); para 'opcion', el
+    texto de la opción elegida; para 'texto', el comentario libre (puede
+    venir vacío/None, esa pregunta es opcional)."""
+    client = get_client()
+    client.collection("nps_respuestas").document().set({
+        "tienda": tienda, "respuestas": respuestas,
+        "creado_en": datetime.now().isoformat(timespec="seconds"),
+    })
+
+
+def list_nps_respuestas(tienda=None, desde=None, hasta=None):
+    """Todas las respuestas de la encuesta NPS, más nuevas primero,
+    opcionalmente filtradas por tienda y/o por rango de fechas (desde/hasta
+    son date, ambos límites inclusive, comparados contra la fecha de
+    'creado_en')."""
+    client = get_client()
+    rows = [_doc_to_dict(s) for s in client.collection("nps_respuestas").stream()]
+    if tienda:
+        rows = [r for r in rows if r.get("tienda") == tienda]
+    if desde:
+        rows = [r for r in rows if (r.get("creado_en") or "")[:10] >= str(desde)]
+    if hasta:
+        rows = [r for r in rows if (r.get("creado_en") or "")[:10] <= str(hasta)]
+    rows.sort(key=lambda r: r.get("creado_en") or "", reverse=True)
+    return rows
