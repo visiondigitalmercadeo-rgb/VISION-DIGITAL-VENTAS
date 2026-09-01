@@ -1110,26 +1110,6 @@ def delete_pedido(pedido_id):
     get_client().collection("pedidos").document(pedido_id).delete()
 
 
-def limpiar_pedidos_entregados_vencidos():
-    """Borra los pedidos que ya están marcados como 'Entregado' y cuya fecha
-    de entrega ya pasó (es decir, ya no son de 'hoy' ni de 'mañana') — así la
-    columna de Entregados de Logística no va acumulando pedidos día tras
-    día. Se llama en cada carga de la página (barato, porque solo consulta
-    los que están en 'Entregado', e idempotente), en vez de depender de que
-    algo corra justo a medianoche: en la práctica un pedido entregado
-    'desaparece' de la columna la primera vez que alguien abre la página al
-    día siguiente. Devuelve cuántos se borraron."""
-    hoy_str = str(date.today())
-    client = get_client()
-    borrados = 0
-    for snap in client.collection("pedidos").where("estado", "==", "Entregado").stream():
-        data = snap.to_dict() or {}
-        if (data.get("fecha") or "") < hoy_str:
-            client.collection("pedidos").document(snap.id).delete()
-            borrados += 1
-    return borrados
-
-
 # ---------------------------------------------------------------------------
 # Rutas extra de Logística: Compras, Trámites y Papelería — versión sencilla
 # de "pedido" (sin cliente/zona/franja/productos), usada para mandados del
