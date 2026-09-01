@@ -209,3 +209,66 @@ with tab_param:
                     db.set_nps_preguntas(nuevas_preguntas)
                     st.success("Preguntas actualizadas.")
                     st.rerun()
+
+        st.divider()
+        st.markdown("#### 🗑️ Borrar respuestas")
+        st.caption(
+            "Úsalo para borrar respuestas de prueba. Puedes borrar solo las de una tienda y/o un "
+            "rango de fechas, o borrar TODAS las respuestas guardadas. Esta acción no se puede "
+            "deshacer."
+        )
+        total_actual = len(db.list_nps_respuestas())
+        st.write(f"Respuestas guardadas actualmente: **{total_actual}**")
+
+        modo_borrado = st.radio(
+            "¿Qué quieres borrar?",
+            ["Solo algunas (filtrar por tienda y/o fecha)", "TODAS las respuestas"],
+            key="nps_borrar_modo",
+        )
+
+        if modo_borrado == "TODAS las respuestas":
+            with st.expander("🗑️ Borrar TODAS las respuestas de NPS"):
+                st.warning(
+                    f"Esto va a borrar las **{total_actual}** respuestas guardadas hasta ahora, "
+                    "de todas las tiendas. No se puede deshacer."
+                )
+                confirmar_todas = st.checkbox(
+                    "Confirmo que quiero borrar TODAS las respuestas", key="nps_conf_borrar_todas",
+                )
+                if st.button(
+                    "Borrar TODAS las respuestas", key="nps_btn_borrar_todas",
+                    disabled=not confirmar_todas,
+                ):
+                    n = db.delete_nps_respuestas()
+                    st.success(f"Se borraron {n} respuesta(s).")
+                    st.rerun()
+        else:
+            with st.expander("🗑️ Borrar respuestas filtradas"):
+                bcol1, bcol2, bcol3 = st.columns(3)
+                tienda_borrar = bcol1.selectbox(
+                    "Tienda", ["Todas"] + NPS_TIENDAS, key="nps_borrar_tienda",
+                )
+                desde_borrar = bcol2.date_input(
+                    "Desde", value=None, key="nps_borrar_desde",
+                )
+                hasta_borrar = bcol3.date_input(
+                    "Hasta", value=None, key="nps_borrar_hasta",
+                )
+                cuantas = len(db.list_nps_respuestas(
+                    tienda=None if tienda_borrar == "Todas" else tienda_borrar,
+                    desde=desde_borrar, hasta=hasta_borrar,
+                ))
+                st.warning(f"Con este filtro se van a borrar **{cuantas}** respuesta(s). No se puede deshacer.")
+                confirmar_filtro = st.checkbox(
+                    "Confirmo que quiero borrar estas respuestas", key="nps_conf_borrar_filtro",
+                )
+                if st.button(
+                    "Borrar respuestas filtradas", key="nps_btn_borrar_filtro",
+                    disabled=not confirmar_filtro or cuantas == 0,
+                ):
+                    n = db.delete_nps_respuestas(
+                        tienda=None if tienda_borrar == "Todas" else tienda_borrar,
+                        desde=desde_borrar, hasta=hasta_borrar,
+                    )
+                    st.success(f"Se borraron {n} respuesta(s).")
+                    st.rerun()
