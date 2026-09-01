@@ -123,6 +123,7 @@ PAGINAS_REGISTRO = [
     {"key": "documentos", "path": "app_pages/23_Documentos.py", "title": "Documentos", "icon": "📄"},
     {"key": "colorado", "path": "app_pages/24_Colorado.py", "title": "Colorado", "icon": "🖨️"},
     {"key": "galaxy", "path": "app_pages/25_Galaxy.py", "title": "Galaxy", "icon": "🖨️"},
+    {"key": "nps", "path": "app_pages/26_NPS.py", "title": "NPS", "icon": "😊"},
     {
         "key": "generales", "path": "app_pages/8_Prospectos_Generales.py",
         "title": "Prospectos generales (todos)", "icon": "🌐",
@@ -408,6 +409,53 @@ TICKET_SLUG_TIENDA = {v: k for k, v in TICKET_TIENDA_SLUG.items()}
 # enlace de la pantalla "Ahora atendiendo". Si algún día cambia el dominio de
 # Streamlit Cloud, solo hay que actualizar esto.
 APP_URL = "https://vision-digital-ventas.streamlit.app"
+
+# ---------------------------------------------------------------------------
+# NPS (Net Promoter Score): encuesta pública de servicio al cliente, con
+# check-in por QR — un código por tienda, mismo concepto que el Sistema de
+# Tickets — Tiendas de arriba (por eso se reutilizan las mismas 4 tiendas y
+# el mismo slug corto para el enlace del QR).
+# ---------------------------------------------------------------------------
+NPS_TIENDAS = TICKET_TIENDAS
+NPS_TIENDA_SLUG = TICKET_TIENDA_SLUG
+NPS_SLUG_TIENDA = TICKET_SLUG_TIENDA
+
+# Las 3 "caritas" con las que el cliente responde una pregunta de tipo
+# 'carita' — simple a propósito (nada de escalas de 0 a 10 en el celular del
+# cliente). "categoria_nps" es a qué categoría del cálculo formal de NPS
+# corresponde cada una (ver database.calcular_nps: %promotores - %detractores).
+NPS_CARITAS = [
+    {"valor": "malo", "emoji": "🔴🙁", "label": "Malo", "color": STATUS["critical"], "categoria_nps": "detractor"},
+    {"valor": "regular", "emoji": "🟡😐", "label": "Regular", "color": STATUS["warning"], "categoria_nps": "neutro"},
+    {"valor": "excelente", "emoji": "🟢🙂", "label": "Excelente", "color": STATUS["good"], "categoria_nps": "promotor"},
+]
+
+# Las 4 preguntas de la encuesta. El texto (y, en la de opción múltiple, las
+# opciones) se pueden editar desde NPS → "⚙️ Parametrización" sin tocar
+# código — esto es solo el valor de fábrica, la primera vez que se consulta
+# y todavía no se ha guardado nada (ver database.get_nps_preguntas). El
+# "tipo" de cada pregunta NO se puede cambiar desde la plataforma: 'carita'
+# = las 3 caritas de arriba, 'opcion' = opción múltiple (una sola respuesta),
+# 'texto' = texto libre opcional.
+NPS_PREGUNTAS_INICIAL = [
+    {
+        "id": "servicio", "tipo": "carita",
+        "texto": "¿Cómo estuvo el servicio dentro de Visión Digital?",
+    },
+    {
+        "id": "medio_publicidad", "tipo": "opcion",
+        "texto": "¿Por qué medio de publicidad ha visto Visión Digital?",
+        "opciones": ["Facebook", "Instagram", "TikTok", "Otro"],
+    },
+    {
+        "id": "recomendaria", "tipo": "carita",
+        "texto": "¿Recomendarías Visión Digital a un amigo o familiar?",
+    },
+    {
+        "id": "mejora", "tipo": "texto",
+        "texto": "¿Alguna mejora que nos quieras contar? (opcional)",
+    },
+]
 
 # ---------------------------------------------------------------------------
 # Mantenimiento de Tiendas: tablero de solicitudes estilo Trello, mismo
