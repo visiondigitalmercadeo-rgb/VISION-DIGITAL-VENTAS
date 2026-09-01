@@ -95,6 +95,23 @@ with tab_lista:
                         st.success("Usuario actualizado.")
                         st.rerun()
 
+        if u["rol"] == "vendedor":
+            st.markdown("#### 📅 Visibilidad en 'Ventas por mes'")
+            oculto_vpm_actual = bool(u.get("oculto_ventas_mes"))
+            oculto_vpm_nuevo = st.toggle(
+                "Ocultar en la pestaña 'Ventas por mes'", value=oculto_vpm_actual, key=f"toggle_oculto_vpm_{uid}",
+                help="Si lo activas, este vendedor deja de aparecer en los totales, la tabla y el "
+                     "formulario de captura de 'Ventas por mes' (en sus tres pestañas: Ventas, "
+                     "Utilidades y Proyección) — pero sigue activo en el resto de la plataforma: puede "
+                     "iniciar sesión y se le pueden seguir asignando prospectos, ventas diarias, etc. "
+                     "normalmente. Sus montos ya guardados en 'Ventas por mes' no se borran, solo dejan "
+                     "de mostrarse mientras esté oculto.",
+            )
+            if oculto_vpm_nuevo != oculto_vpm_actual:
+                db.update_usuario(uid, oculto_ventas_mes=oculto_vpm_nuevo)
+                st.success("Visibilidad en 'Ventas por mes' actualizada.")
+                st.rerun()
+
         st.markdown("#### 🔓 Acceso extra a otras pestañas")
         st.caption(
             "Además de las pestañas que ya le da su rol, puedes darle a este usuario acceso a otras "
