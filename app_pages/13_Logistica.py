@@ -19,11 +19,6 @@ sidebar_user_box()
 hoy = date.today()
 manana = hoy + timedelta(days=1)
 
-# Limpieza automática de la columna "Entregados": borra los pedidos ya
-# entregados cuya fecha de entrega ya pasó, para que esa columna no vaya
-# acumulando pedidos día tras día (ver database.limpiar_pedidos_entregados_vencidos).
-db.limpiar_pedidos_entregados_vencidos()
-
 st.title("🚚 Logística — Ruta de reparto")
 st.caption(
     "El jefe de logística ingresa los pedidos AM/PM de cada día y asigna un repartidor. "
@@ -485,9 +480,11 @@ with tab_vista:
     # Los pedidos ya entregados se muestran aparte, en su propia columna
     # "Entregados", en vez de seguir mezclados con los pendientes/en ruta de
     # su franja — así las columnas de arriba solo muestran lo que todavía
-    # falta por resolver. (La limpieza automática de esta columna, para que
-    # no acumule entregados de días anteriores, corre arriba al cargar la
-    # página — ver database.limpiar_pedidos_entregados_vencidos.)
+    # falta por resolver. Como hoy_am/hoy_pm/manana_am se consultan por
+    # fecha exacta (hoy/mañana), un pedido entregado sale solo de esta
+    # columna en cuanto deja de ser "hoy" o "mañana" — sin necesidad de
+    # borrar nada, así se conserva completo en el Historial (pestaña
+    # 📜 Historial, con buscador) para consultarlo más adelante.
     entregados = [p for p in (hoy_am + hoy_pm + manana_am) if p.get("estado") == "Entregado"]
     hoy_am = [p for p in hoy_am if p.get("estado") != "Entregado"]
     hoy_pm = [p for p in hoy_pm if p.get("estado") != "Entregado"]
@@ -645,9 +642,65 @@ with tab_historial:
     entregados = [p for p in pedidos_hist if p.get("estado") == "Entregado"]
     entregados.sort(key=lambda p: p.get("fecha") or "", reverse=True)
 
+    st.markdown("##### 🔎 Buscar un envío")
+    busqueda_hist = st.text_input(
+        "Buscar por cliente, N° de envío, N° de orden/factura, área/departamento o repartidor",
+        key="log_hist_buscar", placeholder="Ej: Farmacia San Juan, 214, F-00123...",
+    )
+    if busqueda_hist.strip():
+        _termino_hist = busqueda_hist.strip().lower()
+        entregados = [
+            p for p in entregados
+            if _termino_hist in (p.get("cliente") or "").lower()
+            or _termino_hist in str(p.get("numero_envio") or "").lower()
+            or _termino_hist in (p.get("numero_orden") or "").lower()
+            or _termino_hist in (p.get("direccion") or "").lower()
+            or _termino_hist in db.nombre_vendedor(p.get("repartidor_id"), todos_usuarios).lower()
+        ]
+
     if not entregados:
-        st.caption("Todavía no hay pedidos entregados con este filtro.")
+        if busqueda_hist.strip():
+            st.caption("No se encontró ningún envío entregado con ese término de búsqueda.")
+        else:
+            st.caption("Todavía no hay pedidos entregados con este filtro.")
     else:
+        # ------------------------------------------------------------------
+        # Detalle de un envío puntual — nota de envío (PDF) y comprobante de
+        # entrega (foto + comentario, si el repartidor lo dejó).
+        # ------------------------------------------------------------------
+        opciones_hist_sel = {
+            f"[{p.get('fecha') or '—'}] {p.get('cliente') or 'Sin cliente'} · N° envío {p.get('numero_envio') or '—'}": p["id"]
+            for p in entregados
+        }
+        elegido_hist_sel = st.selectbox(
+            "Ver el detalle de un envío (nota de envío y comprobante de entrega)",
+            ["—"] + list(opciones_hist_sel.keys()), key="log_hist_seleccion",
+        )
+        if elegido_hist_sel != "—":
+            p_sel = db.get_pedido(opciones_hist_sel[elegido_hist_sel])
+            if p_sel:
+                with st.container(border=True):
+                    st.markdown(f"**{p_sel.get('cliente') or 'Sin cliente'}**")
+                    st.caption(f"📍 {p_sel.get('direccion') or '—'} · {p_sel.get('zona') or '—'}")
+                    if p_sel.get("atencion_a"):
+                        st.caption(f"🙋 Atención a: {p_sel['atencion_a']}")
+                    if p_sel.get("producto"):
+                        st.caption(f"📦 {p_sel['producto']}")
+                    if p_sel.get("numero_orden"):
+                        st.caption(f"🧾 Orden/factura: {p_sel['numero_orden']}")
+                    st.caption(f"Vendedor: {db.nombre_vendedor(p_sel.get('vendedor_id'), lookup_vendedores)}")
+                    st.caption(f"🚚 Repartidor: {db.nombre_vendedor(p_sel.get('repartidor_id'), todos_usuarios)}")
+                    st.caption(f"Fecha/franja de entrega: {p_sel.get('fecha') or '—'} {p_sel.get('franja') or ''}")
+                    if p_sel.get("notas"):
+                        st.caption(f"📝 {p_sel['notas']}")
+                    _mostrar_foto_entrega(p_sel)
+                    st.download_button(
+                        "📄 Descargar nota de envío (PDF)", data=pedido_pdf_bytes(p_sel),
+                        file_name=f"envio_{p_sel.get('numero_envio') or p_sel['id']}.pdf", mime="application/pdf",
+                        use_container_width=True, key=f"log_hist_pdf_{p_sel['id']}",
+                    )
+
+        st.divider()
         df_hist = pd.DataFrame([{
             "Fecha": p.get("fecha"), "Franja": p.get("franja"), "Cliente": p.get("cliente") or "—",
             "Área/Departamento": p.get("direccion") or "—", "Zona": p.get("zona") or "—",
