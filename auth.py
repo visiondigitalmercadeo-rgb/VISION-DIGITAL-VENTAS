@@ -292,20 +292,28 @@ def puede_editar_phara():
 
 def puede_editar_colorado():
     """Quién puede crear órdenes de producción, moverlas por el tablero y
-    eliminarlas en la pestaña Colorado: admin, vendedor, jefe_tienda y
-    subjefe_tienda. Cualquier otro rol que llegue a esta pestaña (por
-    ejemplo con acceso extra otorgado desde Administración de usuarios) solo
-    puede consultar el cronograma y el tablero, sin poder cambiar nada."""
+    eliminarlas en la pestaña Colorado: TODOS los que tienen acceso a esta
+    pestaña — ya sea porque su rol la incluye por defecto (admin, vendedor,
+    vista, jefe_tienda y subjefe_tienda) o porque se les dio acceso extra a
+    'colorado' desde Administración de usuarios. A diferencia de Phara, aquí
+    no hay ningún rol de solo consulta."""
     u = current_user()
-    return u is not None and u["rol"] in ("admin", "vendedor", "jefe_tienda", "subjefe_tienda")
+    if u is None:
+        return False
+    if u["rol"] in ("admin", "vendedor", "vista", "jefe_tienda", "subjefe_tienda"):
+        return True
+    return "colorado" in (u.get("paginas_extra") or [])
 
 
 def puede_editar_galaxy():
     """Igual que puede_editar_colorado, pero para la pestaña Galaxy (misma
-    plataforma, línea de producción independiente): admin, vendedor,
-    jefe_tienda y subjefe_tienda."""
+    plataforma, línea de producción independiente)."""
     u = current_user()
-    return u is not None and u["rol"] in ("admin", "vendedor", "jefe_tienda", "subjefe_tienda")
+    if u is None:
+        return False
+    if u["rol"] in ("admin", "vendedor", "vista", "jefe_tienda", "subjefe_tienda"):
+        return True
+    return "galaxy" in (u.get("paginas_extra") or [])
 
 
 def puede_autorizar_cotizacion_mant_tiendas():
