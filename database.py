@@ -898,6 +898,44 @@ def upsert_utilidad_mensual_planta(vendedor_id, anio_mes, montos):
 
 
 # ---------------------------------------------------------------------------
+# Proyección mensual por planta — mismo concepto que la venta/utilidad
+# mensual de arriba (monto acumulado del mes, por vendedor, que digita
+# manualmente el administrador), pero para la proyección/meta de venta del
+# mes en vez de la venta real. Colección totalmente aparte, así que nunca se
+# mezcla con los datos reales de 'Ventas'.
+# ---------------------------------------------------------------------------
+def get_proyecciones_mensuales_planta(anio_mes):
+    """Retorna {vendedor_id: {"vendedor_id", "anio_mes", "montos": {planta: monto}, ...}}
+    para el mes indicado (formato 'YYYY-MM')."""
+    client = get_client()
+    rows = [
+        _doc_to_dict(s)
+        for s in client.collection("proyecciones_mensuales_planta").where("anio_mes", "==", anio_mes).stream()
+    ]
+    return {r["vendedor_id"]: r for r in rows}
+
+
+def upsert_proyeccion_mensual_planta(vendedor_id, anio_mes, montos):
+    """montos: dict {planta: monto}, ej. {"Offset": 1000, "Digital": 500, "Valloy": 0, "Colorado": 200}.
+    Si ya existe un registro para ese vendedor y mes, lo reemplaza; si no, lo crea."""
+    client = get_client()
+    existentes = list(
+        client.collection("proyecciones_mensuales_planta")
+        .where("vendedor_id", "==", vendedor_id)
+        .where("anio_mes", "==", anio_mes)
+        .stream()
+    )
+    data = {
+        "vendedor_id": vendedor_id, "anio_mes": anio_mes, "montos": montos,
+        "actualizado_en": datetime.now().isoformat(timespec="seconds"),
+    }
+    if existentes:
+        client.collection("proyecciones_mensuales_planta").document(existentes[0].id).set(data)
+    else:
+        client.collection("proyecciones_mensuales_planta").document().set(data)
+
+
+# ---------------------------------------------------------------------------
 # Diseño Gráfico (tablero estilo Trello)
 # ---------------------------------------------------------------------------
 def list_disenos(vendedor_id=None):
