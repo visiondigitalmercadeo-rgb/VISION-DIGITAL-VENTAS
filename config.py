@@ -121,6 +121,7 @@ PAGINAS_REGISTRO = [
     {"key": "drive", "path": "app_pages/21_Drive.py", "title": "Drive", "icon": "📁"},
     {"key": "phara", "path": "app_pages/22_Phara.py", "title": "Phara", "icon": "📦"},
     {"key": "documentos", "path": "app_pages/23_Documentos.py", "title": "Documentos", "icon": "📄"},
+    {"key": "colorado", "path": "app_pages/24_Colorado.py", "title": "Colorado", "icon": "🏭"},
     {
         "key": "generales", "path": "app_pages/8_Prospectos_Generales.py",
         "title": "Prospectos generales (todos)", "icon": "🌐",
@@ -504,6 +505,15 @@ PHARA_ETAPA_FECHA_OBLIGATORIA = "Pre prensa"
 DOCUMENTOS_CATEGORIAS = ["Legal", "Políticas", "Presentaciones", "Otros"]
 DOCUMENTOS_ARCHIVO_MAX_BYTES = 900_000  # ~900 KB — límite práctico dentro del documento de Firestore
 DOCUMENTOS_ARCHIVO_MAX_BYTES_STORAGE = 200_000_000  # 200 MB si Firebase Storage está configurado
+
+# ---------------------------------------------------------------------------
+# Colorado: pestaña para generar y dar seguimiento a órdenes de producción de
+# la planta Colorado — mismo concepto que Phara (cronograma de entregas +
+# tablero de producción estilo Trello + avisos por correo), pero de uso
+# interno: vendedores, jefes de tienda y subjefes de tienda (además de
+# admin) pueden crear, mover y eliminar órdenes — ver auth.puede_editar_colorado.
+# ---------------------------------------------------------------------------
+ESTADOS_COLORADO = ["Nuevo", "En producción", "Acabados", "Entregado"]
 
 # ---------------------------------------------------------------------------
 # Drive: pestaña solo para admin, mercadeo y jefes de tienda (jefe_tienda /
