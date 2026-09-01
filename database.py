@@ -2238,15 +2238,17 @@ def get_colorado_pedido(pedido_id):
     return _doc_to_dict(snap) if snap.exists else None
 
 
-def create_colorado_pedido(producto, cantidad, fecha_entrega, notas=None, creado_por_id=None):
+def create_colorado_pedido(datos: dict, creado_por_id=None):
     """Toda orden nueva entra siempre por la primera columna del tablero
-    ('Nuevo') — ver config.ESTADOS_COLORADO."""
+    ('Nuevo') — ver config.ESTADOS_COLORADO. 'datos' trae los campos de la
+    orden de producción (cliente, pieza, dimensiones, material, color,
+    acabados, precio, cantidad, notas, NIT, dirección, fecha de entrega —
+    ver app_pages/24_Colorado.py)."""
     from config import ESTADOS_COLORADO
     doc_ref = get_client().collection("colorado_pedidos").document()
     doc_ref.set({
-        "producto": producto, "cantidad": cantidad,
-        "fecha_entrega": str(fecha_entrega) if fecha_entrega else None,
-        "estado": ESTADOS_COLORADO[0], "notas": notas or None,
+        **datos,
+        "estado": ESTADOS_COLORADO[0],
         "creado_por_id": creado_por_id, "creado_en": datetime.now().isoformat(timespec="seconds"),
     })
     return doc_ref.id
