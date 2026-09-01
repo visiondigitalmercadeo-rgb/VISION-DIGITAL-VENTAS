@@ -2518,3 +2518,21 @@ def list_nps_respuestas(tienda=None, desde=None, hasta=None):
         rows = [r for r in rows if (r.get("creado_en") or "")[:10] <= str(hasta)]
     rows.sort(key=lambda r: r.get("creado_en") or "", reverse=True)
     return rows
+
+
+def delete_nps_respuesta(respuesta_id):
+    """Elimina una sola respuesta de la encuesta NPS (por su id)."""
+    client = get_client()
+    client.collection("nps_respuestas").document(respuesta_id).delete()
+
+
+def delete_nps_respuestas(tienda=None, desde=None, hasta=None):
+    """Elimina en bloque las respuestas de NPS que cumplan el filtro dado
+    (mismo filtro que list_nps_respuestas: tienda y/o rango de fechas). Sin
+    ningún filtro, elimina TODAS las respuestas. Devuelve cuántas se
+    eliminaron."""
+    rows = list_nps_respuestas(tienda=tienda, desde=desde, hasta=hasta)
+    client = get_client()
+    for r in rows:
+        client.collection("nps_respuestas").document(r["id"]).delete()
+    return len(rows)
