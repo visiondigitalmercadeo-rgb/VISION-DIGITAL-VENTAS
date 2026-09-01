@@ -2220,6 +2220,64 @@ def delete_documento(documento_id):
 
 
 # ---------------------------------------------------------------------------
+# Colorado (planta): órdenes de producción — mismo concepto que Phara
+# (cronograma de entregas + tablero de producción estilo Trello + avisos por
+# correo), pero de uso interno: ver config.ESTADOS_COLORADO y
+# auth.puede_editar_colorado.
+# ---------------------------------------------------------------------------
+def list_colorado_pedidos():
+    """Retorna todas las órdenes de Colorado, más nuevas primero."""
+    client = get_client()
+    rows = [_doc_to_dict(s) for s in client.collection("colorado_pedidos").stream()]
+    rows.sort(key=lambda r: r.get("creado_en") or "", reverse=True)
+    return rows
+
+
+def get_colorado_pedido(pedido_id):
+    snap = get_client().collection("colorado_pedidos").document(pedido_id).get()
+    return _doc_to_dict(snap) if snap.exists else None
+
+
+def create_colorado_pedido(producto, cantidad, fecha_entrega, notas=None, creado_por_id=None):
+    """Toda orden nueva entra siempre por la primera columna del tablero
+    ('Nuevo') — ver config.ESTADOS_COLORADO."""
+    from config import ESTADOS_COLORADO
+    doc_ref = get_client().collection("colorado_pedidos").document()
+    doc_ref.set({
+        "producto": producto, "cantidad": cantidad,
+        "fecha_entrega": str(fecha_entrega) if fecha_entrega else None,
+        "estado": ESTADOS_COLORADO[0], "notas": notas or None,
+        "creado_por_id": creado_por_id, "creado_en": datetime.now().isoformat(timespec="seconds"),
+    })
+    return doc_ref.id
+
+
+def update_colorado_pedido(pedido_id, **kwargs):
+    if kwargs:
+        get_client().collection("colorado_pedidos").document(pedido_id).update(kwargs)
+
+
+def delete_colorado_pedido(pedido_id):
+    get_client().collection("colorado_pedidos").document(pedido_id).delete()
+
+
+def get_colorado_correos_aviso() -> list:
+    """Lista de correos que reciben un aviso automático cuando se agrega una
+    orden nueva o una tarjeta cambia de columna en el tablero de Colorado
+    (ver 24_Colorado.py). Vacía si todavía no se ha guardado ninguno."""
+    snap = get_client().collection("colorado_config").document("notificaciones").get()
+    data = _doc_to_dict(snap) if snap.exists else None
+    return (data or {}).get("correos") or []
+
+
+def set_colorado_correos_aviso(correos: list):
+    get_client().collection("colorado_config").document("notificaciones").set({
+        "correos": [c.strip() for c in (correos or []) if c and c.strip()],
+        "actualizado_en": datetime.now().isoformat(timespec="seconds"),
+    })
+
+
+# ---------------------------------------------------------------------------
 # Avisos por correo (Gmail) — usado por la pestaña Phara para avisar cuando
 # hay un pedido nuevo o un cambio de columna. Mismo patrón que Firebase
 # Storage: si todavía no están las credenciales configuradas, estas
@@ -2271,4 +2329,4 @@ def enviar_correo_aviso(destinatarios, asunto, cuerpo) -> bool:
         import traceback
         print("ERROR AL MANDAR CORREO DE AVISO:", e)
         traceback.print_exc()
-        return False
+        return Fals
