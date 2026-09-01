@@ -121,7 +121,7 @@ PAGINAS_REGISTRO = [
     {"key": "drive", "path": "app_pages/21_Drive.py", "title": "Drive", "icon": "📁"},
     {"key": "phara", "path": "app_pages/22_Phara.py", "title": "Phara", "icon": "📦"},
     {"key": "documentos", "path": "app_pages/23_Documentos.py", "title": "Documentos", "icon": "📄"},
-    {"key": "colorado", "path": "app_pages/24_Colorado.py", "title": "Colorado", "icon": "🏭"},
+    {"key": "colorado", "path": "app_pages/24_Colorado.py", "title": "Colorado", "icon": "🖨️"},
     {
         "key": "generales", "path": "app_pages/8_Prospectos_Generales.py",
         "title": "Prospectos generales (todos)", "icon": "🌐",
@@ -514,6 +514,10 @@ DOCUMENTOS_ARCHIVO_MAX_BYTES_STORAGE = 200_000_000  # 200 MB si Firebase Storage
 # admin) pueden crear, mover y eliminar órdenes — ver auth.puede_editar_colorado.
 # ---------------------------------------------------------------------------
 ESTADOS_COLORADO = ["Nuevo", "En producción", "Acabados", "Entregado"]
+# Unidades para las dimensiones del arte (ancho x alto) y opciones de tipo de
+# color de la orden — usadas en el formulario de la pestaña Colorado.
+COLORADO_DIMENSION_UNIDADES = ["Pulgadas", "Metros", "Centímetros", "Milímetros"]
+COLORADO_TIPOS_COLOR = ["Blanco y Negro", "Color", "Con clear", "Con blanco"]
 
 # ---------------------------------------------------------------------------
 # Drive: pestaña solo para admin, mercadeo y jefes de tienda (jefe_tienda /
