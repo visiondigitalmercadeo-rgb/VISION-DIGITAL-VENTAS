@@ -300,6 +300,14 @@ def puede_editar_colorado():
     return u is not None and u["rol"] in ("admin", "vendedor", "jefe_tienda", "subjefe_tienda")
 
 
+def puede_editar_galaxy():
+    """Igual que puede_editar_colorado, pero para la pestaña Galaxy (misma
+    plataforma, línea de producción independiente): admin, vendedor,
+    jefe_tienda y subjefe_tienda."""
+    u = current_user()
+    return u is not None and u["rol"] in ("admin", "vendedor", "jefe_tienda", "subjefe_tienda")
+
+
 def puede_autorizar_cotizacion_mant_tiendas():
     """Solo el administrador puede autorizar la cotización de una solicitud
     de Mantenimiento de Tiendas — mientras no se autoriza, la tarjeta
