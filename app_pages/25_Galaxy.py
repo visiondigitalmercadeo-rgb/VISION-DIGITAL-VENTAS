@@ -1,3 +1,4 @@
+import base64
 from datetime import date
 
 import pandas as pd
@@ -5,12 +6,37 @@ import streamlit as st
 
 import auth
 import database as db
-from config import APP_URL, COLORADO_DIMENSION_UNIDADES, COLORADO_TIPOS_COLOR, ESTADOS_GALAXY
-from utils import money, sidebar_user_box
+from config import (
+    APP_URL, COLORADO_DIMENSION_UNIDADES, COLORADO_TIPOS_COLOR, DISENO_ARCHIVO_MAX_BYTES,
+    DISENO_ARCHIVO_MAX_BYTES_STORAGE, ESTADOS_GALAXY, PRODUCCION_ARCHIVOS_MAX,
+)
+from utils import archivos_a_b64_lista, money, orden_produccion_pdf_bytes, sidebar_user_box
 
 user = auth.current_user()
 sidebar_user_box()
 puede_editar = auth.puede_editar_galaxy()
+
+_usa_storage = db.storage_disponible()
+_archivo_max_bytes = DISENO_ARCHIVO_MAX_BYTES_STORAGE if _usa_storage else DISENO_ARCHIVO_MAX_BYTES
+_TIPOS_ARCHIVO_ORDEN = ["pdf", "ai", "psd", "jpg", "jpeg", "doc", "docx", "xls", "xlsx"]
+
+
+def _caption_limite_archivo():
+    if _usa_storage:
+        st.caption(f"Tamaño máximo por archivo: {_archivo_max_bytes // 1_000_000} MB.")
+    else:
+        st.caption(f"Tamaño máximo por archivo: {_archivo_max_bytes // 1000} KB.")
+
+
+def _subir_archivos_orden(archivos_subidos):
+    """Sube los archivos adjuntos a Firebase Storage si está disponible; si
+    no, cae al guardado anterior (base64 dentro del documento)."""
+    if _usa_storage:
+        return db.subir_archivos_storage_lista(
+            "galaxy", archivos_subidos, _archivo_max_bytes, PRODUCCION_ARCHIVOS_MAX,
+        )
+    return archivos_a_b64_lista(archivos_subidos, _archivo_max_bytes, PRODUCCION_ARCHIVOS_MAX)
+
 
 st.title("🖨️ Galaxy")
 st.caption(
@@ -155,9 +181,25 @@ if puede_editar:
             notas_n = st.text_area("Notas adicionales (opcional)")
             fecha_entrega_n = st.date_input("Fecha de entrega (opcional)", value=None)
 
+            archivos_n = st.file_uploader(
+                f"Adjuntar archivos (opcional, máximo {PRODUCCION_ARCHIVOS_MAX}) — "
+                "PDF, AI, PSD, JPEG, Word o Excel",
+                type=_TIPOS_ARCHIVO_ORDEN, accept_multiple_files=True,
+            )
+            _caption_limite_archivo()
+
             if st.form_submit_button(f"Agregar a {ESTADOS_GALAXY[0]}", use_container_width=True):
+                error_msg = None
                 if not cliente_nombre_n.strip():
-                    st.error("El nombre del cliente es obligatorio.")
+                    error_msg = "El nombre del cliente es obligatorio."
+                else:
+                    try:
+                        archivos_subidos = _subir_archivos_orden(archivos_n)
+                    except ValueError as e:
+                        error_msg = str(e)
+
+                if error_msg:
+                    st.error(error_msg)
                 else:
                     datos = {
                         "cliente_nombre": cliente_nombre_n.strip(),
@@ -176,6 +218,7 @@ if puede_editar:
                         "cantidad_unidades": cantidad_unidades_n or None,
                         "notas": notas_n.strip() or None,
                         "fecha_entrega": str(fecha_entrega_n) if fecha_entrega_n else None,
+                        "archivos": archivos_subidos,
                     }
                     db.create_galaxy_pedido(datos, creado_por_id=user["id"])
                     total_txt = money(precio_unidad_n * cantidad_unidades_n) if (precio_unidad_n and cantidad_unidades_n) else "—"
@@ -251,6 +294,33 @@ for col, estado in zip(cols, ESTADOS_GALAXY):
                     st.caption(f"📝 {p['notas']}")
                 st.caption(f"📅 Entrega: {p.get('fecha_entrega') or 'sin definir'}")
                 st.caption(f"🕒 {(p.get('creado_en') or '')[:16].replace('T', ' ')}")
+
+                pdf_bytes = orden_produccion_pdf_bytes(p, linea="Galaxy")
+                st.download_button(
+                    "📄 Orden de producción (PDF)", data=pdf_bytes,
+                    file_name=f"orden_produccion_galaxy_{pid}.pdf",
+                    mime="application/pdf", use_container_width=True, key=f"galaxy_pdf_{pid}",
+                )
+                for i, arch in enumerate(p.get("archivos") or []):
+                    if arch.get("storage_path"):
+                        url_archivo = db.url_descarga_archivo_storage(
+                            arch["storage_path"], nombre_descarga=arch["nombre"],
+                        )
+                        if url_archivo:
+                            st.link_button(
+                                f"📎 {arch['nombre']}", url_archivo,
+                                use_container_width=True, key=f"galaxy_file_{pid}_{i}",
+                            )
+                        else:
+                            st.caption(f"📎 {arch['nombre']} (no se pudo generar el enlace de descarga)")
+                    else:
+                        st.download_button(
+                            f"📎 {arch['nombre']}",
+                            data=base64.b64decode(arch["b64"]),
+                            file_name=arch["nombre"],
+                            mime=arch.get("tipo") or "application/octet-stream",
+                            use_container_width=True, key=f"galaxy_file_{pid}_{i}",
+                        )
 
                 # ------------------------------------------------------------
                 # Acciones rápidas: pasar a la siguiente etapa y eliminar,
@@ -341,6 +411,20 @@ for col, estado in zip(cols, ESTADOS_GALAXY):
                             st.caption(f"Total: {money(precio_unidad_ed * cantidad_unidades_ed)}")
 
                         notas_ed = st.text_area("Notas adicionales", value=p.get("notas") or "")
+
+                        archivos_actuales = p.get("archivos") or []
+                        st.caption(
+                            f"Archivos actuales: {', '.join(a['nombre'] for a in archivos_actuales)}"
+                            if archivos_actuales else "Archivos actuales: ninguno."
+                        )
+                        nuevos_archivos_ed = st.file_uploader(
+                            f"Reemplazar archivos adjuntos (opcional, máximo {PRODUCCION_ARCHIVOS_MAX})",
+                            type=_TIPOS_ARCHIVO_ORDEN, accept_multiple_files=True,
+                            key=f"galaxy_archivo_ed_{pid}",
+                            help="Si subes archivos aquí, reemplazan a TODOS los actuales. Déjalo vacío para no cambiarlos.",
+                        )
+                        _caption_limite_archivo()
+
                         fecha_entrega_ed = st.date_input(
                             "Fecha de entrega (opcional)",
                             value=date.fromisoformat(p["fecha_entrega"]) if p.get("fecha_entrega") else None,
@@ -357,30 +441,45 @@ for col, estado in zip(cols, ESTADOS_GALAXY):
                         cancelar = colf2.form_submit_button("Cancelar", use_container_width=True)
 
                         if guardar:
+                            error_msg = None
+                            update_kwargs = {
+                                "cliente_nombre": cliente_nombre_ed.strip(),
+                                "cliente_telefono": cliente_telefono_ed.strip() or None,
+                                "cliente_correo": cliente_correo_ed.strip() or None,
+                                "nit": nit_ed.strip() or None,
+                                "direccion_entrega": direccion_entrega_ed.strip() or None,
+                                "tipo_pieza": tipo_pieza_ed.strip() or None,
+                                "dimension_ancho": dim_ancho_ed or None,
+                                "dimension_alto": dim_alto_ed or None,
+                                "dimension_unidad": dim_unidad_ed,
+                                "material": material_ed.strip() or None,
+                                "tipo_color": tipo_color_ed,
+                                "acabados": acabados_ed.strip() or None,
+                                "precio_unidad": precio_unidad_ed or None,
+                                "cantidad_unidades": cantidad_unidades_ed or None,
+                                "notas": notas_ed.strip() or None,
+                                "fecha_entrega": str(fecha_entrega_ed) if fecha_entrega_ed else None,
+                                "estado": estado_ed,
+                            }
+                            archivos_a_reemplazar = None
                             if not cliente_nombre_ed.strip():
-                                st.error("El nombre del cliente es obligatorio.")
+                                error_msg = "El nombre del cliente es obligatorio."
+                            elif nuevos_archivos_ed:
+                                try:
+                                    update_kwargs["archivos"] = _subir_archivos_orden(nuevos_archivos_ed)
+                                    # Los archivos actuales se borran de Storage recién
+                                    # después de guardar el reemplazo con éxito (más abajo).
+                                    archivos_a_reemplazar = archivos_actuales
+                                except ValueError as e:
+                                    error_msg = str(e)
+
+                            if error_msg:
+                                st.error(error_msg)
                             else:
                                 cambio_de_columna = estado_ed != p.get("estado")
-                                db.update_galaxy_pedido(
-                                    pid,
-                                    cliente_nombre=cliente_nombre_ed.strip(),
-                                    cliente_telefono=cliente_telefono_ed.strip() or None,
-                                    cliente_correo=cliente_correo_ed.strip() or None,
-                                    nit=nit_ed.strip() or None,
-                                    direccion_entrega=direccion_entrega_ed.strip() or None,
-                                    tipo_pieza=tipo_pieza_ed.strip() or None,
-                                    dimension_ancho=dim_ancho_ed or None,
-                                    dimension_alto=dim_alto_ed or None,
-                                    dimension_unidad=dim_unidad_ed,
-                                    material=material_ed.strip() or None,
-                                    tipo_color=tipo_color_ed,
-                                    acabados=acabados_ed.strip() or None,
-                                    precio_unidad=precio_unidad_ed or None,
-                                    cantidad_unidades=cantidad_unidades_ed or None,
-                                    notas=notas_ed.strip() or None,
-                                    fecha_entrega=str(fecha_entrega_ed) if fecha_entrega_ed else None,
-                                    estado=estado_ed,
-                                )
+                                db.update_galaxy_pedido(pid, **update_kwargs)
+                                if archivos_a_reemplazar:
+                                    db.eliminar_archivos_storage(archivos_a_reemplazar)
                                 if cambio_de_columna:
                                     _avisar_por_correo(
                                         f"Galaxy — {cliente_nombre_ed.strip()} pasó a '{estado_ed}'",
