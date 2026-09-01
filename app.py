@@ -87,6 +87,7 @@ drive = paginas_por_key["drive"]
 phara = paginas_por_key["phara"]
 documentos = paginas_por_key["documentos"]
 colorado = paginas_por_key["colorado"]
+galaxy = paginas_por_key["galaxy"]
 generales = paginas_por_key["generales"]
 kpis = paginas_por_key["kpis"]
 admin = paginas_por_key["administracion"]
@@ -127,9 +128,10 @@ elif rol in ("jefe_tienda", "subjefe_tienda"):
     # Tiendas (solo su tienda asignada) y, además, acceso total al tablero
     # de Mantenimiento de Tiendas para su sucursal (crear, editar, mover y
     # eliminar solicitudes), a la pestaña Drive, solo para consulta (ver
-    # puede_editar_drive en auth.py), y acceso total a Colorado para generar
-    # y dar seguimiento a órdenes de producción (ver puede_editar_colorado).
-    pages = [tickets_tienda, mant_tiendas, drive, colorado]
+    # puede_editar_drive en auth.py), y acceso total a Colorado y Galaxy para
+    # generar y dar seguimiento a órdenes de producción (ver
+    # puede_editar_colorado / puede_editar_galaxy).
+    pages = [tickets_tienda, mant_tiendas, drive, colorado, galaxy]
 elif rol in ("anfitriona", "asesor_ventas", "cajero"):
     # Estos roles solo tienen acceso al Sistema de Tickets — Tiendas (y solo
     # ven la tienda asignada a su usuario). El resto del personal de tienda
@@ -155,7 +157,7 @@ else:
     pages = [
         inicio, prospectos, llamadas, citas, mercadeo, cotizaciones, reclamos,
         diseno, diseno_alvaro, logistica, ventas, ventas_mes, capacitacion, tickets_tienda,
-        mantenimiento, litografia, mant_tiendas, documentos, colorado, generales, kpis,
+        mantenimiento, litografia, mant_tiendas, documentos, colorado, galaxy, generales, kpis,
     ]
     if rol == "admin":
         pages.append(admin)
