@@ -10,7 +10,7 @@ from config import (
     APP_URL, COLORADO_DIMENSION_UNIDADES, COLORADO_TIPOS_COLOR, DISENO_ARCHIVO_MAX_BYTES,
     DISENO_ARCHIVO_MAX_BYTES_STORAGE, ESTADOS_GALAXY, PRODUCCION_ARCHIVOS_MAX,
 )
-from utils import archivos_a_b64_lista, money, orden_produccion_pdf_bytes, sidebar_user_box
+from utils import archivo_a_b64, archivos_a_b64_lista, money, orden_produccion_pdf_bytes, sidebar_user_box
 
 user = auth.current_user()
 sidebar_user_box()
@@ -19,6 +19,7 @@ puede_editar = auth.puede_editar_galaxy()
 _usa_storage = db.storage_disponible()
 _archivo_max_bytes = DISENO_ARCHIVO_MAX_BYTES_STORAGE if _usa_storage else DISENO_ARCHIVO_MAX_BYTES
 _TIPOS_ARCHIVO_ORDEN = ["pdf", "ai", "psd", "jpg", "jpeg", "doc", "docx", "xls", "xlsx"]
+_TIPOS_BOLETA_PAGO = ["pdf", "jpg", "jpeg", "png"]
 
 
 def _caption_limite_archivo():
@@ -36,6 +37,24 @@ def _subir_archivos_orden(archivos_subidos):
             "galaxy", archivos_subidos, _archivo_max_bytes, PRODUCCION_ARCHIVOS_MAX,
         )
     return archivos_a_b64_lista(archivos_subidos, _archivo_max_bytes, PRODUCCION_ARCHIVOS_MAX)
+
+
+def _subir_boleta_pago(archivo_subido):
+    """Sube la boleta de pago (un solo archivo, aparte de los archivos de
+    diseño) a Firebase Storage si está disponible; si no, cae al guardado
+    anterior (base64 dentro del documento). Retorna None si no se subió
+    ningún archivo."""
+    if archivo_subido is None:
+        return None
+    if len(archivo_subido.getvalue()) > _archivo_max_bytes:
+        raise ValueError(
+            f"La boleta de pago pesa {len(archivo_subido.getvalue()) / 1_000_000:.1f} MB; el máximo "
+            f"permitido por archivo es {_archivo_max_bytes / 1_000_000:.0f} MB."
+        )
+    if _usa_storage:
+        return db.subir_archivo_storage("galaxy_boletas", archivo_subido)
+    nombre, tipo, b64 = archivo_a_b64(archivo_subido, _archivo_max_bytes)
+    return {"nombre": nombre, "tipo": tipo, "b64": b64}
 
 
 st.title("🖨️ Galaxy")
@@ -187,6 +206,11 @@ if puede_editar:
                 type=_TIPOS_ARCHIVO_ORDEN, accept_multiple_files=True,
             )
             _caption_limite_archivo()
+            boleta_pago_n = st.file_uploader(
+                "🧾 Boleta de pago (comprobante de pago, opcional) — PDF, JPG o PNG",
+                type=_TIPOS_BOLETA_PAGO, accept_multiple_files=False,
+            )
+            _caption_limite_archivo()
 
             if st.form_submit_button(f"Agregar a {ESTADOS_GALAXY[0]}", use_container_width=True):
                 error_msg = None
@@ -195,6 +219,7 @@ if puede_editar:
                 else:
                     try:
                         archivos_subidos = _subir_archivos_orden(archivos_n)
+                        boleta_pago_subida = _subir_boleta_pago(boleta_pago_n)
                     except ValueError as e:
                         error_msg = str(e)
 
@@ -219,6 +244,7 @@ if puede_editar:
                         "notas": notas_n.strip() or None,
                         "fecha_entrega": str(fecha_entrega_n) if fecha_entrega_n else None,
                         "archivos": archivos_subidos,
+                        "boleta_pago": boleta_pago_subida,
                     }
                     db.create_galaxy_pedido(datos, creado_por_id=user["id"])
                     total_txt = money(precio_unidad_n * cantidad_unidades_n) if (precio_unidad_n and cantidad_unidades_n) else "—"
@@ -321,6 +347,32 @@ for col, estado in zip(cols, ESTADOS_GALAXY):
                             mime=arch.get("tipo") or "application/octet-stream",
                             use_container_width=True, key=f"galaxy_file_{pid}_{i}",
                         )
+
+                boleta_pago = p.get("boleta_pago")
+                if boleta_pago:
+                    if boleta_pago.get("storage_path"):
+                        url_boleta = db.url_descarga_archivo_storage(
+                            boleta_pago["storage_path"], nombre_descarga=boleta_pago["nombre"],
+                        )
+                        if url_boleta:
+                            st.link_button(
+                                f"🧾 Boleta de pago: {boleta_pago['nombre']}", url_boleta,
+                                use_container_width=True, key=f"galaxy_boleta_{pid}",
+                            )
+                        else:
+                            st.caption(
+                                f"🧾 Boleta de pago: {boleta_pago['nombre']} (no se pudo generar el enlace de descarga)"
+                            )
+                    else:
+                        st.download_button(
+                            f"🧾 Boleta de pago: {boleta_pago['nombre']}",
+                            data=base64.b64decode(boleta_pago["b64"]),
+                            file_name=boleta_pago["nombre"],
+                            mime=boleta_pago.get("tipo") or "application/octet-stream",
+                            use_container_width=True, key=f"galaxy_boleta_{pid}",
+                        )
+                else:
+                    st.caption("🧾 Boleta de pago: no se ha subido.")
 
                 # ------------------------------------------------------------
                 # Acciones rápidas: pasar a la siguiente etapa y eliminar,
@@ -425,6 +477,19 @@ for col, estado in zip(cols, ESTADOS_GALAXY):
                         )
                         _caption_limite_archivo()
 
+                        boleta_pago_actual = p.get("boleta_pago")
+                        st.caption(
+                            f"Boleta de pago actual: {boleta_pago_actual['nombre']}"
+                            if boleta_pago_actual else "Boleta de pago actual: ninguna."
+                        )
+                        nueva_boleta_ed = st.file_uploader(
+                            "🧾 Reemplazar boleta de pago (opcional) — PDF, JPG o PNG",
+                            type=_TIPOS_BOLETA_PAGO, accept_multiple_files=False,
+                            key=f"galaxy_boleta_ed_{pid}",
+                            help="Si subes un archivo aquí, reemplaza la boleta actual. Déjalo vacío para no cambiarla.",
+                        )
+                        _caption_limite_archivo()
+
                         fecha_entrega_ed = st.date_input(
                             "Fecha de entrega (opcional)",
                             value=date.fromisoformat(p["fecha_entrega"]) if p.get("fecha_entrega") else None,
@@ -462,16 +527,24 @@ for col, estado in zip(cols, ESTADOS_GALAXY):
                                 "estado": estado_ed,
                             }
                             archivos_a_reemplazar = None
+                            boleta_a_reemplazar = None
                             if not cliente_nombre_ed.strip():
                                 error_msg = "El nombre del cliente es obligatorio."
-                            elif nuevos_archivos_ed:
-                                try:
-                                    update_kwargs["archivos"] = _subir_archivos_orden(nuevos_archivos_ed)
-                                    # Los archivos actuales se borran de Storage recién
-                                    # después de guardar el reemplazo con éxito (más abajo).
-                                    archivos_a_reemplazar = archivos_actuales
-                                except ValueError as e:
-                                    error_msg = str(e)
+                            else:
+                                if nuevos_archivos_ed:
+                                    try:
+                                        update_kwargs["archivos"] = _subir_archivos_orden(nuevos_archivos_ed)
+                                        # Los archivos actuales se borran de Storage recién
+                                        # después de guardar el reemplazo con éxito (más abajo).
+                                        archivos_a_reemplazar = archivos_actuales
+                                    except ValueError as e:
+                                        error_msg = str(e)
+                                if not error_msg and nueva_boleta_ed is not None:
+                                    try:
+                                        update_kwargs["boleta_pago"] = _subir_boleta_pago(nueva_boleta_ed)
+                                        boleta_a_reemplazar = boleta_pago_actual
+                                    except ValueError as e:
+                                        error_msg = str(e)
 
                             if error_msg:
                                 st.error(error_msg)
@@ -480,6 +553,8 @@ for col, estado in zip(cols, ESTADOS_GALAXY):
                                 db.update_galaxy_pedido(pid, **update_kwargs)
                                 if archivos_a_reemplazar:
                                     db.eliminar_archivos_storage(archivos_a_reemplazar)
+                                if boleta_a_reemplazar:
+                                    db.eliminar_archivos_storage([boleta_a_reemplazar])
                                 if cambio_de_columna:
                                     _avisar_por_correo(
                                         f"Galaxy — {cliente_nombre_ed.strip()} pasó a '{estado_ed}'",
