@@ -2,6 +2,7 @@ import streamlit as st
 
 import auth
 import database as db
+import public_nps
 import public_tickets
 from config import EMPRESA_NOMBRE, FAVICON_PATH, LOGO_PATH, PAGINAS_REGISTRO
 
@@ -35,11 +36,15 @@ db.init_db(seed_demo=True)
 # ---------------------------------------------------------------------------
 _qp_ticket = st.query_params.get("ticket")
 _qp_pantalla = st.query_params.get("pantalla")
+_qp_nps = st.query_params.get("nps")
 if _qp_ticket:
     public_tickets.render_checkin(_qp_ticket)
     st.stop()
 elif _qp_pantalla:
     public_tickets.render_pantalla(_qp_pantalla)
+    st.stop()
+elif _qp_nps:
+    public_nps.render_encuesta(_qp_nps)
     st.stop()
 
 if not db.firebase_conectado():
@@ -88,6 +93,7 @@ phara = paginas_por_key["phara"]
 documentos = paginas_por_key["documentos"]
 colorado = paginas_por_key["colorado"]
 galaxy = paginas_por_key["galaxy"]
+nps = paginas_por_key["nps"]
 generales = paginas_por_key["generales"]
 kpis = paginas_por_key["kpis"]
 admin = paginas_por_key["administracion"]
@@ -97,9 +103,11 @@ if rol == "mercadeo":
     # Tickets — Tiendas (solo para configurar los tiempos meta / KPIs; no
     # puede avanzar ni gestionar tickets, eso lo hace el personal de tienda).
     # También tiene acceso total al tablero de Mantenimiento de Tiendas, a
-    # la pestaña Drive (ver puede_editar_drive en auth.py), y a Documentos
-    # (solo consulta/descarga — solo el admin puede subir o eliminar ahí).
-    pages = [mercadeo, tickets_tienda, mant_tiendas, drive, documentos]
+    # la pestaña Drive (ver puede_editar_drive en auth.py), a Documentos
+    # (solo consulta/descarga — solo el admin puede subir o eliminar ahí), y
+    # a NPS (consulta de KPIs y códigos QR — solo el admin edita las
+    # preguntas, ver puede_editar_nps en auth.py).
+    pages = [mercadeo, tickets_tienda, mant_tiendas, drive, documentos, nps]
 elif rol == "jefe_planta":
     # El rol 'jefe_planta' tiene acceso a Reclamos (donde puede cambiar el
     # estado de cada reclamo), a Mantenimiento de Maquinaria (donde puede
@@ -128,10 +136,11 @@ elif rol in ("jefe_tienda", "subjefe_tienda"):
     # Tiendas (solo su tienda asignada) y, además, acceso total al tablero
     # de Mantenimiento de Tiendas para su sucursal (crear, editar, mover y
     # eliminar solicitudes), a la pestaña Drive, solo para consulta (ver
-    # puede_editar_drive en auth.py), y acceso total a Colorado y Galaxy para
-    # generar y dar seguimiento a órdenes de producción (ver
-    # puede_editar_colorado / puede_editar_galaxy).
-    pages = [tickets_tienda, mant_tiendas, drive, colorado, galaxy]
+    # puede_editar_drive en auth.py), a Colorado y Galaxy para generar y dar
+    # seguimiento a órdenes de producción (ver puede_editar_colorado /
+    # puede_editar_galaxy), y a NPS, también solo para consulta (ver
+    # puede_editar_nps).
+    pages = [tickets_tienda, mant_tiendas, drive, colorado, galaxy, nps]
 elif rol in ("anfitriona", "asesor_ventas", "cajero"):
     # Estos roles solo tienen acceso al Sistema de Tickets — Tiendas (y solo
     # ven la tienda asignada a su usuario). El resto del personal de tienda
@@ -163,6 +172,7 @@ else:
         pages.append(admin)
         pages.append(drive)
         pages.append(phara)
+        pages.append(nps)
 
 # ---------------------------------------------------------------------------
 # Acceso extra por usuario (independiente del rol) — un admin puede darle a
