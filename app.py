@@ -103,11 +103,10 @@ if rol == "mercadeo":
     # Tickets — Tiendas (solo para configurar los tiempos meta / KPIs; no
     # puede avanzar ni gestionar tickets, eso lo hace el personal de tienda).
     # También tiene acceso total al tablero de Mantenimiento de Tiendas, a
-    # la pestaña Drive (ver puede_editar_drive en auth.py), a Documentos
-    # (solo consulta/descarga — solo el admin puede subir o eliminar ahí), y
-    # a NPS (consulta de KPIs y códigos QR — solo el admin edita las
-    # preguntas, ver puede_editar_nps en auth.py).
-    pages = [mercadeo, tickets_tienda, mant_tiendas, drive, documentos, nps]
+    # la pestaña Drive (ver puede_editar_drive en auth.py), y a Documentos
+    # (solo consulta/descarga — solo el admin puede subir o eliminar ahí).
+    # NPS es exclusiva del administrador (ver más abajo).
+    pages = [mercadeo, tickets_tienda, mant_tiendas, drive, documentos]
 elif rol == "jefe_planta":
     # El rol 'jefe_planta' tiene acceso a Reclamos (donde puede cambiar el
     # estado de cada reclamo), a Mantenimiento de Maquinaria (donde puede
@@ -136,11 +135,11 @@ elif rol in ("jefe_tienda", "subjefe_tienda"):
     # Tiendas (solo su tienda asignada) y, además, acceso total al tablero
     # de Mantenimiento de Tiendas para su sucursal (crear, editar, mover y
     # eliminar solicitudes), a la pestaña Drive, solo para consulta (ver
-    # puede_editar_drive en auth.py), a Colorado y Galaxy para generar y dar
-    # seguimiento a órdenes de producción (ver puede_editar_colorado /
-    # puede_editar_galaxy), y a NPS, también solo para consulta (ver
-    # puede_editar_nps).
-    pages = [tickets_tienda, mant_tiendas, drive, colorado, galaxy, nps]
+    # puede_editar_drive en auth.py), y a Colorado y Galaxy para generar y
+    # dar seguimiento a órdenes de producción (ver puede_editar_colorado /
+    # puede_editar_galaxy). NPS es exclusiva del administrador (ver más
+    # abajo).
+    pages = [tickets_tienda, mant_tiendas, drive, colorado, galaxy]
 elif rol in ("anfitriona", "asesor_ventas", "cajero"):
     # Estos roles solo tienen acceso al Sistema de Tickets — Tiendas (y solo
     # ven la tienda asignada a su usuario). El resto del personal de tienda
