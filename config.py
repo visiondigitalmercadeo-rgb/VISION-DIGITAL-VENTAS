@@ -278,6 +278,7 @@ ESTADOS_RECLAMO = ["Abierto", "En proceso", "Resuelto", "Cerrado"]
 CAPACITACION_TIENDAS = ["Cayalá", "Vista Hermosa", "Majadas", "CAES"]
 CAPACITACION_ARCHIVO_MAX_BYTES = 900_000  # ~900 KB — mismo límite práctico que Diseño Gráfico
 CAPACITACION_ARCHIVOS_MAX = 5  # máximo de archivos adjuntos por submódulo
+CAPACITACION_MODALIDADES = ["Virtual", "Presencial"]  # del cronograma de capacitaciones
 
 ESTADOS_PENDIENTE_MERCADEO = ["Pendiente", "En proceso", "Resuelto"]
 
