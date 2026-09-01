@@ -122,6 +122,7 @@ PAGINAS_REGISTRO = [
     {"key": "phara", "path": "app_pages/22_Phara.py", "title": "Phara", "icon": "📦"},
     {"key": "documentos", "path": "app_pages/23_Documentos.py", "title": "Documentos", "icon": "📄"},
     {"key": "colorado", "path": "app_pages/24_Colorado.py", "title": "Colorado", "icon": "🖨️"},
+    {"key": "galaxy", "path": "app_pages/25_Galaxy.py", "title": "Galaxy", "icon": "🖨️"},
     {
         "key": "generales", "path": "app_pages/8_Prospectos_Generales.py",
         "title": "Prospectos generales (todos)", "icon": "🌐",
@@ -518,6 +519,16 @@ ESTADOS_COLORADO = ["Nuevo", "En producción", "Acabados", "Entregado"]
 # color de la orden — usadas en el formulario de la pestaña Colorado.
 COLORADO_DIMENSION_UNIDADES = ["Pulgadas", "Metros", "Centímetros", "Milímetros"]
 COLORADO_TIPOS_COLOR = ["Blanco y Negro", "Color", "Con clear", "Con blanco"]
+
+# ---------------------------------------------------------------------------
+# Galaxy: pestaña idéntica a Colorado (mismo formulario de 15 campos,
+# cronograma, tablero de producción y avisos por correo), pero como línea de
+# producción / colección de datos totalmente independiente — ver
+# auth.puede_editar_galaxy. Reutiliza las mismas listas de unidades y tipos
+# de color que Colorado (COLORADO_DIMENSION_UNIDADES / COLORADO_TIPOS_COLOR),
+# ya que son genéricas y no específicas de esa planta.
+# ---------------------------------------------------------------------------
+ESTADOS_GALAXY = ["Nuevo", "En producción", "Acabados", "Entregado"]
 
 # ---------------------------------------------------------------------------
 # Drive: pestaña solo para admin, mercadeo y jefes de tienda (jefe_tienda /
