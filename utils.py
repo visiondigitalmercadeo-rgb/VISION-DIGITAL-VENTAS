@@ -12,8 +12,8 @@ from fpdf import FPDF
 import auth
 import database as db
 from config import (
-    CATEGORICAL, EMPRESA_DIRECCION_LINEA1, EMPRESA_DIRECCION_LINEA2, EMPRESA_NOMBRE, GRIDLINE, INK_MUTED,
-    INK_PRIMARY, LOGO_PATH, ROLES_LABEL, SURFACE,
+    CATEGORICAL, EMPRESA_DIRECCION_LINEA1, EMPRESA_DIRECCION_LINEA2, EMPRESA_NOMBRE, FIRMA_STEVEN_NOMBRE,
+    FIRMA_STEVEN_PATH, FIRMA_STEVEN_PUESTO, GRIDLINE, INK_MUTED, INK_PRIMARY, LOGO_PATH, ROLES_LABEL, SURFACE,
 )
 
 
@@ -956,5 +956,135 @@ def orden_produccion_pdf_bytes(p: dict, linea: str) -> bytes:
     pdf.cell(80, 5, _pdf_safe("Firma y Nombre"), align="C")
     pdf.set_xy(115, y + 7)
     pdf.cell(80, 5, _pdf_safe("Firma y Nombre"), align="C")
+
+    return bytes(pdf.output())
+
+
+def _tamano_ajustado(pdf, texto, familia, estilo, ancho_max, tam_inicial, tam_minimo):
+    """Reduce el tamaño de fuente hasta que 'texto' quepa en 'ancho_max' (mm),
+    sin bajar de 'tam_minimo' — para que un nombre o módulo largo no se salga
+    del diploma en vez de recortarse a la mitad."""
+    tam = tam_inicial
+    while tam > tam_minimo:
+        pdf.set_font(familia, estilo, tam)
+        if pdf.get_string_width(texto) <= ancho_max:
+            break
+        tam -= 1
+    pdf.set_font(familia, estilo, tam)
+    return tam
+
+
+def diploma_pdf_bytes(persona_nombre: str, tienda: str, modulo_nombre: str, fecha) -> bytes:
+    """Genera el PDF del diploma de finalización de un módulo de Capacitación
+    (hoja horizontal tipo certificado): logo de Visión Digital, nombre del
+    empleado, tienda, módulo completado, fecha, y la firma de Steven Gabriel
+    (Gerente Comercial) al calce. 'fecha' puede ser un date o un string
+    'YYYY-MM-DD'."""
+    fecha_txt = str(fecha)
+    if len(fecha_txt) == 10 and fecha_txt[4] == "-":
+        fecha_txt = f"{fecha_txt[8:10]}/{fecha_txt[5:7]}/{fecha_txt[0:4]}"
+
+    pdf = FPDF(orientation="L", format="Letter")
+    pdf.add_page()
+    pdf.set_auto_page_break(auto=False)
+
+    ancho, alto = 279.4, 215.9  # Letter horizontal, en mm
+
+    # -- Fondo y marco decorativo --------------------------------------------
+    pdf.set_fill_color(255, 255, 255)
+    pdf.rect(0, 0, ancho, alto, style="F")
+    pdf.set_draw_color(255, 12, 130)  # BRAND_PINK
+    pdf.set_line_width(2.2)
+    pdf.rect(8, 8, ancho - 16, alto - 16)
+    pdf.set_draw_color(20, 20, 20)
+    pdf.set_line_width(0.4)
+    pdf.rect(12.5, 12.5, ancho - 25, alto - 25)
+    pdf.set_line_width(0.2)
+
+    # -- Logo, centrado arriba (el logo real es ancho:alto ≈ 1 : 0.51) ----------
+    try:
+        logo_w = 50
+        logo_h = logo_w * 0.5135
+        pdf.image(LOGO_PATH, x=(ancho - logo_w) / 2, y=14, w=logo_w)
+        y_cursor = 14 + logo_h + 7
+    except Exception:
+        pdf.set_font("Helvetica", "B", 20)
+        pdf.set_text_color(20, 20, 20)
+        pdf.set_xy(0, 22)
+        pdf.cell(ancho, 10, _pdf_safe(EMPRESA_NOMBRE), align="C")
+        y_cursor = 40
+
+    # -- Título -----------------------------------------------------------------
+    pdf.set_text_color(20, 20, 20)
+    pdf.set_font("Helvetica", "B", 28)
+    pdf.set_xy(0, y_cursor)
+    pdf.cell(ancho, 14, _pdf_safe("DIPLOMA DE FINALIZACIÓN"), align="C")
+    pdf.set_font("Helvetica", "", 12)
+    pdf.set_text_color(90, 90, 90)
+    pdf.set_xy(0, y_cursor + 13)
+    pdf.cell(ancho, 8, _pdf_safe("Programa de Capacitación - Visión Digital"), align="C")
+
+    # -- "Se otorga a" + nombre del empleado -------------------------------------
+    pdf.set_text_color(90, 90, 90)
+    pdf.set_font("Helvetica", "", 12)
+    pdf.set_xy(0, y_cursor + 30)
+    pdf.cell(ancho, 8, _pdf_safe("Se otorga el presente reconocimiento a"), align="C")
+
+    pdf.set_text_color(255, 12, 130)  # BRAND_PINK
+    nombre_txt = _pdf_safe(persona_nombre or "—")
+    _tamano_ajustado(pdf, nombre_txt, "Times", "BI", ancho - 40, 34, 14)
+    pdf.set_xy(0, y_cursor + 39)
+    pdf.cell(ancho, 16, nombre_txt, align="C")
+
+    # -- Texto de logro + módulo --------------------------------------------------
+    pdf.set_text_color(60, 60, 60)
+    pdf.set_font("Helvetica", "", 12)
+    pdf.set_xy(0, y_cursor + 58)
+    pdf.cell(
+        ancho, 7,
+        _pdf_safe("por haber completado satisfactoriamente el módulo de capacitación"), align="C",
+    )
+
+    pdf.set_text_color(20, 20, 20)
+    modulo_txt = _pdf_safe(f"«{modulo_nombre or '—'}»")
+    _tamano_ajustado(pdf, modulo_txt, "Helvetica", "B", ancho - 40, 18, 11)
+    pdf.set_xy(0, y_cursor + 67)
+    pdf.cell(ancho, 10, modulo_txt, align="C")
+
+    pdf.set_text_color(90, 90, 90)
+    pdf.set_font("Helvetica", "I", 11)
+    pdf.set_xy(0, y_cursor + 79)
+    pdf.cell(ancho, 7, _pdf_safe(f"Tienda: {tienda or '—'}"), align="C")
+
+    # -- Firma y fecha, al calce --------------------------------------------------
+    firmas_y = alto - 42
+    # Izquierda: fecha
+    pdf.set_draw_color(120, 120, 120)
+    pdf.line(38, firmas_y, 118, firmas_y)
+    pdf.set_text_color(20, 20, 20)
+    pdf.set_font("Helvetica", "B", 11)
+    pdf.set_xy(38, firmas_y + 2)
+    pdf.cell(80, 6, _pdf_safe(fecha_txt or "—"), align="C")
+    pdf.set_font("Helvetica", "", 9)
+    pdf.set_text_color(90, 90, 90)
+    pdf.set_xy(38, firmas_y + 8)
+    pdf.cell(80, 5, _pdf_safe("Fecha de finalización"), align="C")
+
+    # Derecha: firma escaneada + nombre y puesto
+    try:
+        firma_w = 46
+        pdf.image(FIRMA_STEVEN_PATH, x=(ancho - firma_w) / 2 + 80, y=firmas_y - 18, w=firma_w)
+    except Exception:
+        pass
+    pdf.set_draw_color(120, 120, 120)
+    pdf.line(161, firmas_y, 241, firmas_y)
+    pdf.set_text_color(20, 20, 20)
+    pdf.set_font("Helvetica", "B", 11)
+    pdf.set_xy(161, firmas_y + 2)
+    pdf.cell(80, 6, _pdf_safe(FIRMA_STEVEN_NOMBRE), align="C")
+    pdf.set_font("Helvetica", "", 9)
+    pdf.set_text_color(90, 90, 90)
+    pdf.set_xy(161, firmas_y + 8)
+    pdf.cell(80, 5, _pdf_safe(FIRMA_STEVEN_PUESTO), align="C")
 
     return bytes(pdf.output())
