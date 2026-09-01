@@ -1,4 +1,5 @@
 import base64
+import calendar
 from datetime import date
 
 import pandas as pd
@@ -53,123 +54,194 @@ st.markdown(f"##### {_label_mes_largo(anio_mes_cronograma)}")
 
 programaciones_mes = db.list_capacitacion_programaciones(mes=anio_mes_cronograma)
 
-if not programaciones_mes:
-    st.caption("No hay capacitaciones programadas para este mes.")
-else:
-    df_cron = pd.DataFrame([{
-        "Fecha": pr.get("fecha"),
-        "Módulo": (modulos_lookup_cron.get(pr.get("modulo_id")) or {}).get("nombre") or "—",
-        "Submódulo": (
-            (submods_lookup_cron.get(pr.get("submodulo_id")) or {}).get("nombre") or "—"
-            if pr.get("submodulo_id") else "General (módulo completo)"
-        ),
-        "Tienda": pr.get("tienda") or "Todas",
-        "Responsable": pr.get("responsable") or "—",
-        "Notas": pr.get("notas") or "—",
-    } for pr in programaciones_mes])
-    st.dataframe(df_cron, use_container_width=True, hide_index=True)
-    download_excel_button(df_cron, "cronograma_capacitaciones.xlsx", key="cap_cronograma_descargar_excel")
+tab_cron_lista, tab_cron_calendario = st.tabs(["📋 Lista", "📅 Calendario"])
 
-if puede_editar:
-    with st.expander("➕ Programar una capacitación"):
-        if not modulos_all:
-            st.caption("Primero crea al menos un módulo en la pestaña '📚 Módulos' para poder programarlo.")
-        else:
-            with st.form("cap_nueva_programacion", clear_on_submit=True):
-                fecha_prog_n = st.date_input("Fecha de la capacitación", value=date.today(), key="cap_prog_fecha_n")
-                opciones_modulo_prog = {m["nombre"]: m["id"] for m in modulos_all}
-                modulo_prog_nombre = st.selectbox(
-                    "Módulo", list(opciones_modulo_prog.keys()), key="cap_prog_modulo_n",
-                )
-                modulo_prog_id = opciones_modulo_prog[modulo_prog_nombre]
-                opciones_submod_prog = {"(módulo completo)": None}
-                opciones_submod_prog.update({sm["nombre"]: sm["id"] for sm in db.list_submodulos(modulo_prog_id)})
-                submod_prog_nombre = st.selectbox(
-                    "Submódulo (opcional)", list(opciones_submod_prog.keys()), key="cap_prog_submodulo_n",
-                )
-                submod_prog_id = opciones_submod_prog[submod_prog_nombre]
-                tienda_prog = st.selectbox(
-                    "Tienda (opcional, déjalo en 'Todas' si aplica a todas)",
-                    ["Todas"] + CAPACITACION_TIENDAS, key="cap_prog_tienda_n",
-                )
-                responsable_prog = st.text_input("Responsable / capacitador (opcional)", key="cap_prog_responsable_n")
-                notas_prog = st.text_area("Notas (opcional)", key="cap_prog_notas_n")
-                if st.form_submit_button("📅 Agregar al cronograma", use_container_width=True):
-                    db.create_capacitacion_programacion(
-                        fecha_prog_n, modulo_prog_id, submod_prog_id,
-                        None if tienda_prog == "Todas" else tienda_prog,
-                        responsable_prog.strip() or None, notas_prog.strip() or None,
-                    )
-                    st.success("Capacitación agregada al cronograma.")
-                    st.rerun()
+# --------------------------------------------------------------------------
+# Lista: la tabla + programar/editar/eliminar.
+# --------------------------------------------------------------------------
+with tab_cron_lista:
+    if not programaciones_mes:
+        st.caption("No hay capacitaciones programadas para este mes.")
+    else:
+        df_cron = pd.DataFrame([{
+            "Fecha": pr.get("fecha"),
+            "Módulo": (modulos_lookup_cron.get(pr.get("modulo_id")) or {}).get("nombre") or "—",
+            "Submódulo": (
+                (submods_lookup_cron.get(pr.get("submodulo_id")) or {}).get("nombre") or "—"
+                if pr.get("submodulo_id") else "General (módulo completo)"
+            ),
+            "Tienda": pr.get("tienda") or "Todas",
+            "Responsable": pr.get("responsable") or "—",
+            "Notas": pr.get("notas") or "—",
+        } for pr in programaciones_mes])
+        st.dataframe(df_cron, use_container_width=True, hide_index=True)
+        download_excel_button(df_cron, "cronograma_capacitaciones.xlsx", key="cap_cronograma_descargar_excel")
 
-    if programaciones_mes:
-        st.markdown("###### ✏️ Editar / eliminar una capacitación programada")
-        opciones_prog_ed = {
-            f"[{pr.get('fecha')}] "
-            f"{(modulos_lookup_cron.get(pr.get('modulo_id')) or {}).get('nombre') or '—'}"
-            + (f" · {pr.get('tienda')}" if pr.get("tienda") else ""): pr["id"]
-            for pr in programaciones_mes
-        }
-        elegido_prog = st.selectbox(
-            "Selecciona una capacitación programada", ["—"] + list(opciones_prog_ed.keys()),
-            key="cap_prog_editar_select",
-        )
-        if elegido_prog != "—":
-            prog_id_sel = opciones_prog_ed[elegido_prog]
-            pr_ed = db.get_capacitacion_programacion(prog_id_sel)
-            with st.form(f"cap_editar_prog_{prog_id_sel}"):
-                fecha_prog_ed = st.date_input(
-                    "Fecha", value=date.fromisoformat(pr_ed["fecha"]) if pr_ed.get("fecha") else date.today(),
-                )
-                opciones_modulo_ed = {m["nombre"]: m["id"] for m in modulos_all}
-                modulo_actual_nombre = (modulos_lookup_cron.get(pr_ed.get("modulo_id")) or {}).get("nombre")
-                modulo_prog_nombre_ed = st.selectbox(
-                    "Módulo", list(opciones_modulo_ed.keys()),
-                    index=list(opciones_modulo_ed.keys()).index(modulo_actual_nombre)
-                    if modulo_actual_nombre in opciones_modulo_ed else 0,
-                    key=f"cap_prog_modulo_ed_{prog_id_sel}",
-                )
-                modulo_prog_id_ed = opciones_modulo_ed[modulo_prog_nombre_ed]
-                opciones_submod_ed = {"(módulo completo)": None}
-                opciones_submod_ed.update({sm["nombre"]: sm["id"] for sm in db.list_submodulos(modulo_prog_id_ed)})
-                submod_actual_nombre = (
-                    (submods_lookup_cron.get(pr_ed.get("submodulo_id")) or {}).get("nombre")
-                    if pr_ed.get("submodulo_id") else "(módulo completo)"
-                )
-                submod_prog_nombre_ed = st.selectbox(
-                    "Submódulo (opcional)", list(opciones_submod_ed.keys()),
-                    index=list(opciones_submod_ed.keys()).index(submod_actual_nombre)
-                    if submod_actual_nombre in opciones_submod_ed else 0,
-                    key=f"cap_prog_submodulo_ed_{prog_id_sel}",
-                )
-                submod_prog_id_ed = opciones_submod_ed[submod_prog_nombre_ed]
-                tienda_prog_ed = st.selectbox(
-                    "Tienda (opcional)", ["Todas"] + CAPACITACION_TIENDAS,
-                    index=(["Todas"] + CAPACITACION_TIENDAS).index(pr_ed["tienda"])
-                    if pr_ed.get("tienda") in CAPACITACION_TIENDAS else 0,
-                    key=f"cap_prog_tienda_ed_{prog_id_sel}",
-                )
-                responsable_prog_ed = st.text_input(
-                    "Responsable / capacitador (opcional)", value=pr_ed.get("responsable") or "",
-                )
-                notas_prog_ed = st.text_area("Notas (opcional)", value=pr_ed.get("notas") or "")
-                colp1, colp2 = st.columns(2)
-                guardar_prog = colp1.form_submit_button("💾 Guardar cambios", use_container_width=True)
-                eliminar_prog = colp2.form_submit_button("🗑️ Eliminar del cronograma", use_container_width=True)
-                if guardar_prog:
-                    db.update_capacitacion_programacion(
-                        prog_id_sel, fecha=str(fecha_prog_ed), modulo_id=modulo_prog_id_ed,
-                        submodulo_id=submod_prog_id_ed,
-                        tienda=None if tienda_prog_ed == "Todas" else tienda_prog_ed,
-                        responsable=responsable_prog_ed.strip() or None, notas=notas_prog_ed.strip() or None,
+    if puede_editar:
+        with st.expander("➕ Programar una capacitación"):
+            if not modulos_all:
+                st.caption("Primero crea al menos un módulo en la pestaña '📚 Módulos' para poder programarlo.")
+            else:
+                with st.form("cap_nueva_programacion", clear_on_submit=True):
+                    fecha_prog_n = st.date_input(
+                        "Fecha de la capacitación", value=date.today(), key="cap_prog_fecha_n",
                     )
-                    st.success("Cronograma actualizado.")
-                    st.rerun()
-                if eliminar_prog:
-                    db.delete_capacitacion_programacion(prog_id_sel)
-                    st.success("Eliminado del cronograma.")
-                    st.rerun()
+                    opciones_modulo_prog = {m["nombre"]: m["id"] for m in modulos_all}
+                    modulo_prog_nombre = st.selectbox(
+                        "Módulo", list(opciones_modulo_prog.keys()), key="cap_prog_modulo_n",
+                    )
+                    modulo_prog_id = opciones_modulo_prog[modulo_prog_nombre]
+                    opciones_submod_prog = {"(módulo completo)": None}
+                    opciones_submod_prog.update(
+                        {sm["nombre"]: sm["id"] for sm in db.list_submodulos(modulo_prog_id)}
+                    )
+                    submod_prog_nombre = st.selectbox(
+                        "Submódulo (opcional)", list(opciones_submod_prog.keys()), key="cap_prog_submodulo_n",
+                    )
+                    submod_prog_id = opciones_submod_prog[submod_prog_nombre]
+                    tienda_prog = st.selectbox(
+                        "Tienda (opcional, déjalo en 'Todas' si aplica a todas)",
+                        ["Todas"] + CAPACITACION_TIENDAS, key="cap_prog_tienda_n",
+                    )
+                    responsable_prog = st.text_input(
+                        "Responsable / capacitador (opcional)", key="cap_prog_responsable_n",
+                    )
+                    notas_prog = st.text_area("Notas (opcional)", key="cap_prog_notas_n")
+                    if st.form_submit_button("📅 Agregar al cronograma", use_container_width=True):
+                        db.create_capacitacion_programacion(
+                            fecha_prog_n, modulo_prog_id, submod_prog_id,
+                            None if tienda_prog == "Todas" else tienda_prog,
+                            responsable_prog.strip() or None, notas_prog.strip() or None,
+                        )
+                        st.success("Capacitación agregada al cronograma.")
+                        st.rerun()
+
+        if programaciones_mes:
+            st.markdown("###### ✏️ Editar / eliminar una capacitación programada")
+            opciones_prog_ed = {
+                f"[{pr.get('fecha')}] "
+                f"{(modulos_lookup_cron.get(pr.get('modulo_id')) or {}).get('nombre') or '—'}"
+                + (f" · {pr.get('tienda')}" if pr.get("tienda") else ""): pr["id"]
+                for pr in programaciones_mes
+            }
+            elegido_prog = st.selectbox(
+                "Selecciona una capacitación programada", ["—"] + list(opciones_prog_ed.keys()),
+                key="cap_prog_editar_select",
+            )
+            if elegido_prog != "—":
+                prog_id_sel = opciones_prog_ed[elegido_prog]
+                pr_ed = db.get_capacitacion_programacion(prog_id_sel)
+                with st.form(f"cap_editar_prog_{prog_id_sel}"):
+                    fecha_prog_ed = st.date_input(
+                        "Fecha", value=date.fromisoformat(pr_ed["fecha"]) if pr_ed.get("fecha") else date.today(),
+                    )
+                    opciones_modulo_ed = {m["nombre"]: m["id"] for m in modulos_all}
+                    modulo_actual_nombre = (modulos_lookup_cron.get(pr_ed.get("modulo_id")) or {}).get("nombre")
+                    modulo_prog_nombre_ed = st.selectbox(
+                        "Módulo", list(opciones_modulo_ed.keys()),
+                        index=list(opciones_modulo_ed.keys()).index(modulo_actual_nombre)
+                        if modulo_actual_nombre in opciones_modulo_ed else 0,
+                        key=f"cap_prog_modulo_ed_{prog_id_sel}",
+                    )
+                    modulo_prog_id_ed = opciones_modulo_ed[modulo_prog_nombre_ed]
+                    opciones_submod_ed = {"(módulo completo)": None}
+                    opciones_submod_ed.update(
+                        {sm["nombre"]: sm["id"] for sm in db.list_submodulos(modulo_prog_id_ed)}
+                    )
+                    submod_actual_nombre = (
+                        (submods_lookup_cron.get(pr_ed.get("submodulo_id")) or {}).get("nombre")
+                        if pr_ed.get("submodulo_id") else "(módulo completo)"
+                    )
+                    submod_prog_nombre_ed = st.selectbox(
+                        "Submódulo (opcional)", list(opciones_submod_ed.keys()),
+                        index=list(opciones_submod_ed.keys()).index(submod_actual_nombre)
+                        if submod_actual_nombre in opciones_submod_ed else 0,
+                        key=f"cap_prog_submodulo_ed_{prog_id_sel}",
+                    )
+                    submod_prog_id_ed = opciones_submod_ed[submod_prog_nombre_ed]
+                    tienda_prog_ed = st.selectbox(
+                        "Tienda (opcional)", ["Todas"] + CAPACITACION_TIENDAS,
+                        index=(["Todas"] + CAPACITACION_TIENDAS).index(pr_ed["tienda"])
+                        if pr_ed.get("tienda") in CAPACITACION_TIENDAS else 0,
+                        key=f"cap_prog_tienda_ed_{prog_id_sel}",
+                    )
+                    responsable_prog_ed = st.text_input(
+                        "Responsable / capacitador (opcional)", value=pr_ed.get("responsable") or "",
+                    )
+                    notas_prog_ed = st.text_area("Notas (opcional)", value=pr_ed.get("notas") or "")
+                    colp1, colp2 = st.columns(2)
+                    guardar_prog = colp1.form_submit_button("💾 Guardar cambios", use_container_width=True)
+                    eliminar_prog = colp2.form_submit_button(
+                        "🗑️ Eliminar del cronograma", use_container_width=True,
+                    )
+                    if guardar_prog:
+                        db.update_capacitacion_programacion(
+                            prog_id_sel, fecha=str(fecha_prog_ed), modulo_id=modulo_prog_id_ed,
+                            submodulo_id=submod_prog_id_ed,
+                            tienda=None if tienda_prog_ed == "Todas" else tienda_prog_ed,
+                            responsable=responsable_prog_ed.strip() or None,
+                            notas=notas_prog_ed.strip() or None,
+                        )
+                        st.success("Cronograma actualizado.")
+                        st.rerun()
+                    if eliminar_prog:
+                        db.delete_capacitacion_programacion(prog_id_sel)
+                        st.success("Eliminado del cronograma.")
+                        st.rerun()
+
+# --------------------------------------------------------------------------
+# Calendario: cuadrícula tipo calendario de pared, un recuadro por día del
+# mes, con las capacitaciones programadas ese día.
+# --------------------------------------------------------------------------
+with tab_cron_calendario:
+    progs_por_dia = {}
+    for pr in programaciones_mes:
+        try:
+            dia_pr = date.fromisoformat(pr["fecha"]).day
+        except (ValueError, TypeError):
+            continue
+        progs_por_dia.setdefault(dia_pr, []).append(pr)
+
+    hoy_cal = date.today()
+    dias_semana = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
+    header_cols = st.columns(7)
+    for header_col, nombre_dia in zip(header_cols, dias_semana):
+        header_col.markdown(f"<div style='text-align:center;font-weight:700;'>{nombre_dia}</div>", unsafe_allow_html=True)
+
+    for semana in calendar.monthcalendar(mes_cronograma.year, mes_cronograma.month):
+        cols_semana = st.columns(7)
+        for col_dia, dia_num in zip(cols_semana, semana):
+            with col_dia:
+                if dia_num == 0:
+                    st.markdown(
+                        "<div style='min-height:78px;border-radius:6px;'></div>", unsafe_allow_html=True,
+                    )
+                    continue
+                es_hoy = (
+                    dia_num == hoy_cal.day and mes_cronograma.month == hoy_cal.month
+                    and mes_cronograma.year == hoy_cal.year
+                )
+                fondo = "background:#fff3cd;" if es_hoy else "background:#f7f7f5;"
+                progs_dia = progs_por_dia.get(dia_num, [])
+                lineas_html = "".join(
+                    "<div style='font-size:0.72rem;margin-top:2px;line-height:1.15;'>🎓 "
+                    f"{(modulos_lookup_cron.get(pr.get('modulo_id')) or {}).get('nombre') or '—'}"
+                    + (f"<br>&nbsp;&nbsp;· {pr['tienda']}" if pr.get("tienda") else "")
+                    + "</div>"
+                    for pr in progs_dia[:3]
+                )
+                if len(progs_dia) > 3:
+                    lineas_html += (
+                        f"<div style='font-size:0.68rem;color:#898781;margin-top:2px;'>"
+                        f"+{len(progs_dia) - 3} más</div>"
+                    )
+                st.markdown(
+                    f"<div style='border:1px solid #e1e0d9;border-radius:6px;padding:5px;"
+                    f"min-height:78px;{fondo}'>"
+                    f"<div style='font-weight:700;'>{dia_num}</div>{lineas_html}</div>",
+                    unsafe_allow_html=True,
+                )
+    st.caption("🟡 Hoy resaltado en amarillo. Para editar o eliminar una capacitación, usa la pestaña «Lista».")
 
 st.divider()
 
