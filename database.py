@@ -2280,6 +2280,66 @@ def set_colorado_correos_aviso(correos: list):
 
 
 # ---------------------------------------------------------------------------
+# Galaxy: idéntico a Colorado (cronograma de entregas + tablero de
+# producción estilo Trello + avisos por correo), pero como línea de
+# producción / colección de datos totalmente independiente — ver
+# config.ESTADOS_GALAXY y auth.puede_editar_galaxy.
+# ---------------------------------------------------------------------------
+def list_galaxy_pedidos():
+    """Retorna todas las órdenes de Galaxy, más nuevas primero."""
+    client = get_client()
+    rows = [_doc_to_dict(s) for s in client.collection("galaxy_pedidos").stream()]
+    rows.sort(key=lambda r: r.get("creado_en") or "", reverse=True)
+    return rows
+
+
+def get_galaxy_pedido(pedido_id):
+    snap = get_client().collection("galaxy_pedidos").document(pedido_id).get()
+    return _doc_to_dict(snap) if snap.exists else None
+
+
+def create_galaxy_pedido(datos: dict, creado_por_id=None):
+    """Toda orden nueva entra siempre por la primera columna del tablero
+    ('Nuevo') — ver config.ESTADOS_GALAXY. 'datos' trae los campos de la
+    orden de producción (cliente, pieza, dimensiones, material, color,
+    acabados, precio, cantidad, notas, NIT, dirección, fecha de entrega —
+    ver app_pages/25_Galaxy.py)."""
+    from config import ESTADOS_GALAXY
+    doc_ref = get_client().collection("galaxy_pedidos").document()
+    doc_ref.set({
+        **datos,
+        "estado": ESTADOS_GALAXY[0],
+        "creado_por_id": creado_por_id, "creado_en": datetime.now().isoformat(timespec="seconds"),
+    })
+    return doc_ref.id
+
+
+def update_galaxy_pedido(pedido_id, **kwargs):
+    if kwargs:
+        get_client().collection("galaxy_pedidos").document(pedido_id).update(kwargs)
+
+
+def delete_galaxy_pedido(pedido_id):
+    get_client().collection("galaxy_pedidos").document(pedido_id).delete()
+
+
+def get_galaxy_correos_aviso() -> list:
+    """Lista de correos que reciben un aviso automático cuando se agrega una
+    orden nueva o una tarjeta cambia de columna en el tablero de Galaxy (ver
+    25_Galaxy.py). Vacía si todavía no se ha guardado ninguno."""
+    snap = get_client().collection("galaxy_config").document("notificaciones").get()
+    data = _doc_to_dict(snap) if snap.exists else None
+    return (data or {}).get("correos") or []
+
+
+def set_galaxy_correos_aviso(correos: list):
+    get_client().collection("galaxy_config").document("notificaciones").set({
+        "correos": [c.strip() for c in (correos or []) if c and c.strip()],
+        "actualizado_en": datetime.now().isoformat(timespec="seconds"),
+    })
+
+
+# ---------------------------------------------------------------------------
 # Avisos por correo (Gmail) — usado por la pestaña Phara para avisar cuando
 # hay un pedido nuevo o un cambio de columna. Mismo patrón que Firebase
 # Storage: si todavía no están las credenciales configuradas, estas
