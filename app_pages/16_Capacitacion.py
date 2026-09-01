@@ -7,7 +7,9 @@ import streamlit as st
 
 import auth
 import database as db
-from config import CAPACITACION_ARCHIVO_MAX_BYTES, CAPACITACION_ARCHIVOS_MAX, CAPACITACION_TIENDAS
+from config import (
+    CAPACITACION_ARCHIVO_MAX_BYTES, CAPACITACION_ARCHIVOS_MAX, CAPACITACION_MODALIDADES, CAPACITACION_TIENDAS,
+)
 from utils import archivos_a_b64_lista, diseno_archivos_lista, download_excel_button, sidebar_user_box
 
 _MESES_LABEL_LARGO = {
@@ -70,6 +72,7 @@ with tab_cron_lista:
                 (submods_lookup_cron.get(pr.get("submodulo_id")) or {}).get("nombre") or "—"
                 if pr.get("submodulo_id") else "General (módulo completo)"
             ),
+            "Modalidad": pr.get("modalidad") or "—",
             "Tienda": pr.get("tienda") or "Todas",
             "Responsable": pr.get("responsable") or "—",
             "Notas": pr.get("notas") or "—",
@@ -99,6 +102,9 @@ with tab_cron_lista:
                         "Submódulo (opcional)", list(opciones_submod_prog.keys()), key="cap_prog_submodulo_n",
                     )
                     submod_prog_id = opciones_submod_prog[submod_prog_nombre]
+                    modalidad_prog = st.selectbox(
+                        "Modalidad", CAPACITACION_MODALIDADES, key="cap_prog_modalidad_n",
+                    )
                     tienda_prog = st.selectbox(
                         "Tienda (opcional, déjalo en 'Todas' si aplica a todas)",
                         ["Todas"] + CAPACITACION_TIENDAS, key="cap_prog_tienda_n",
@@ -111,7 +117,7 @@ with tab_cron_lista:
                         db.create_capacitacion_programacion(
                             fecha_prog_n, modulo_prog_id, submod_prog_id,
                             None if tienda_prog == "Todas" else tienda_prog,
-                            responsable_prog.strip() or None, notas_prog.strip() or None,
+                            responsable_prog.strip() or None, notas_prog.strip() or None, modalidad_prog,
                         )
                         st.success("Capacitación agregada al cronograma.")
                         st.rerun()
@@ -159,6 +165,12 @@ with tab_cron_lista:
                         key=f"cap_prog_submodulo_ed_{prog_id_sel}",
                     )
                     submod_prog_id_ed = opciones_submod_ed[submod_prog_nombre_ed]
+                    modalidad_prog_ed = st.selectbox(
+                        "Modalidad", CAPACITACION_MODALIDADES,
+                        index=CAPACITACION_MODALIDADES.index(pr_ed["modalidad"])
+                        if pr_ed.get("modalidad") in CAPACITACION_MODALIDADES else 0,
+                        key=f"cap_prog_modalidad_ed_{prog_id_sel}",
+                    )
                     tienda_prog_ed = st.selectbox(
                         "Tienda (opcional)", ["Todas"] + CAPACITACION_TIENDAS,
                         index=(["Todas"] + CAPACITACION_TIENDAS).index(pr_ed["tienda"])
@@ -177,7 +189,7 @@ with tab_cron_lista:
                     if guardar_prog:
                         db.update_capacitacion_programacion(
                             prog_id_sel, fecha=str(fecha_prog_ed), modulo_id=modulo_prog_id_ed,
-                            submodulo_id=submod_prog_id_ed,
+                            submodulo_id=submod_prog_id_ed, modalidad=modalidad_prog_ed,
                             tienda=None if tienda_prog_ed == "Todas" else tienda_prog_ed,
                             responsable=responsable_prog_ed.strip() or None,
                             notas=notas_prog_ed.strip() or None,
@@ -224,8 +236,9 @@ with tab_cron_calendario:
                 fondo = "background:#fff3cd;" if es_hoy else "background:#f7f7f5;"
                 progs_dia = progs_por_dia.get(dia_num, [])
                 lineas_html = "".join(
-                    "<div style='font-size:0.72rem;margin-top:2px;line-height:1.15;'>🎓 "
-                    f"{(modulos_lookup_cron.get(pr.get('modulo_id')) or {}).get('nombre') or '—'}"
+                    "<div style='font-size:0.72rem;margin-top:2px;line-height:1.15;'>"
+                    + ("💻 " if pr.get("modalidad") == "Virtual" else "🏢 " if pr.get("modalidad") == "Presencial" else "🎓 ")
+                    + f"{(modulos_lookup_cron.get(pr.get('modulo_id')) or {}).get('nombre') or '—'}"
                     + (f"<br>&nbsp;&nbsp;· {pr['tienda']}" if pr.get("tienda") else "")
                     + "</div>"
                     for pr in progs_dia[:3]
@@ -241,7 +254,10 @@ with tab_cron_calendario:
                     f"<div style='font-weight:700;'>{dia_num}</div>{lineas_html}</div>",
                     unsafe_allow_html=True,
                 )
-    st.caption("🟡 Hoy resaltado en amarillo. Para editar o eliminar una capacitación, usa la pestaña «Lista».")
+    st.caption(
+        "🟡 Hoy resaltado en amarillo · 💻 Virtual · 🏢 Presencial. "
+        "Para editar o eliminar una capacitación, usa la pestaña «Lista»."
+    )
 
 st.divider()
 
