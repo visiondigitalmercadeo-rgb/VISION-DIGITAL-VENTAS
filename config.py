@@ -519,6 +519,11 @@ ESTADOS_COLORADO = ["Nuevo", "En producción", "Acabados", "Entregado"]
 # color de la orden — usadas en el formulario de la pestaña Colorado.
 COLORADO_DIMENSION_UNIDADES = ["Pulgadas", "Metros", "Centímetros", "Milímetros"]
 COLORADO_TIPOS_COLOR = ["Blanco y Negro", "Color", "Con clear", "Con blanco"]
+# Archivos de referencia adjuntos a una orden (arte, cotización, etc.) —
+# reutiliza los mismos límites de tamaño que Diseño Gráfico
+# (DISENO_ARCHIVO_MAX_BYTES / DISENO_ARCHIVO_MAX_BYTES_STORAGE), solo cambia
+# cuántos archivos se permiten por orden.
+PRODUCCION_ARCHIVOS_MAX = 5
 
 # ---------------------------------------------------------------------------
 # Galaxy: pestaña idéntica a Colorado (mismo formulario de 15 campos,
