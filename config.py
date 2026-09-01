@@ -425,9 +425,9 @@ NPS_SLUG_TIENDA = TICKET_SLUG_TIENDA
 # cliente). "categoria_nps" es a qué categoría del cálculo formal de NPS
 # corresponde cada una (ver database.calcular_nps: %promotores - %detractores).
 NPS_CARITAS = [
-    {"valor": "malo", "emoji": "🔴🙁", "label": "Malo", "color": STATUS["critical"], "categoria_nps": "detractor"},
-    {"valor": "regular", "emoji": "🟡😐", "label": "Regular", "color": STATUS["warning"], "categoria_nps": "neutro"},
-    {"valor": "excelente", "emoji": "🟢🙂", "label": "Excelente", "color": STATUS["good"], "categoria_nps": "promotor"},
+    {"valor": "malo", "emoji": "😠", "label": "Malo", "color": STATUS["critical"], "categoria_nps": "detractor"},
+    {"valor": "regular", "emoji": "🙂", "label": "Regular", "color": STATUS["warning"], "categoria_nps": "neutro"},
+    {"valor": "excelente", "emoji": "🥳", "label": "Excelente", "color": STATUS["good"], "categoria_nps": "promotor"},
 ]
 
 # Las 4 preguntas de la encuesta. El texto (y, en la de opción múltiple, las
