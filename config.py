@@ -576,8 +576,8 @@ DG_ENTIDAD_LABEL = {
 DG_ANIOS_GRAFICA = [2024, 2025, 2026]
 
 # Pestaña "Krispy 2": desglose mensual por tienda y por producto (Bites/Mini).
-KRISPY_TIENDAS = ["CAYALA", "VISTA HERMOSA", "CAES"]
-KRISPY_TIENDA_LABEL = {"CAYALA": "Cayalá", "VISTA HERMOSA": "Vista Hermosa", "CAES": "CAES"}
+KRISPY_TIENDAS = ["CAYALA", "VISTA HERMOSA", "CAES", "MAJADAS"]
+KRISPY_TIENDA_LABEL = {"CAYALA": "Cayalá", "VISTA HERMOSA": "Vista Hermosa", "CAES": "CAES", "MAJADAS": "Majadas"}
 KRISPY_PRODUCTOS = ["bites", "mini"]
 KRISPY_PRODUCTO_LABEL = {"bites": "Bites", "mini": "Mini"}
 KRISPY_METRICAS = ["unidades", "dinero", "utilidad"]
