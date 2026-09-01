@@ -290,6 +290,16 @@ def puede_editar_phara():
     return u is not None and u["rol"] != "cliente_phara"
 
 
+def puede_editar_colorado():
+    """Quién puede crear órdenes de producción, moverlas por el tablero y
+    eliminarlas en la pestaña Colorado: admin, vendedor, jefe_tienda y
+    subjefe_tienda. Cualquier otro rol que llegue a esta pestaña (por
+    ejemplo con acceso extra otorgado desde Administración de usuarios) solo
+    puede consultar el cronograma y el tablero, sin poder cambiar nada."""
+    u = current_user()
+    return u is not None and u["rol"] in ("admin", "vendedor", "jefe_tienda", "subjefe_tienda")
+
+
 def puede_autorizar_cotizacion_mant_tiendas():
     """Solo el administrador puede autorizar la cotización de una solicitud
     de Mantenimiento de Tiendas — mientras no se autoriza, la tarjeta
