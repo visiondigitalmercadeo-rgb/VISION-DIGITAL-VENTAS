@@ -1232,8 +1232,8 @@ def update_modulo(modulo_id, **kwargs):
 
 def delete_modulo(modulo_id):
     """Elimina el módulo junto con todos sus submódulos, las calificaciones
-    (generales y por submódulo) y las capacitaciones programadas ligadas a
-    él — para no dejar nada huérfano."""
+    (generales y por submódulo), las capacitaciones programadas y los
+    diplomas de finalización ligados a él — para no dejar nada huérfano."""
     client = get_client()
     for sub in list_submodulos(modulo_id):
         delete_submodulo(sub["id"])
@@ -1242,6 +1242,8 @@ def delete_modulo(modulo_id):
     for pr in list_capacitacion_programaciones():
         if pr.get("modulo_id") == modulo_id:
             client.collection("capacitacion_programaciones").document(pr["id"]).delete()
+    for dip in list_capacitacion_diplomas(modulo_id=modulo_id):
+        client.collection("capacitacion_diplomas").document(dip["id"]).delete()
     client.collection("capacitacion_modulos").document(modulo_id).delete()
 
 
@@ -1363,6 +1365,51 @@ def update_capacitacion_programacion(programacion_id, **kwargs):
 
 def delete_capacitacion_programacion(programacion_id):
     get_client().collection("capacitacion_programaciones").document(programacion_id).delete()
+
+
+# ---------------------------------------------------------------------------
+# Capacitación — diplomas (marca que una persona finalizó un módulo y guarda
+# la fecha en la que lo hizo, para poder volver a descargar el mismo diploma
+# después sin que la fecha cambie).
+# ---------------------------------------------------------------------------
+def list_capacitacion_diplomas(persona_id=None, modulo_id=None):
+    client = get_client()
+    query = client.collection("capacitacion_diplomas")
+    if persona_id:
+        query = query.where("persona_id", "==", persona_id)
+    if modulo_id:
+        query = query.where("modulo_id", "==", modulo_id)
+    rows = [_doc_to_dict(s) for s in query.stream()]
+    rows.sort(key=lambda r: r.get("fecha") or "", reverse=True)
+    return rows
+
+
+def get_capacitacion_diploma(persona_id, modulo_id):
+    coincidencias = list_capacitacion_diplomas(persona_id=persona_id, modulo_id=modulo_id)
+    return coincidencias[0] if coincidencias else None
+
+
+def finalizar_modulo_capacitacion(persona_id, modulo_id, tienda, generado_por=None):
+    """Marca el módulo como finalizado para esta persona (si no lo estaba
+    ya) y devuelve el registro del diploma. Si ya se había finalizado antes,
+    NO cambia la fecha original — así el diploma se puede volver a descargar
+    después con la misma fecha de finalización."""
+    existente = get_capacitacion_diploma(persona_id, modulo_id)
+    if existente:
+        return existente
+    data = {
+        "persona_id": persona_id, "modulo_id": modulo_id, "tienda": tienda,
+        "fecha": date.today().isoformat(), "generado_por": generado_por,
+        "creado_en": datetime.now().isoformat(timespec="seconds"),
+    }
+    doc_ref = get_client().collection("capacitacion_diplomas").document()
+    doc_ref.set(data)
+    data["id"] = doc_ref.id
+    return data
+
+
+def delete_capacitacion_diploma(diploma_id):
+    get_client().collection("capacitacion_diplomas").document(diploma_id).delete()
 
 
 # ---------------------------------------------------------------------------
