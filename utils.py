@@ -789,3 +789,172 @@ def mant_tienda_pdf_bytes(r: dict) -> bytes:
     pdf.cell(80, 5, _pdf_safe("Firma y Nombre"), align="C")
 
     return bytes(pdf.output())
+
+
+def orden_produccion_pdf_bytes(p: dict, linea: str) -> bytes:
+    """Genera el PDF de 'ORDEN DE PRODUCCIÓN No. ____' de una orden de
+    Colorado o Galaxy — mismo diseño que el PDF de 'ENVÍO No.' de Logística
+    y el de 'ORDEN DE TRABAJO No.' de Mantenimiento de Tiendas (encabezado
+    con logo y número corrido, cajas de datos, y las líneas de firma al
+    final), adaptado a los campos propios de una orden de producción
+    (cliente, pieza, dimensiones, material, color, acabados, precio,
+    cantidad, notas). 'linea' es "Colorado" o "Galaxy", para identificar de
+    cuál tablero viene la orden."""
+    pdf = FPDF(format="Letter")
+    pdf.add_page()
+    pdf.set_auto_page_break(auto=True, margin=12)
+
+    # -- Encabezado: logo a la izquierda, caja "ORDEN DE PRODUCCIÓN No." a la derecha --
+    try:
+        pdf.image(LOGO_PATH, x=10, y=10, w=42)
+    except Exception:
+        pdf.set_font("Helvetica", "B", 16)
+        pdf.set_xy(10, 12)
+        pdf.cell(60, 8, _pdf_safe(EMPRESA_NOMBRE))
+
+    caja_x, caja_w = 108, 92
+    pdf.set_fill_color(20, 20, 20)
+    pdf.set_text_color(255, 255, 255)
+    pdf.set_font("Helvetica", "B", 11)
+    pdf.set_xy(caja_x, 12)
+    pdf.cell(caja_w, 8, _pdf_safe("ORDEN DE PRODUCCIÓN No."), border=0, align="C", fill=True)
+
+    numero_orden = p.get("numero_orden")
+    texto_numero = f"No. {numero_orden:04d}" if isinstance(numero_orden, int) else "No. ____"
+    pdf.set_text_color(0, 0, 0)
+    pdf.set_draw_color(0, 0, 0)
+    pdf.set_font("Helvetica", "B", 13)
+    pdf.set_xy(caja_x, 20)
+    pdf.cell(caja_w, 10, _pdf_safe(texto_numero), border=1, align="C")
+
+    pdf.set_font("Helvetica", "", 9)
+    pdf.set_text_color(60, 60, 60)
+    pdf.set_xy(caja_x, 32)
+    pdf.cell(caja_w, 5, _pdf_safe(EMPRESA_DIRECCION_LINEA1), align="C")
+    pdf.set_xy(caja_x, 37)
+    pdf.cell(caja_w, 5, _pdf_safe(EMPRESA_DIRECCION_LINEA2), align="C")
+    pdf.set_text_color(0, 0, 0)
+
+    def _fecha_legible(iso_txt):
+        iso_txt = (iso_txt or "")[:10]
+        if len(iso_txt) == 10 and iso_txt[4] == "-":
+            return f"{iso_txt[8:10]}/{iso_txt[5:7]}/{iso_txt[0:4]}"
+        return iso_txt
+
+    total = None
+    if p.get("precio_unidad") and p.get("cantidad_unidades"):
+        total = float(p["precio_unidad"]) * float(p["cantidad_unidades"])
+
+    dimensiones = None
+    if p.get("dimension_ancho") or p.get("dimension_alto"):
+        dimensiones = (
+            f"{p.get('dimension_ancho') or '—'} x {p.get('dimension_alto') or '—'} "
+            f"{p.get('dimension_unidad') or ''}"
+        ).strip()
+
+    box_w = 190
+
+    def _caja(y0, titulo_caja, campos):
+        fila_h = 8
+        if titulo_caja:
+            pdf.set_xy(10, y0)
+            pdf.set_fill_color(20, 20, 20)
+            pdf.set_text_color(255, 255, 255)
+            pdf.set_font("Helvetica", "B", 10)
+            pdf.cell(box_w, 7, _pdf_safe(titulo_caja), border=0, align="C", fill=True)
+            pdf.set_text_color(0, 0, 0)
+            y0 += 7
+        pdf.set_draw_color(150, 150, 150)
+        pdf.rect(10, y0, box_w, fila_h * len(campos))
+        for i, (etiqueta, valor) in enumerate(campos):
+            fila_y = y0 + i * fila_h
+            if i > 0:
+                pdf.line(10, fila_y, 10 + box_w, fila_y)
+            pdf.set_font("Helvetica", "B", 10)
+            pdf.set_xy(13, fila_y + 2.3)
+            pdf.cell(48, 5, _pdf_safe(etiqueta))
+            pdf.set_font("Helvetica", "", 10)
+            pdf.set_xy(61, fila_y + 2.3)
+            pdf.cell(box_w - 54, 5, _pdf_safe(valor))
+        return y0 + fila_h * len(campos)
+
+    y = 52
+    y = _caja(y, "DATOS DEL CLIENTE", [
+        ("LÍNEA:", linea),
+        ("FECHA:", _fecha_legible(p.get("creado_en")) or "—"),
+        ("CLIENTE:", p.get("cliente_nombre") or "—"),
+        ("TELÉFONO:", p.get("cliente_telefono") or "—"),
+        ("CORREO:", p.get("cliente_correo") or "—"),
+        ("NIT:", p.get("nit") or "—"),
+        ("DIRECCIÓN DE ENTREGA:", p.get("direccion_entrega") or "—"),
+    ])
+    y += 6
+    y = _caja(y, "DATOS DE LA PIEZA", [
+        ("TIPO DE PIEZA:", p.get("tipo_pieza") or "—"),
+        ("DIMENSIONES:", dimensiones or "—"),
+        ("MATERIAL:", p.get("material") or "—"),
+        ("TIPO DE COLOR:", p.get("tipo_color") or "—"),
+        ("ACABADOS:", p.get("acabados") or "—"),
+    ])
+    y += 6
+    y = _caja(y, "PRECIO Y ENTREGA", [
+        ("PRECIO POR UNIDAD:", money(p["precio_unidad"]) if p.get("precio_unidad") else "—"),
+        ("CANTIDAD:", str(p["cantidad_unidades"]) if p.get("cantidad_unidades") not in (None, "") else "—"),
+        ("TOTAL:", money(total) if total is not None else "—"),
+        ("FECHA DE ENTREGA:", _fecha_legible(p.get("fecha_entrega")) or "Sin definir"),
+    ])
+    y += 6
+
+    # -- Notas adicionales ----------------------------------------------------
+    pdf.set_xy(10, y)
+    pdf.set_fill_color(20, 20, 20)
+    pdf.set_text_color(255, 255, 255)
+    pdf.set_font("Helvetica", "B", 10)
+    pdf.cell(box_w, 7, _pdf_safe("NOTAS ADICIONALES"), border=0, align="C", fill=True)
+    pdf.set_text_color(0, 0, 0)
+    y += 7
+    pdf.set_font("Helvetica", "", 10)
+    pdf.set_draw_color(150, 150, 150)
+    pdf.set_xy(10, y)
+    texto_notas = _pdf_safe(p.get("notas") or "Sin notas.")
+    lineas = pdf.multi_cell(box_w, 6, texto_notas, dry_run=True, output="LINES")
+    alto_notas = max(16, len(lineas) * 6 + 4)
+    pdf.multi_cell(box_w, 6, texto_notas, border=1)
+    pdf.rect(10, y, box_w, alto_notas)
+    y += alto_notas + 6
+
+    # -- Archivos adjuntos (solo el nombre — pueden ser PDF, Word, Excel,
+    # PSD o AI, formatos que fpdf2 no puede dibujar como imagen) ------------
+    archivos = p.get("archivos") or []
+    if y > 250:
+        pdf.add_page()
+        y = 15
+    pdf.set_xy(10, y)
+    pdf.set_font("Helvetica", "I", 9)
+    pdf.set_text_color(90, 90, 90)
+    if archivos:
+        nombres = ", ".join(a.get("nombre") or "archivo" for a in archivos)
+        pdf.multi_cell(box_w, 5, _pdf_safe(f"Archivos adjuntos ({len(archivos)}): {nombres}"))
+    else:
+        pdf.cell(box_w, 5, _pdf_safe("Sin archivos adjuntos."))
+    pdf.set_text_color(0, 0, 0)
+    y = pdf.get_y() + 14
+
+    # -- Firmas: SOLICITA / PRODUCCIÓN ---------------------------------------
+    if y > 255:
+        pdf.add_page()
+        y = 20
+    pdf.set_draw_color(0, 0, 0)
+    pdf.line(15, y, 95, y)
+    pdf.line(115, y, 195, y)
+    pdf.set_font("Helvetica", "", 9)
+    pdf.set_xy(15, y + 2)
+    pdf.cell(80, 5, _pdf_safe("SOLICITA"), align="C")
+    pdf.set_xy(115, y + 2)
+    pdf.cell(80, 5, _pdf_safe("PRODUCCIÓN"), align="C")
+    pdf.set_xy(15, y + 7)
+    pdf.cell(80, 5, _pdf_safe("Firma y Nombre"), align="C")
+    pdf.set_xy(115, y + 7)
+    pdf.cell(80, 5, _pdf_safe("Firma y Nombre"), align="C")
+
+    return bytes(pdf.output())
