@@ -287,7 +287,9 @@ def _render_historial():
         st.caption("Tu rol es de solo vista para el historial.")
 
 
-tab_ventas, tab_utilidades, tab_historial = st.tabs(["💰 Ventas", "📈 Utilidades", "📜 Historial"])
+tab_ventas, tab_utilidades, tab_proyeccion, tab_historial = st.tabs(
+    ["💰 Ventas", "📈 Utilidades", "🎯 Proyección", "📜 Historial"],
+)
 
 with tab_ventas:
     registros_ventas = db.get_ventas_mensuales_planta(anio_mes)
@@ -301,6 +303,18 @@ with tab_utilidades:
     _render_seccion(
         "Utilidad", registros_utilidades, "upm",
         db.upsert_utilidad_mensual_planta, "💾 Guardar utilidad mensual", "Utilidad mensual",
+    )
+
+with tab_proyeccion:
+    st.caption(
+        "Proyección de venta del mes, por vendedor y por planta — misma estructura que la pestaña "
+        "'Ventas', pero es la meta/proyección, no lo que realmente se vendió. Se guarda aparte, así "
+        "que nunca se mezcla con los datos reales."
+    )
+    registros_proyeccion = db.get_proyecciones_mensuales_planta(anio_mes)
+    _render_seccion(
+        "Proyección", registros_proyeccion, "ppm",
+        db.upsert_proyeccion_mensual_planta, "💾 Guardar proyección mensual", "Proyección mensual",
     )
 
 with tab_historial:
