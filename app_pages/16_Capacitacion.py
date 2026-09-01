@@ -10,7 +10,7 @@ import database as db
 from config import (
     CAPACITACION_ARCHIVO_MAX_BYTES, CAPACITACION_ARCHIVOS_MAX, CAPACITACION_MODALIDADES, CAPACITACION_TIENDAS,
 )
-from utils import archivos_a_b64_lista, diseno_archivos_lista, download_excel_button, sidebar_user_box
+from utils import archivos_a_b64_lista, diseno_archivos_lista, download_excel_button, sidebar_user_box, to_excel_bytes
 
 _MESES_LABEL_LARGO = {
     "01": "Enero", "02": "Febrero", "03": "Marzo", "04": "Abril", "05": "Mayo", "06": "Junio",
@@ -566,6 +566,112 @@ with tab_calificaciones:
                         st.rerun()
             else:
                 st.caption("Tu rol es de solo vista: puedes consultar pero no calificar.")
+
+            if puede_editar:
+                st.divider()
+                st.markdown("##### 📥 Carga masiva desde Excel")
+                st.caption(
+                    f"Para calificar de una vez a todo el personal en el módulo «{modulo_nombre_sel}» "
+                    + (f"de {tienda_calif_sel}" if tienda_calif_sel != "Todas" else "de todas las tiendas")
+                    + ": descarga la plantilla de abajo, escribe las calificaciones (0 a 100) en las "
+                      "columnas 'General' y de cada submódulo — deja una celda vacía si no quieres "
+                      "cambiar esa nota — y vuelve a subir el mismo archivo aquí. No cambies la columna "
+                      "'ID', ni el filtro de Tienda/Módulo de arriba antes de subirlo."
+                )
+
+                columnas_sub_nombres = [sm["nombre"] for sm in submods_sel]
+                filas_plantilla = []
+                for p in personal_filtrado:
+                    calif_gen_p = db.get_calificacion(p["id"], modulo_id_sel, None)
+                    fila_p = {
+                        "ID": p["id"], "Nombre": p["nombre"], "Tienda": p["tienda"], "Módulo": modulo_nombre_sel,
+                        "General": calif_gen_p["calificacion"] if calif_gen_p else None,
+                    }
+                    for sm in submods_sel:
+                        calif_sm_p = db.get_calificacion(p["id"], modulo_id_sel, sm["id"])
+                        fila_p[sm["nombre"]] = calif_sm_p["calificacion"] if calif_sm_p else None
+                    filas_plantilla.append(fila_p)
+                df_plantilla_calif = pd.DataFrame(filas_plantilla)
+
+                nombre_archivo_plantilla = (
+                    f"plantilla_calificaciones_{modulo_nombre_sel}".replace(" ", "_") + ".xlsx"
+                )
+                st.download_button(
+                    f"📥 Descargar plantilla — {modulo_nombre_sel}",
+                    data=to_excel_bytes(df_plantilla_calif, sheet_name="Calificaciones"),
+                    file_name=nombre_archivo_plantilla,
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True, key=f"cap_calif_plantilla_{modulo_id_sel}_{tienda_calif_sel}",
+                )
+
+                excel_calif_subido = st.file_uploader(
+                    "Subir el Excel ya lleno con las calificaciones", type=["xlsx"],
+                    key=f"cap_calif_subir_{modulo_id_sel}_{tienda_calif_sel}",
+                )
+                if excel_calif_subido is not None and st.button(
+                    "📤 Cargar calificaciones del Excel", use_container_width=True,
+                    key=f"cap_calif_cargar_{modulo_id_sel}_{tienda_calif_sel}",
+                ):
+                    try:
+                        df_subido_calif = pd.read_excel(excel_calif_subido)
+                    except Exception as e:
+                        st.error(f"No se pudo leer el archivo: {e}")
+                    else:
+                        if "ID" not in df_subido_calif.columns:
+                            st.error(
+                                "El archivo no tiene la columna 'ID' — usa la plantilla que descargaste "
+                                "arriba, sin quitarle columnas."
+                            )
+                        elif "Módulo" in df_subido_calif.columns and not (
+                            df_subido_calif["Módulo"].dropna() == modulo_nombre_sel
+                        ).all():
+                            st.error(
+                                f"Este archivo no es de «{modulo_nombre_sel}» — parece ser de otro módulo. "
+                                "Selecciona el módulo correcto arriba antes de subirlo, o descarga la "
+                                "plantilla de nuevo."
+                            )
+                        else:
+                            ids_validos = {p["id"] for p in personal_filtrado}
+                            columnas_calif = ["General"] + columnas_sub_nombres
+                            guardadas, omitidas, filas_id_invalido = 0, 0, 0
+                            for _, fila_subida in df_subido_calif.iterrows():
+                                pid = fila_subida.get("ID")
+                                if pd.isna(pid) or str(pid) not in ids_validos:
+                                    filas_id_invalido += 1
+                                    continue
+                                pid = str(pid)
+                                for columna in columnas_calif:
+                                    if columna not in df_subido_calif.columns:
+                                        continue
+                                    valor = fila_subida.get(columna)
+                                    if pd.isna(valor):
+                                        continue
+                                    try:
+                                        valor_num = float(valor)
+                                    except (TypeError, ValueError):
+                                        omitidas += 1
+                                        continue
+                                    if not (0 <= valor_num <= 100):
+                                        omitidas += 1
+                                        continue
+                                    submod_id_col = None if columna == "General" else next(
+                                        (sm["id"] for sm in submods_sel if sm["nombre"] == columna), None,
+                                    )
+                                    db.upsert_calificacion(pid, modulo_id_sel, submod_id_col, round(valor_num))
+                                    guardadas += 1
+                            mensaje_carga = f"Se guardaron {guardadas} calificación(es)."
+                            if omitidas:
+                                mensaje_carga += (
+                                    f" Se omitieron {omitidas} celda(s) con un valor inválido "
+                                    "(debe ser un número entre 0 y 100)."
+                                )
+                            if filas_id_invalido:
+                                mensaje_carga += (
+                                    f" Se omitieron {filas_id_invalido} fila(s) cuyo ID no corresponde a "
+                                    "nadie en este filtro de tienda."
+                                )
+                            st.success(mensaje_carga)
+                            st.rerun()
 
             st.divider()
 
