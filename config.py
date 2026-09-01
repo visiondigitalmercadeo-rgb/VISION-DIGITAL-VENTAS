@@ -22,6 +22,11 @@ FAVICON_PATH = os.path.join(BASE_DIR, "assets", "favicon.png")
 # Logo del cliente Phara — se muestra en la parte superior de la pestaña
 # Phara en vez de un ícono genérico (ver app_pages/22_Phara.py).
 PHARA_LOGO_PATH = os.path.join(BASE_DIR, "assets", "phara_logo.png")
+# Firma escaneada de Steven Gabriel — se usa en el diploma de finalización de
+# módulo de Capacitación (ver app_pages/16_Capacitacion.py / utils.diploma_pdf_bytes).
+FIRMA_STEVEN_PATH = os.path.join(BASE_DIR, "assets", "firma_steven.png")
+FIRMA_STEVEN_NOMBRE = "Steven Gabriel"
+FIRMA_STEVEN_PUESTO = "Gerente Comercial"
 BRAND_PINK = "#FF0C82"  # color de marca — solo para chrome de la interfaz (botones, acentos),
                          # NO se usa en las gráficas: ahí se mantiene la paleta validada abajo.
 
