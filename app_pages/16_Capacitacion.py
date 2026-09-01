@@ -1,700 +1,643 @@
-import base64
-import calendar
-from datetime import date
+"""Configuración global: rutas, colores (paleta validada de la skill dataviz),
+listas de opciones de negocio (plantas, estados, etc.)."""
 
-import pandas as pd
-import streamlit as st
+import os
 
-import auth
-import database as db
-from config import (
-    CAPACITACION_ARCHIVO_MAX_BYTES, CAPACITACION_ARCHIVOS_MAX, CAPACITACION_MODALIDADES, CAPACITACION_TIENDAS,
-)
-from utils import archivos_a_b64_lista, diseno_archivos_lista, download_excel_button, sidebar_user_box, to_excel_bytes
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-_MESES_LABEL_LARGO = {
-    "01": "Enero", "02": "Febrero", "03": "Marzo", "04": "Abril", "05": "Mayo", "06": "Junio",
-    "07": "Julio", "08": "Agosto", "09": "Septiembre", "10": "Octubre", "11": "Noviembre", "12": "Diciembre",
+# ---------------------------------------------------------------------------
+# Marca
+# ---------------------------------------------------------------------------
+EMPRESA_NOMBRE = "Visión Digital"
+EMPRESA_LEMA = "Tu punto de impresión"
+# Dirección física de la empresa — se usa en el encabezado del PDF de envío
+# de Logística (formato "ENVÍO No.", igual al de la libreta física impresa).
+EMPRESA_DIRECCION_LINEA1 = '2da. Calle 34-92 "A"'
+EMPRESA_DIRECCION_LINEA2 = "Calzada Mateo Flores Zona 7"
+LOGO_PATH = os.path.join(BASE_DIR, "assets", "logo.png")
+# Ícono cuadrado (los 4 puntos, fondo azul marino) que se ve en la pestaña del
+# navegador — el logo completo (LOGO_PATH) no es cuadrado, así que para esto
+# se usa una versión aparte.
+FAVICON_PATH = os.path.join(BASE_DIR, "assets", "favicon.png")
+# Logo del cliente Phara — se muestra en la parte superior de la pestaña
+# Phara en vez de un ícono genérico (ver app_pages/22_Phara.py).
+PHARA_LOGO_PATH = os.path.join(BASE_DIR, "assets", "phara_logo.png")
+# Firma escaneada de Steven Gabriel — se usa en el diploma de finalización de
+# módulo de Capacitación (ver app_pages/16_Capacitacion.py / utils.diploma_pdf_bytes).
+FIRMA_STEVEN_PATH = os.path.join(BASE_DIR, "assets", "firma_steven.png")
+FIRMA_STEVEN_NOMBRE = "Steven Gabriel"
+FIRMA_STEVEN_PUESTO = "Gerente Comercial"
+BRAND_PINK = "#FF0C82"  # color de marca — solo para chrome de la interfaz (botones, acentos),
+                         # NO se usa en las gráficas: ahí se mantiene la paleta validada abajo.
+
+# ---------------------------------------------------------------------------
+# Paleta (referencia validada por la skill dataviz — references/palette.md)
+# ---------------------------------------------------------------------------
+CATEGORICAL = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#4a3aa7", "#e34948"]
+SEQUENTIAL_BLUE = ["#cde2fb", "#9ec5f4", "#5598e7", "#2a78d6", "#1c5cab", "#0d366b"]
+STATUS = {
+    "good": "#0ca30c",
+    "warning": "#fab219",
+    "serious": "#ec835a",
+    "critical": "#d03b3b",
+}
+INK_PRIMARY = "#0b0b0b"
+INK_SECONDARY = "#52514e"
+INK_MUTED = "#898781"
+GRIDLINE = "#e1e0d9"
+SURFACE = "#fcfcfb"
+
+# ---------------------------------------------------------------------------
+# Catálogos de negocio
+# ---------------------------------------------------------------------------
+ROLES = [
+    "admin", "vendedor", "vista", "mercadeo", "jefe_planta", "disenador", "disenador_alvaro",
+    "jefe_logistica", "repartidor", "jefe_capacitacion", "asistente_capacitacion",
+    "anfitriona", "jefe_tienda", "subjefe_tienda", "asesor_ventas", "cajero", "cotizadora",
+    "jefe_mantenimiento", "cliente_phara",
+]
+ROLES_LABEL = {
+    "admin": "Administrador",
+    "vendedor": "Vendedor",
+    "vista": "Solo vista",
+    "mercadeo": "Mercadeo",
+    "jefe_planta": "Jefe de planta",
+    "disenador": "Diseñador (Nicolás)",
+    "disenador_alvaro": "Diseñador (Álvaro)",
+    "jefe_logistica": "Jefe de logística",
+    "repartidor": "Repartidor",
+    "jefe_capacitacion": "Jefe de capacitación",
+    "asistente_capacitacion": "Asistente de capacitación",
+    "anfitriona": "Anfitriona (tienda)",
+    "jefe_tienda": "Jefe de tienda",
+    "subjefe_tienda": "Sub jefe de tienda",
+    "asesor_ventas": "Asesor de ventas",
+    "cajero": "Cajero",
+    "cotizadora": "Cotizadora (Litografía)",
+    "jefe_mantenimiento": "Jefe de Mantenimiento",
+    "cliente_phara": "Cliente Phara",
 }
 
-
-def _label_mes_largo(anio_mes):
-    if not anio_mes or "-" not in anio_mes:
-        return anio_mes or "—"
-    y, m = anio_mes.split("-")
-    return f"{_MESES_LABEL_LARGO.get(m, m)} {y}"
-
-user = auth.current_user()
-sidebar_user_box()
-
-st.title("🎓 Capacitación")
-st.caption(
-    "Módulos y submódulos de capacitación por tienda, con material de apoyo y calificación "
-    "del personal."
-)
-
-puede_editar = auth.puede_editar_capacitacion()
-
-modulos_all = db.list_modulos()
-submodulos_all = [sm for m in modulos_all for sm in db.list_submodulos(m["id"])]
-modulos_lookup_cron = {m["id"]: m for m in modulos_all}
-submods_lookup_cron = {sm["id"]: sm for sm in submodulos_all}
+# Roles que pertenecen a una tienda específica (necesitan el campo "tienda"
+# en su usuario) para el Sistema de Tickets — Tiendas. Son los ÚNICOS roles
+# de tienda que tienen usuario/contraseña para iniciar sesión — el resto del
+# personal de tienda (asesores de ventas / "Diseñador", acabados, express)
+# solo queda como nombre asignado a su tienda (ver PERSONAL_TIENDA_INICIAL y
+# la colección "personal_tiendas"), sin acceso al sistema.
+ROLES_DE_TIENDA = ["anfitriona", "jefe_tienda", "subjefe_tienda", "asesor_ventas", "cajero"]
 
 # ---------------------------------------------------------------------------
-# Cronograma: programación mensual de capacitaciones (cuándo se imparte cada
-# módulo/submódulo, a qué tienda y quién la da) — independiente de las
-# calificaciones, aquí solo se planea la fecha.
+# Registro central de todas las pestañas de la plataforma — usado por app.py
+# para construir la navegación (st.Page) y por Administración de usuarios
+# para poder darle a un usuario en particular acceso extra a pestañas que su
+# rol no le da por defecto (ver el campo "paginas_extra" del usuario y
+# auth.paginas_extra_visibles_para). "administracion" queda fuera de lo que
+# se puede asignar como acceso extra — es un permiso de administrador
+# completo (crear/eliminar usuarios, cambiar roles y contraseñas) y nunca
+# debe poder concederse por esta vía.
 # ---------------------------------------------------------------------------
-st.markdown("### 🗓️ Cronograma de capacitaciones")
-st.caption("Programación mensual: qué capacitación se va a dar, a qué tienda y cuándo.")
-
-mes_cronograma = st.date_input(
-    "Mes a consultar (elige cualquier día de ese mes)", value=date.today(), key="cap_cronograma_mes",
-)
-anio_mes_cronograma = mes_cronograma.strftime("%Y-%m")
-st.markdown(f"##### {_label_mes_largo(anio_mes_cronograma)}")
-
-programaciones_mes = db.list_capacitacion_programaciones(mes=anio_mes_cronograma)
-
-tab_cron_lista, tab_cron_calendario = st.tabs(["📋 Lista", "📅 Calendario"])
-
-# --------------------------------------------------------------------------
-# Lista: la tabla + programar/editar/eliminar.
-# --------------------------------------------------------------------------
-with tab_cron_lista:
-    if not programaciones_mes:
-        st.caption("No hay capacitaciones programadas para este mes.")
-    else:
-        df_cron = pd.DataFrame([{
-            "Fecha": pr.get("fecha"),
-            "Módulo": (modulos_lookup_cron.get(pr.get("modulo_id")) or {}).get("nombre") or "—",
-            "Submódulo": (
-                (submods_lookup_cron.get(pr.get("submodulo_id")) or {}).get("nombre") or "—"
-                if pr.get("submodulo_id") else "General (módulo completo)"
-            ),
-            "Modalidad": pr.get("modalidad") or "—",
-            "Tienda": pr.get("tienda") or "Todas",
-            "Responsable": pr.get("responsable") or "—",
-            "Notas": pr.get("notas") or "—",
-        } for pr in programaciones_mes])
-        st.dataframe(df_cron, use_container_width=True, hide_index=True)
-        download_excel_button(df_cron, "cronograma_capacitaciones.xlsx", key="cap_cronograma_descargar_excel")
-
-    if puede_editar:
-        with st.expander("➕ Programar una capacitación"):
-            if not modulos_all:
-                st.caption("Primero crea al menos un módulo en la pestaña '📚 Módulos' para poder programarlo.")
-            else:
-                with st.form("cap_nueva_programacion", clear_on_submit=True):
-                    fecha_prog_n = st.date_input(
-                        "Fecha de la capacitación", value=date.today(), key="cap_prog_fecha_n",
-                    )
-                    opciones_modulo_prog = {m["nombre"]: m["id"] for m in modulos_all}
-                    modulo_prog_nombre = st.selectbox(
-                        "Módulo", list(opciones_modulo_prog.keys()), key="cap_prog_modulo_n",
-                    )
-                    modulo_prog_id = opciones_modulo_prog[modulo_prog_nombre]
-                    opciones_submod_prog = {"(módulo completo)": None}
-                    opciones_submod_prog.update(
-                        {sm["nombre"]: sm["id"] for sm in db.list_submodulos(modulo_prog_id)}
-                    )
-                    submod_prog_nombre = st.selectbox(
-                        "Submódulo (opcional)", list(opciones_submod_prog.keys()), key="cap_prog_submodulo_n",
-                    )
-                    submod_prog_id = opciones_submod_prog[submod_prog_nombre]
-                    modalidad_prog = st.selectbox(
-                        "Modalidad", CAPACITACION_MODALIDADES, key="cap_prog_modalidad_n",
-                    )
-                    tienda_prog = st.selectbox(
-                        "Tienda (opcional, déjalo en 'Todas' si aplica a todas)",
-                        ["Todas"] + CAPACITACION_TIENDAS, key="cap_prog_tienda_n",
-                    )
-                    responsable_prog = st.text_input(
-                        "Responsable / capacitador (opcional)", key="cap_prog_responsable_n",
-                    )
-                    notas_prog = st.text_area("Notas (opcional)", key="cap_prog_notas_n")
-                    if st.form_submit_button("📅 Agregar al cronograma", use_container_width=True):
-                        db.create_capacitacion_programacion(
-                            fecha_prog_n, modulo_prog_id, submod_prog_id,
-                            None if tienda_prog == "Todas" else tienda_prog,
-                            responsable_prog.strip() or None, notas_prog.strip() or None, modalidad_prog,
-                        )
-                        st.success("Capacitación agregada al cronograma.")
-                        st.rerun()
-
-        if programaciones_mes:
-            st.markdown("###### ✏️ Editar / eliminar una capacitación programada")
-            opciones_prog_ed = {
-                f"[{pr.get('fecha')}] "
-                f"{(modulos_lookup_cron.get(pr.get('modulo_id')) or {}).get('nombre') or '—'}"
-                + (f" · {pr.get('tienda')}" if pr.get("tienda") else ""): pr["id"]
-                for pr in programaciones_mes
-            }
-            elegido_prog = st.selectbox(
-                "Selecciona una capacitación programada", ["—"] + list(opciones_prog_ed.keys()),
-                key="cap_prog_editar_select",
-            )
-            if elegido_prog != "—":
-                prog_id_sel = opciones_prog_ed[elegido_prog]
-                pr_ed = db.get_capacitacion_programacion(prog_id_sel)
-                with st.form(f"cap_editar_prog_{prog_id_sel}"):
-                    fecha_prog_ed = st.date_input(
-                        "Fecha", value=date.fromisoformat(pr_ed["fecha"]) if pr_ed.get("fecha") else date.today(),
-                    )
-                    opciones_modulo_ed = {m["nombre"]: m["id"] for m in modulos_all}
-                    modulo_actual_nombre = (modulos_lookup_cron.get(pr_ed.get("modulo_id")) or {}).get("nombre")
-                    modulo_prog_nombre_ed = st.selectbox(
-                        "Módulo", list(opciones_modulo_ed.keys()),
-                        index=list(opciones_modulo_ed.keys()).index(modulo_actual_nombre)
-                        if modulo_actual_nombre in opciones_modulo_ed else 0,
-                        key=f"cap_prog_modulo_ed_{prog_id_sel}",
-                    )
-                    modulo_prog_id_ed = opciones_modulo_ed[modulo_prog_nombre_ed]
-                    opciones_submod_ed = {"(módulo completo)": None}
-                    opciones_submod_ed.update(
-                        {sm["nombre"]: sm["id"] for sm in db.list_submodulos(modulo_prog_id_ed)}
-                    )
-                    submod_actual_nombre = (
-                        (submods_lookup_cron.get(pr_ed.get("submodulo_id")) or {}).get("nombre")
-                        if pr_ed.get("submodulo_id") else "(módulo completo)"
-                    )
-                    submod_prog_nombre_ed = st.selectbox(
-                        "Submódulo (opcional)", list(opciones_submod_ed.keys()),
-                        index=list(opciones_submod_ed.keys()).index(submod_actual_nombre)
-                        if submod_actual_nombre in opciones_submod_ed else 0,
-                        key=f"cap_prog_submodulo_ed_{prog_id_sel}",
-                    )
-                    submod_prog_id_ed = opciones_submod_ed[submod_prog_nombre_ed]
-                    modalidad_prog_ed = st.selectbox(
-                        "Modalidad", CAPACITACION_MODALIDADES,
-                        index=CAPACITACION_MODALIDADES.index(pr_ed["modalidad"])
-                        if pr_ed.get("modalidad") in CAPACITACION_MODALIDADES else 0,
-                        key=f"cap_prog_modalidad_ed_{prog_id_sel}",
-                    )
-                    tienda_prog_ed = st.selectbox(
-                        "Tienda (opcional)", ["Todas"] + CAPACITACION_TIENDAS,
-                        index=(["Todas"] + CAPACITACION_TIENDAS).index(pr_ed["tienda"])
-                        if pr_ed.get("tienda") in CAPACITACION_TIENDAS else 0,
-                        key=f"cap_prog_tienda_ed_{prog_id_sel}",
-                    )
-                    responsable_prog_ed = st.text_input(
-                        "Responsable / capacitador (opcional)", value=pr_ed.get("responsable") or "",
-                    )
-                    notas_prog_ed = st.text_area("Notas (opcional)", value=pr_ed.get("notas") or "")
-                    colp1, colp2 = st.columns(2)
-                    guardar_prog = colp1.form_submit_button("💾 Guardar cambios", use_container_width=True)
-                    eliminar_prog = colp2.form_submit_button(
-                        "🗑️ Eliminar del cronograma", use_container_width=True,
-                    )
-                    if guardar_prog:
-                        db.update_capacitacion_programacion(
-                            prog_id_sel, fecha=str(fecha_prog_ed), modulo_id=modulo_prog_id_ed,
-                            submodulo_id=submod_prog_id_ed, modalidad=modalidad_prog_ed,
-                            tienda=None if tienda_prog_ed == "Todas" else tienda_prog_ed,
-                            responsable=responsable_prog_ed.strip() or None,
-                            notas=notas_prog_ed.strip() or None,
-                        )
-                        st.success("Cronograma actualizado.")
-                        st.rerun()
-                    if eliminar_prog:
-                        db.delete_capacitacion_programacion(prog_id_sel)
-                        st.success("Eliminado del cronograma.")
-                        st.rerun()
-
-# --------------------------------------------------------------------------
-# Calendario: cuadrícula tipo calendario de pared, un recuadro por día del
-# mes, con las capacitaciones programadas ese día.
-# --------------------------------------------------------------------------
-with tab_cron_calendario:
-    progs_por_dia = {}
-    for pr in programaciones_mes:
-        try:
-            dia_pr = date.fromisoformat(pr["fecha"]).day
-        except (ValueError, TypeError):
-            continue
-        progs_por_dia.setdefault(dia_pr, []).append(pr)
-
-    hoy_cal = date.today()
-    dias_semana = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
-    header_cols = st.columns(7)
-    for header_col, nombre_dia in zip(header_cols, dias_semana):
-        header_col.markdown(f"<div style='text-align:center;font-weight:700;'>{nombre_dia}</div>", unsafe_allow_html=True)
-
-    for semana in calendar.monthcalendar(mes_cronograma.year, mes_cronograma.month):
-        cols_semana = st.columns(7)
-        for col_dia, dia_num in zip(cols_semana, semana):
-            with col_dia:
-                if dia_num == 0:
-                    st.markdown(
-                        "<div style='min-height:78px;border-radius:6px;'></div>", unsafe_allow_html=True,
-                    )
-                    continue
-                es_hoy = (
-                    dia_num == hoy_cal.day and mes_cronograma.month == hoy_cal.month
-                    and mes_cronograma.year == hoy_cal.year
-                )
-                fondo = "background:#fff3cd;" if es_hoy else "background:#f7f7f5;"
-                progs_dia = progs_por_dia.get(dia_num, [])
-                lineas_html = "".join(
-                    "<div style='font-size:0.72rem;margin-top:2px;line-height:1.15;'>"
-                    + ("💻 " if pr.get("modalidad") == "Virtual" else "🏢 " if pr.get("modalidad") == "Presencial" else "🎓 ")
-                    + f"{(modulos_lookup_cron.get(pr.get('modulo_id')) or {}).get('nombre') or '—'}"
-                    + (f"<br>&nbsp;&nbsp;· {pr['tienda']}" if pr.get("tienda") else "")
-                    + "</div>"
-                    for pr in progs_dia[:3]
-                )
-                if len(progs_dia) > 3:
-                    lineas_html += (
-                        f"<div style='font-size:0.68rem;color:#898781;margin-top:2px;'>"
-                        f"+{len(progs_dia) - 3} más</div>"
-                    )
-                st.markdown(
-                    f"<div style='border:1px solid #e1e0d9;border-radius:6px;padding:5px;"
-                    f"min-height:78px;{fondo}'>"
-                    f"<div style='font-weight:700;'>{dia_num}</div>{lineas_html}</div>",
-                    unsafe_allow_html=True,
-                )
-    st.caption(
-        "🟡 Hoy resaltado en amarillo · 💻 Virtual · 🏢 Presencial. "
-        "Para editar o eliminar una capacitación, usa la pestaña «Lista»."
-    )
-
-st.divider()
+PAGINAS_REGISTRO = [
+    {"key": "inicio", "path": "app_pages/1_Inicio.py", "title": "Inicio", "icon": "🏠"},
+    {"key": "prospectos", "path": "app_pages/2_Prospectos_CRM.py", "title": "Prospección (CRM)", "icon": "🧾"},
+    {"key": "llamadas", "path": "app_pages/11_Llamadas.py", "title": "Llamadas", "icon": "📞"},
+    {"key": "citas", "path": "app_pages/3_Citas_Vendedores.py", "title": "Citas y visitas de vendedores", "icon": "📅"},
+    {"key": "mercadeo", "path": "app_pages/4_Visitas_Mercadeo.py", "title": "Visitas de mercadeo", "icon": "🏪"},
+    {"key": "cotizaciones", "path": "app_pages/5_Cotizaciones.py", "title": "Cotizaciones", "icon": "💰"},
+    {"key": "reclamos", "path": "app_pages/6_Reclamos.py", "title": "Reclamos", "icon": "⚠️"},
+    {"key": "diseno", "path": "app_pages/12_Diseno_Grafico.py", "title": "Diseño Gráfico - Nicolás", "icon": "🎨"},
+    {
+        "key": "diseno_alvaro", "path": "app_pages/14_Diseno_Grafico_Alvaro.py",
+        "title": "Diseño Gráfico - Álvaro", "icon": "🖌️",
+    },
+    {"key": "logistica", "path": "app_pages/13_Logistica.py", "title": "Logística", "icon": "🚚"},
+    {"key": "ventas", "path": "app_pages/7_Ventas_Diarias.py", "title": "Venta del día", "icon": "🧮"},
+    {"key": "ventas_mes", "path": "app_pages/15_Ventas_Por_Mes.py", "title": "Ventas por mes", "icon": "📅"},
+    {"key": "capacitacion", "path": "app_pages/16_Capacitacion.py", "title": "Capacitación", "icon": "🎓"},
+    {
+        "key": "tickets_tienda", "path": "app_pages/17_Tickets_Tienda.py",
+        "title": "Sistema Tickets Tiendas", "icon": "🎫",
+    },
+    {
+        "key": "mantenimiento", "path": "app_pages/18_Mantenimiento_Maquinaria.py",
+        "title": "Mantenimiento de Maquinaria", "icon": "🔧",
+    },
+    {"key": "litografia", "path": "app_pages/19_Litografia.py", "title": "Litografía", "icon": "🖨️"},
+    {"key": "mant_tiendas", "path": "app_pages/20_Mant_Tiendas.py", "title": "Mant. Tiendas", "icon": "🏬"},
+    {"key": "drive", "path": "app_pages/21_Drive.py", "title": "Drive", "icon": "📁"},
+    {"key": "phara", "path": "app_pages/22_Phara.py", "title": "Phara", "icon": "📦"},
+    {"key": "documentos", "path": "app_pages/23_Documentos.py", "title": "Documentos", "icon": "📄"},
+    {"key": "colorado", "path": "app_pages/24_Colorado.py", "title": "Colorado", "icon": "🖨️"},
+    {"key": "galaxy", "path": "app_pages/25_Galaxy.py", "title": "Galaxy", "icon": "🖨️"},
+    {"key": "nps", "path": "app_pages/26_NPS.py", "title": "NPS", "icon": "😊"},
+    {
+        "key": "generales", "path": "app_pages/8_Prospectos_Generales.py",
+        "title": "Prospectos generales (todos)", "icon": "🌐",
+    },
+    {"key": "kpis", "path": "app_pages/9_KPIs.py", "title": "KPIs", "icon": "📊"},
+    {
+        "key": "administracion", "path": "app_pages/10_Administracion.py",
+        "title": "Administración de usuarios", "icon": "👥",
+    },
+]
+# Claves asignables como "acceso extra" en Administración de usuarios — todas
+# menos 'administracion' (ver nota de seguridad arriba).
+PAGINAS_ASIGNABLES_EXTRA = [p["key"] for p in PAGINAS_REGISTRO if p["key"] != "administracion"]
 
 # ---------------------------------------------------------------------------
-# Resumen numérico rápido
+# Personal inicial de cada tienda, proporcionado por Steven, para la carga
+# masiva desde 'Administración de usuarios' → 'Carga inicial de personal'.
+# TODAS estas personas quedan como nombre asignado a su tienda (colección
+# "personal_tiendas") para poder elegir quién elabora cada pedido; SOLO las
+# que tienen rol 'jefe_tienda', 'subjefe_tienda', 'anfitriona' o 'cajero'
+# (ver ROLES_DE_TIENDA) además reciben un usuario/contraseña para iniciar
+# sesión — el resto (asesor_ventas / "Diseñador", acabados, express) no
+# necesita usuario. Nota: en la lista original, el puesto "Diseñador" en
+# tienda corresponde al rol 'asesor_ventas' del sistema (no confundir con
+# los roles 'disenador' / 'disenador_alvaro', que son del tablero de Diseño
+# Gráfico); los valores "acabados"/"express" en "rol" son solo etiquetas
+# descriptivas para agrupar en la carga inicial, ya no son roles reales de
+# ROLES/ROLES_LABEL.
 # ---------------------------------------------------------------------------
-personal_activo = db.list_personal_tiendas(solo_activos=True)
-todas_calif = db.list_calificaciones()
-promedio_general = (sum(c["calificacion"] for c in todas_calif) / len(todas_calif)) if todas_calif else 0
+PERSONAL_TIENDA_INICIAL = [
+    # Cayalá
+    {"nombre": "Hemerson Hernandez", "puesto_original": "Jefe de tienda", "rol": "jefe_tienda", "tienda": "Cayalá"},
+    {"nombre": "Josseline Santizo", "puesto_original": "Sub jefe", "rol": "subjefe_tienda", "tienda": "Cayalá"},
+    {"nombre": "Dafne Perez", "puesto_original": "Diseñador", "rol": "asesor_ventas", "tienda": "Cayalá"},
+    {"nombre": "Otto Garcia", "puesto_original": "Diseñador", "rol": "asesor_ventas", "tienda": "Cayalá"},
+    {"nombre": "Melanie Duque", "puesto_original": "Diseñador", "rol": "asesor_ventas", "tienda": "Cayalá"},
+    {"nombre": "William Alvarez", "puesto_original": "Diseñador", "rol": "asesor_ventas", "tienda": "Cayalá"},
+    {"nombre": "Jefereson Flores", "puesto_original": "Diseñador", "rol": "asesor_ventas", "tienda": "Cayalá"},
+    {"nombre": "Edwin Liska", "puesto_original": "Diseñador", "rol": "asesor_ventas", "tienda": "Cayalá"},
+    {"nombre": "Jose Valentin", "puesto_original": "Diseñador", "rol": "asesor_ventas", "tienda": "Cayalá"},
+    {"nombre": "Alexander Carvajal", "puesto_original": "Diseñador", "rol": "asesor_ventas", "tienda": "Cayalá"},
+    {"nombre": "Karla Ruiz", "puesto_original": "Diseñador", "rol": "asesor_ventas", "tienda": "Cayalá"},
+    {"nombre": "Angie Guadalupe", "puesto_original": "Diseñador", "rol": "asesor_ventas", "tienda": "Cayalá"},
+    {"nombre": "Ana Muñoz", "puesto_original": "Anfitriona", "rol": "anfitriona", "tienda": "Cayalá"},
+    {"nombre": "Lesly Orellana", "puesto_original": "Cajera", "rol": "cajero", "tienda": "Cayalá"},
+    {"nombre": "Brandos Barillas", "puesto_original": "Acabados", "rol": "acabados", "tienda": "Cayalá"},
+    {"nombre": "Mauricio", "puesto_original": "Express", "rol": "express", "tienda": "Cayalá"},
+    {"nombre": "Leonel Santizo", "puesto_original": "Diseñador", "rol": "asesor_ventas", "tienda": "Cayalá"},
+    # Vista Hermosa
+    {"nombre": "Brenda Rodas", "puesto_original": "Diseñador", "rol": "asesor_ventas", "tienda": "Vista Hermosa"},
+    {"nombre": "Jorge Leal", "puesto_original": "Subjefe de tienda", "rol": "subjefe_tienda", "tienda": "Vista Hermosa"},
+    {"nombre": "David Sapon", "puesto_original": "Diseñador", "rol": "asesor_ventas", "tienda": "Vista Hermosa"},
+    {"nombre": "Christian Cruz", "puesto_original": "Diseñador", "rol": "asesor_ventas", "tienda": "Vista Hermosa"},
+    {"nombre": "Rodrigo Velasques", "puesto_original": "Diseñador", "rol": "asesor_ventas", "tienda": "Vista Hermosa"},
+    {"nombre": "Madolin Esquizabal", "puesto_original": "Diseñador", "rol": "asesor_ventas", "tienda": "Vista Hermosa"},
+    {"nombre": "Jennifer Hernandez", "puesto_original": "Diseñador", "rol": "asesor_ventas", "tienda": "Vista Hermosa"},
+    {"nombre": "Catherine Montenegro", "puesto_original": "Diseñador", "rol": "asesor_ventas", "tienda": "Vista Hermosa"},
+    {"nombre": "Andrea Sandoval", "puesto_original": "Cajera", "rol": "cajero", "tienda": "Vista Hermosa"},
+    {"nombre": "Fernando Lopez", "puesto_original": "Acabados", "rol": "acabados", "tienda": "Vista Hermosa"},
+    # Majadas
+    {"nombre": "Luis Crespin", "puesto_original": "Jefe", "rol": "jefe_tienda", "tienda": "Majadas"},
+    {"nombre": "Carlos Subuyuj", "puesto_original": "Diseñador", "rol": "asesor_ventas", "tienda": "Majadas"},
+    {"nombre": "Cinthia Flores", "puesto_original": "Diseñador", "rol": "asesor_ventas", "tienda": "Majadas"},
+    {"nombre": "Pedro Cuxil", "puesto_original": "Diseñador", "rol": "asesor_ventas", "tienda": "Majadas"},
+    {"nombre": "Lourdes Marroquin", "puesto_original": "Cajero", "rol": "cajero", "tienda": "Majadas"},
+    {"nombre": "Hugo Yuman", "puesto_original": "Acabados", "rol": "acabados", "tienda": "Majadas"},
+    # CAES
+    {"nombre": "Paola Sandoval", "puesto_original": "Jefe tienda", "rol": "jefe_tienda", "tienda": "CAES"},
+    {"nombre": "Benjamin Reneau", "puesto_original": "Sub jefe tienda", "rol": "subjefe_tienda", "tienda": "CAES"},
+    {"nombre": "Cristobal Rodas", "puesto_original": "Diseñador", "rol": "asesor_ventas", "tienda": "CAES"},
+    {"nombre": "Amalia Gaitán", "puesto_original": "Diseñador", "rol": "asesor_ventas", "tienda": "CAES"},
+    {"nombre": "Carlos Cruz", "puesto_original": "Diseñador", "rol": "asesor_ventas", "tienda": "CAES"},
+    {"nombre": "Andrea Bolaños", "puesto_original": "Diseñador", "rol": "asesor_ventas", "tienda": "CAES"},
+    {"nombre": "Paula Alvizures", "puesto_original": "Diseñador", "rol": "asesor_ventas", "tienda": "CAES"},
+    {"nombre": "Gabriela Del Aguila", "puesto_original": "Diseñador", "rol": "asesor_ventas", "tienda": "CAES"},
+    {"nombre": "Andrea Lemus", "puesto_original": "Anfitriona", "rol": "anfitriona", "tienda": "CAES"},
+    {"nombre": "Adriana Choquic", "puesto_original": "Cajera", "rol": "cajero", "tienda": "CAES"},
+    {"nombre": "Hector Vasquez", "puesto_original": "Cajero", "rol": "cajero", "tienda": "CAES"},
+    {"nombre": "Cristian Gonzalez", "puesto_original": "Acabados", "rol": "acabados", "tienda": "CAES"},
+]
 
-k1, k2, k3, k4 = st.columns(4)
-k1.metric("Módulos", len(modulos_all))
-k2.metric("Submódulos", len(submodulos_all))
-k3.metric("Personal activo", len(personal_activo))
-k4.metric("Promedio de calificación", f"{promedio_general:.0f}" if todas_calif else "—")
+PLANTAS = ["Offset", "Digital", "Valloy", "Colorado"]
 
-st.divider()
+ESTADOS_PROSPECTO = ["Prospecto", "En negociación", "Cliente (Ganado)", "Perdido"]
 
-tab_modulos, tab_personal, tab_calificaciones = st.tabs(
-    ["📚 Módulos", "🏬 Personal por tienda", "📝 Calificaciones"]
-)
+TIPOS_LLAMADA = ["Llamada inicial", "Llamada de seguimiento"]
 
-# --------------------------------------------------------------------------
-# Módulos y submódulos
-# --------------------------------------------------------------------------
-with tab_modulos:
-    if puede_editar:
-        with st.expander("➕ Crear nuevo módulo"):
-            with st.form("nuevo_modulo_form", clear_on_submit=True):
-                nombre_mod = st.text_input("Nombre del módulo (ej. 'Ventas')")
-                desc_mod = st.text_area("Descripción (opcional)")
-                if st.form_submit_button("Crear módulo", use_container_width=True):
-                    if not nombre_mod.strip():
-                        st.error("El nombre del módulo es obligatorio.")
-                    else:
-                        db.create_modulo(nombre_mod.strip(), desc_mod.strip() or None)
-                        st.success(f"Módulo '{nombre_mod}' creado.")
-                        st.rerun()
+# ---------------------------------------------------------------------------
+# Diseño Gráfico (tablero estilo Trello)
+# ---------------------------------------------------------------------------
+ESTADOS_DISENO = ["Lista de tareas", "Emergencias", "En proceso", "Cambios", "Entregado"]
+# Columnas en las que puede caer una solicitud NUEVA (la llena el vendedor).
+ESTADOS_DISENO_INICIALES = ["Lista de tareas", "Emergencias"]
+# Columnas que solo el diseñador (o el administrador) puede asignar después.
+ESTADOS_DISENO_DISENADOR = ["Lista de tareas", "Emergencias", "En proceso", "Cambios", "Entregado"]
+DISENO_ARCHIVO_MAX_BYTES = 900_000  # ~900 KB — límite práctico por archivo cuando se guarda
+# dentro del documento de Firestore (formato viejo, y respaldo automático si Firebase
+# Storage todavía no está configurado — ver database.py: storage_disponible()).
+DISENO_ARCHIVO_MAX_BYTES_STORAGE = 200_000_000  # 200 MB — límite cuando el archivo se sube a
+# Firebase Storage (permite PSD, AI y otros archivos de diseño pesados). Coincide con el
+# límite de subida por defecto de Streamlit; para permitir archivos más grandes también
+# hay que agregar [server] maxUploadSize = <MB> en .streamlit/config.toml.
+DISENO_ARCHIVOS_MAX = 3  # máximo de archivos adjuntos por solicitud
 
-    if not modulos_all:
-        st.info("Todavía no hay módulos de capacitación." + (" Crea el primero arriba." if puede_editar else ""))
-    else:
-        for m in modulos_all:
-            submods = db.list_submodulos(m["id"])
-            with st.expander(f"📁 {m['nombre']} ({len(submods)} submódulo{'s' if len(submods) != 1 else ''})"):
-                if m.get("descripcion"):
-                    st.caption(m["descripcion"])
+# ---------------------------------------------------------------------------
+# Logística (pedidos AM/PM)
+# ---------------------------------------------------------------------------
+FRANJAS_PEDIDO = ["AM", "PM"]
+ESTADOS_PEDIDO = ["Pendiente", "En ruta", "Entregado", "No entregado"]
+ZONAS_CAPITAL = [f"Zona {i}" for i in range(1, 22)]
+PEDIDO_FOTO_ENTREGA_MAX_BYTES = 900_000  # ~900 KB — mismo límite práctico que Mantenimiento/Diseño
 
-                if not submods:
-                    st.caption("Sin submódulos todavía.")
-                else:
-                    for sm in submods:
-                        with st.container(border=True):
-                            st.markdown(f"**📂 {sm['nombre']}**")
-                            if sm.get("descripcion"):
-                                st.caption(sm["descripcion"])
-                            archivos = diseno_archivos_lista(sm)
-                            if archivos:
-                                for i, a in enumerate(archivos):
-                                    st.download_button(
-                                        f"📎 {a['nombre']}", data=base64.b64decode(a["b64"]),
-                                        file_name=a["nombre"], mime=a.get("tipo") or "application/octet-stream",
-                                        use_container_width=True, key=f"cap_file_{sm['id']}_{i}",
-                                    )
-                            else:
-                                st.caption("Sin archivos adjuntos.")
+# Rutas extra de Logística (Compras, Trámites, Papelería) — versión sencilla
+# del pedido, para mandados del repartidor que no son un envío de mercadería.
+RUTA_EXTRA_TIPOS = ["Compras", "Trámites", "Papelería"]
+ESTADOS_RUTA_EXTRA = ["Pendiente", "Hecho"]
 
-                            if puede_editar:
-                                editando_key = f"cap_editando_sm_{sm['id']}"
-                                if st.button(
-                                    "✏️ Editar / eliminar", key=f"cap_toggle_sm_{sm['id']}", use_container_width=True,
-                                ):
-                                    st.session_state[editando_key] = not st.session_state.get(editando_key, False)
-                                    st.rerun()
+# Vendedores adicionales (sin necesitar usuario propio) que también se
+# pueden elegir como "vendedor que hizo la venta" en un pedido de Logística,
+# además de los usuarios que ya tienen el rol 'vendedor'. Se cargan solos la
+# primera vez que arranca la app (ver database._seed_logistica_vendedores) y
+# no requieren ningún paso manual.
+LOGISTICA_VENDEDORES_INICIAL = [
+    "Hemerson Hernandez", "Alejandra Santizo", "Paola Sandoval", "Benjamin Reneau",
+    "Brenda Rodas", "Jorge Leal", "Luis Crespin", "Jazmin Solorzano",
+]
 
-                                if st.session_state.get(editando_key):
-                                    with st.form(f"editar_submodulo_{sm['id']}"):
-                                        nombre_sm_ed = st.text_input("Nombre del submódulo", value=sm["nombre"])
-                                        desc_sm_ed = st.text_area("Descripción", value=sm.get("descripcion") or "")
-                                        st.caption(
-                                            f"Archivos actuales: {', '.join(a['nombre'] for a in archivos)}"
-                                            if archivos else "Archivos actuales: ninguno."
-                                        )
-                                        nuevos_archivos = st.file_uploader(
-                                            f"Reemplazar archivos (máximo {CAPACITACION_ARCHIVOS_MAX}) — "
-                                            "déjalo vacío para no cambiarlos",
-                                            accept_multiple_files=True, key=f"cap_reemplazar_{sm['id']}",
-                                        )
-                                        colf1, colf2 = st.columns(2)
-                                        guardar_sm = colf1.form_submit_button("Guardar cambios", use_container_width=True)
-                                        eliminar_sm = colf2.form_submit_button("Eliminar submódulo", use_container_width=True)
-                                        if guardar_sm:
-                                            if not nombre_sm_ed.strip():
-                                                st.error("El nombre del submódulo es obligatorio.")
-                                            else:
-                                                update_kwargs = {
-                                                    "nombre": nombre_sm_ed.strip(),
-                                                    "descripcion": desc_sm_ed.strip() or None,
-                                                }
-                                                error_archivo = None
-                                                if nuevos_archivos:
-                                                    try:
-                                                        update_kwargs["archivos"] = archivos_a_b64_lista(
-                                                            nuevos_archivos, CAPACITACION_ARCHIVO_MAX_BYTES,
-                                                            CAPACITACION_ARCHIVOS_MAX,
-                                                        )
-                                                    except ValueError as e:
-                                                        error_archivo = str(e)
-                                                if error_archivo:
-                                                    st.error(error_archivo)
-                                                else:
-                                                    db.update_submodulo(sm["id"], **update_kwargs)
-                                                    st.session_state.pop(editando_key, None)
-                                                    st.success("Submódulo actualizado.")
-                                                    st.rerun()
-                                        if eliminar_sm:
-                                            db.delete_submodulo(sm["id"])
-                                            st.session_state.pop(editando_key, None)
-                                            st.success("Submódulo eliminado.")
-                                            st.rerun()
+# Para tipificar cada pedido de Logística según el canal/ruta de venta.
+TIPOS_RUTA_PEDIDO = ["Venta Externa", "Venta Tiendas", "Administración", "Compras"]
 
-                if puede_editar:
-                    st.markdown("###### ➕ Agregar submódulo")
-                    with st.form(f"nuevo_submodulo_{m['id']}", clear_on_submit=True):
-                        nombre_sm = st.text_input("Nombre del submódulo (ej. 'Selling up')")
-                        desc_sm = st.text_area("Descripción (opcional)")
-                        archivos_subidos = st.file_uploader(
-                            f"Presentación, políticas o material de apoyo (máximo {CAPACITACION_ARCHIVOS_MAX} archivos)",
-                            accept_multiple_files=True, key=f"cap_nuevo_archivo_{m['id']}",
-                        )
-                        if st.form_submit_button("Crear submódulo", use_container_width=True):
-                            if not nombre_sm.strip():
-                                st.error("El nombre del submódulo es obligatorio.")
-                            else:
-                                try:
-                                    archivos_lista = archivos_a_b64_lista(
-                                        archivos_subidos, CAPACITACION_ARCHIVO_MAX_BYTES, CAPACITACION_ARCHIVOS_MAX,
-                                    )
-                                except ValueError as e:
-                                    st.error(str(e))
-                                else:
-                                    db.create_submodulo(m["id"], nombre_sm.strip(), desc_sm.strip() or None, archivos_lista)
-                                    st.success(f"Submódulo '{nombre_sm}' creado.")
-                                    st.rerun()
+TIPOS_CITA = ["Cita", "Visita", "Llamada"]
+ESTADOS_CITA = ["Programada", "Realizada", "Cancelada", "No asistió"]
 
-                    st.divider()
-                    editando_mod_key = f"cap_editando_mod_{m['id']}"
-                    if st.button("⚙️ Editar / eliminar este módulo", key=f"cap_toggle_mod_{m['id']}", use_container_width=True):
-                        st.session_state[editando_mod_key] = not st.session_state.get(editando_mod_key, False)
-                        st.rerun()
+ESTADOS_COTIZACION = ["Enviada", "Pendiente", "En negociación", "Aprobada", "Rechazada"]
 
-                    if st.session_state.get(editando_mod_key):
-                        with st.form(f"editar_modulo_{m['id']}"):
-                            nombre_mod_ed = st.text_input("Nombre del módulo", value=m["nombre"])
-                            desc_mod_ed = st.text_area("Descripción", value=m.get("descripcion") or "")
-                            if st.form_submit_button("Guardar cambios", use_container_width=True):
-                                if not nombre_mod_ed.strip():
-                                    st.error("El nombre del módulo es obligatorio.")
-                                else:
-                                    db.update_modulo(
-                                        m["id"], nombre=nombre_mod_ed.strip(), descripcion=desc_mod_ed.strip() or None,
-                                    )
-                                    st.session_state.pop(editando_mod_key, None)
-                                    st.success("Módulo actualizado.")
-                                    st.rerun()
+ESTADOS_VISITA_MERCADEO = ["Pendiente", "Realizada"]
+CHECKLIST_DEFAULT = [
+    "Exhibición correcta del producto",
+    "Material POP colocado",
+    "Precios visibles y correctos",
+    "Stock disponible",
+    "Limpieza y orden del punto de venta",
+    "Presencia de competencia relevante",
+    "Punto de venta satisfecho con el servicio",
+]
 
-                        st.caption(
-                            "⚠️ Eliminar el módulo también elimina todos sus submódulos, archivos y "
-                            "calificaciones asociadas — no se puede deshacer."
-                        )
-                        confirmar_borrar_mod = st.checkbox(
-                            "Confirmo que deseo eliminar este módulo por completo", key=f"cap_confirmar_del_mod_{m['id']}",
-                        )
-                        if st.button(
-                            "🗑️ Eliminar módulo", key=f"cap_del_mod_{m['id']}", disabled=not confirmar_borrar_mod,
-                        ):
-                            db.delete_modulo(m["id"])
-                            st.session_state.pop(editando_mod_key, None)
-                            st.success("Módulo eliminado.")
-                            st.rerun()
+ESTADOS_RECLAMO = ["Abierto", "En proceso", "Resuelto", "Cerrado"]
 
-# --------------------------------------------------------------------------
-# Personal por tienda
-# --------------------------------------------------------------------------
-with tab_personal:
-    if puede_editar:
-        with st.expander("➕ Agregar personal"):
-            with st.form("nuevo_personal_form", clear_on_submit=True):
-                nombre_p = st.text_input("Nombre completo")
-                c1, c2 = st.columns(2)
-                tienda_p = c1.selectbox("Tienda", CAPACITACION_TIENDAS)
-                puesto_p = c2.text_input("Puesto (opcional)")
-                if st.form_submit_button("Agregar personal", use_container_width=True):
-                    if not nombre_p.strip():
-                        st.error("El nombre es obligatorio.")
-                    else:
-                        db.create_personal_tienda(nombre_p.strip(), tienda_p, puesto_p.strip() or None)
-                        st.success(f"'{nombre_p}' agregado a {tienda_p}.")
-                        st.rerun()
+# ---------------------------------------------------------------------------
+# Capacitación (módulos / submódulos por tienda)
+# ---------------------------------------------------------------------------
+CAPACITACION_TIENDAS = ["Cayalá", "Vista Hermosa", "Majadas", "CAES"]
+CAPACITACION_ARCHIVO_MAX_BYTES = 900_000  # ~900 KB — mismo límite práctico que Diseño Gráfico
+CAPACITACION_ARCHIVOS_MAX = 5  # máximo de archivos adjuntos por submódulo
+CAPACITACION_MODALIDADES = ["Virtual", "Presencial"]  # del cronograma de capacitaciones
 
-    st.divider()
-    filtro_tienda = st.selectbox(
-        "Filtrar por tienda", ["Todas"] + CAPACITACION_TIENDAS, key="cap_filtro_tienda_personal",
-    )
-    personal_lista = db.list_personal_tiendas(
-        tienda=None if filtro_tienda == "Todas" else filtro_tienda, solo_activos=False,
-    )
-    if not personal_lista:
-        st.info("No hay personal registrado con este filtro.")
-    else:
-        df_personal = pd.DataFrame([{
-            "Nombre": p["nombre"], "Tienda": p["tienda"], "Puesto": p.get("puesto") or "—",
-            "Activo": "Sí" if p.get("activo", True) else "No",
-        } for p in personal_lista])
-        st.dataframe(df_personal, use_container_width=True, hide_index=True)
-        download_excel_button(df_personal, "personal_tiendas.xlsx", key="cap_descargar_personal")
+ESTADOS_PENDIENTE_MERCADEO = ["Pendiente", "En proceso", "Resuelto"]
 
-        if puede_editar:
-            st.markdown("#### ✏️ Editar / activar / eliminar")
-            opciones_p_ed = {
-                f"{p['nombre']} — {p['tienda']}" + ("" if p.get("activo", True) else " (inactivo)"): p["id"]
-                for p in personal_lista
-            }
-            elegido_p = st.selectbox("Selecciona una persona", ["—"] + list(opciones_p_ed.keys()), key="cap_personal_editar")
-            if elegido_p != "—":
-                pid = opciones_p_ed[elegido_p]
-                p_ed = db.get_personal_tienda(pid)
-                with st.form(f"editar_personal_{pid}"):
-                    nombre_p_ed = st.text_input("Nombre", value=p_ed["nombre"])
-                    c1, c2 = st.columns(2)
-                    tienda_p_ed = c1.selectbox(
-                        "Tienda", CAPACITACION_TIENDAS,
-                        index=CAPACITACION_TIENDAS.index(p_ed["tienda"]) if p_ed.get("tienda") in CAPACITACION_TIENDAS else 0,
-                    )
-                    puesto_p_ed = c2.text_input("Puesto", value=p_ed.get("puesto") or "")
-                    activo_p_ed = st.checkbox("Activo", value=p_ed.get("activo", True))
-                    colf1, colf2 = st.columns(2)
-                    guardar_p = colf1.form_submit_button("Guardar cambios", use_container_width=True)
-                    eliminar_p = colf2.form_submit_button("Eliminar de la lista", use_container_width=True)
-                    if guardar_p:
-                        if not nombre_p_ed.strip():
-                            st.error("El nombre es obligatorio.")
-                        else:
-                            db.update_personal_tienda(
-                                pid, nombre=nombre_p_ed.strip(), tienda=tienda_p_ed,
-                                puesto=puesto_p_ed.strip() or None, activo=activo_p_ed,
-                            )
-                            st.success("Actualizado.")
-                            st.rerun()
-                    if eliminar_p:
-                        db.delete_personal_tienda(pid)
-                        st.success("Eliminado de la lista.")
-                        st.rerun()
+# ---------------------------------------------------------------------------
+# Mantenimiento de Maquinaria (por planta — no confundir con TICKET_TIENDAS,
+# que son las tiendas del Sistema de Tickets)
+# ---------------------------------------------------------------------------
+PLANTAS_MAQUINARIA = ["Offset", "Digital", "Valloy"]
+MANTENIMIENTO_ARCHIVO_MAX_BYTES = 900_000  # ~900 KB — mismo límite práctico que Diseño/Capacitación
+TIPOS_MANTENIMIENTO = ["Preventivo", "Correctivo"]
+# Motivo por el que se cambió una pieza en un mantenimiento — selección
+# múltiple porque a veces aplica más de un motivo a la vez. "Otro" pide un
+# detalle específico aparte (ver MOTIVO_OTRO_CAMBIO_PIEZA en la página).
+MOTIVOS_CAMBIO_PIEZA = ["Desgaste", "Mal uso", "Tema eléctrico", "Adaptación", "Sustitución", "Otro"]
 
-# --------------------------------------------------------------------------
-# Calificaciones
-# --------------------------------------------------------------------------
-with tab_calificaciones:
-    if not personal_activo:
-        st.info("Primero agrega personal en la pestaña 'Personal por tienda'.")
-    elif not modulos_all:
-        st.info("Primero crea al menos un módulo en la pestaña 'Módulos'.")
-    else:
-        c1, c2 = st.columns(2)
-        tienda_calif_sel = c1.selectbox("Tienda", ["Todas"] + CAPACITACION_TIENDAS, key="cap_calif_tienda")
-        personal_filtrado = (
-            personal_activo if tienda_calif_sel == "Todas"
-            else [p for p in personal_activo if p["tienda"] == tienda_calif_sel]
-        )
-        if not personal_filtrado:
-            st.info("No hay personal activo en esta tienda.")
-        else:
-            opciones_persona = {f"{p['nombre']} ({p['tienda']})": p["id"] for p in personal_filtrado}
-            persona_nombre_sel = c2.selectbox("Persona", list(opciones_persona.keys()), key="cap_calif_persona")
-            persona_id_sel = opciones_persona[persona_nombre_sel]
+LINEAS_VENTA = [
+    "AFICHE",
+    "CALENDARIO",
+    "MARBETE",
+    "TARJETAS DE PRESENTACION",
+    "VOLANTES",
+    "AGENDAS",
+    "FOLDER OFICIO",
+    "GIFT CARD",
+    "Sticker DTF",
+    "MANTA VINILICA",
+    "LIBROS",
+    "LIBRETAS",
+    "MENÚ",
+    "EMPAQUE",
+    "REVISTAS",
+    "PHOTOBOOK",
+    "HANG TAG",
+    "TARJETAS DE CUMPLEAÑOS",
+    "ETIQUETAS",
+    "Etiquetas Valloy",
+    "FAJAS",
+    "MATERIAL BANCARIO",
+    "STICKER VINIL COLORADO",
+    "ROLL UP",
+    "PORTA VASOS",
+    "TICKETS",
+    "IMPRESIONES",
+    "SEPARADORES",
+    "STICKER COMIDA",
+    "STICKER VARIOS",
+    "FOTOGRAFIAS",
+    "GAFETES",
+    "Bolsas Kraft",
+    "MATERIAL PVC",
+    "TABLE TENT",
+    "CAJAS",
+    "BOTONES",
+    "TRIFOLIAR",
+    "PORTA CREPAS",
+    "TARJETA FIDELIDAD",
+    "HOJAS MEMBRETADA",
+    "LOTERIA",
+    "MAPA",
+    "BLOCK DE NOTAS",
+    "PUBLICIDAD MUNDIAL",
+    "PROMOCIONAL MUNDIAL",
+    "RASPABLES",
+    "BANDEJA COMIDA",
+    "INVITACIONES",
+    "PAPEL REGALO",
+    "DIPLOMAS",
+    "Material Tigo",
+    "Fotocopias",
+    "Sobre Oficio",
+    "Otro",
+]
 
-            opciones_modulo = {m["nombre"]: m["id"] for m in modulos_all}
-            modulo_nombre_sel = st.selectbox("Módulo", list(opciones_modulo.keys()), key="cap_calif_modulo")
-            modulo_id_sel = opciones_modulo[modulo_nombre_sel]
+# ---------------------------------------------------------------------------
+# Sistema de Tickets — Tiendas (fila de clientes nuevos, con check-in por QR
+# desde el celular del cliente, estilo Waitwhile)
+# ---------------------------------------------------------------------------
+TICKET_TIENDAS = CAPACITACION_TIENDAS  # se reutiliza la misma lista de tiendas
 
-            submods_sel = db.list_submodulos(modulo_id_sel)
+# Se quitó la etapa "Esperando"/"Ingresado": desde que el cliente hace
+# check-in (por QR o manual) el ticket entra directo en "En atención"
+# ("En espera" en el tablero), sin un paso intermedio.
+ESTADOS_TICKET = ["En atención", "En elaboración", "Facturado", "Abandono"]
 
-            if puede_editar:
-                with st.form(f"calificar_form_{persona_id_sel}_{modulo_id_sel}"):
-                    calif_general_actual = db.get_calificacion(persona_id_sel, modulo_id_sel, None)
-                    calif_general = st.number_input(
-                        f"Calificación general — {modulo_nombre_sel} (0-100)", min_value=0, max_value=100, step=5,
-                        value=int(calif_general_actual["calificacion"]) if calif_general_actual else 0,
-                        key=f"cap_calif_gen_{persona_id_sel}_{modulo_id_sel}",
-                    )
-                    valores_sub = {}
-                    for sm in submods_sel:
-                        calif_sm_actual = db.get_calificacion(persona_id_sel, modulo_id_sel, sm["id"])
-                        valores_sub[sm["id"]] = st.number_input(
-                            f"«{sm['nombre']}» (0-100)", min_value=0, max_value=100, step=5,
-                            value=int(calif_sm_actual["calificacion"]) if calif_sm_actual else 0,
-                            key=f"cap_calif_sm_{persona_id_sel}_{sm['id']}",
-                        )
-                    if st.form_submit_button("💾 Guardar calificaciones", use_container_width=True):
-                        db.upsert_calificacion(persona_id_sel, modulo_id_sel, None, calif_general)
-                        for sm_id, val in valores_sub.items():
-                            db.upsert_calificacion(persona_id_sel, modulo_id_sel, sm_id, val)
-                        st.success(
-                            f"Calificaciones de {persona_nombre_sel} guardadas para el módulo '{modulo_nombre_sel}'.",
-                        )
-                        st.rerun()
-            else:
-                st.caption("Tu rol es de solo vista: puedes consultar pero no calificar.")
+# Catálogo de servicios/productos que el cliente puede seleccionar (varios a
+# la vez) al hacer check-in, ya sea desde el QR o registrado manualmente.
+TICKET_SERVICIOS = [
+    "BANNERS",
+    "BOTONES",
+    "CANVAS",
+    "COMPRA DE MATERIALES",
+    "CORTE RECTO",
+    "CORTE TROQUEL",
+    "COTIZACIÓN",
+    "DISEÑO",
+    "EMPLASTICADO",
+    "ENCUADERNADO",
+    "ESCANER",
+    "FOTOCOPIA",
+    "FOTOESTATICA",
+    "FOTOGRAFÍA VISA",
+    "FOTOGRAFÍAS",
+    "GAFETES PVC",
+    "GRABADO CD",
+    "IMPRESIÓN A COLOR PAPEL",
+    "IMPRESIÓN B/N PAPEL",
+    "IMPRESIÓN PVC",
+    "Laminado",
+    "LONA VINILICA",
+    "PLANOS",
+    "POSTERS",
+    "REDUCCION",
+    "STICKERS",
+    "TARJETAS DE PRESENTACIÓN",
+    "TROQUEL",
+    "USO DE COMPUTADORA",
+]
 
-            if puede_editar:
-                st.divider()
-                st.markdown("##### 📥 Carga masiva desde Excel")
-                st.caption(
-                    f"Para calificar de una vez a todo el personal en el módulo «{modulo_nombre_sel}» "
-                    + (f"de {tienda_calif_sel}" if tienda_calif_sel != "Todas" else "de todas las tiendas")
-                    + ": descarga la plantilla de abajo, escribe las calificaciones (0 a 100) en las "
-                      "columnas 'General' y de cada submódulo — deja una celda vacía si no quieres "
-                      "cambiar esa nota — y vuelve a subir el mismo archivo aquí. No cambies la columna "
-                      "'ID', ni el filtro de Tienda/Módulo de arriba antes de subirlo."
-                )
+# Slug corto (sin acentos/espacios) para usar en el enlace del código QR, por tienda.
+TICKET_TIENDA_SLUG = {
+    "Cayalá": "cayala",
+    "Vista Hermosa": "vistahermosa",
+    "Majadas": "majadas",
+    "CAES": "caes",
+}
+TICKET_SLUG_TIENDA = {v: k for k, v in TICKET_TIENDA_SLUG.items()}
 
-                columnas_sub_nombres = [sm["nombre"] for sm in submods_sel]
-                filas_plantilla = []
-                for p in personal_filtrado:
-                    calif_gen_p = db.get_calificacion(p["id"], modulo_id_sel, None)
-                    fila_p = {
-                        "ID": p["id"], "Nombre": p["nombre"], "Tienda": p["tienda"], "Módulo": modulo_nombre_sel,
-                        "General": calif_gen_p["calificacion"] if calif_gen_p else None,
-                    }
-                    for sm in submods_sel:
-                        calif_sm_p = db.get_calificacion(p["id"], modulo_id_sel, sm["id"])
-                        fila_p[sm["nombre"]] = calif_sm_p["calificacion"] if calif_sm_p else None
-                    filas_plantilla.append(fila_p)
-                df_plantilla_calif = pd.DataFrame(filas_plantilla)
+# URL pública de la plataforma, usada para armar el enlace/QR de check-in y el
+# enlace de la pantalla "Ahora atendiendo". Si algún día cambia el dominio de
+# Streamlit Cloud, solo hay que actualizar esto.
+APP_URL = "https://vision-digital-ventas.streamlit.app"
 
-                nombre_archivo_plantilla = (
-                    f"plantilla_calificaciones_{modulo_nombre_sel}".replace(" ", "_") + ".xlsx"
-                )
-                st.download_button(
-                    f"📥 Descargar plantilla — {modulo_nombre_sel}",
-                    data=to_excel_bytes(df_plantilla_calif, sheet_name="Calificaciones"),
-                    file_name=nombre_archivo_plantilla,
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    use_container_width=True, key=f"cap_calif_plantilla_{modulo_id_sel}_{tienda_calif_sel}",
-                )
+# ---------------------------------------------------------------------------
+# NPS (Net Promoter Score): encuesta pública de servicio al cliente, con
+# check-in por QR — un código por tienda, mismo concepto que el Sistema de
+# Tickets — Tiendas de arriba (por eso se reutilizan las mismas 4 tiendas y
+# el mismo slug corto para el enlace del QR).
+# ---------------------------------------------------------------------------
+NPS_TIENDAS = TICKET_TIENDAS
+NPS_TIENDA_SLUG = TICKET_TIENDA_SLUG
+NPS_SLUG_TIENDA = TICKET_SLUG_TIENDA
 
-                excel_calif_subido = st.file_uploader(
-                    "Subir el Excel ya lleno con las calificaciones", type=["xlsx"],
-                    key=f"cap_calif_subir_{modulo_id_sel}_{tienda_calif_sel}",
-                )
-                if excel_calif_subido is not None and st.button(
-                    "📤 Cargar calificaciones del Excel", use_container_width=True,
-                    key=f"cap_calif_cargar_{modulo_id_sel}_{tienda_calif_sel}",
-                ):
-                    try:
-                        df_subido_calif = pd.read_excel(excel_calif_subido)
-                    except Exception as e:
-                        st.error(f"No se pudo leer el archivo: {e}")
-                    else:
-                        if "ID" not in df_subido_calif.columns:
-                            st.error(
-                                "El archivo no tiene la columna 'ID' — usa la plantilla que descargaste "
-                                "arriba, sin quitarle columnas."
-                            )
-                        elif "Módulo" in df_subido_calif.columns and not (
-                            df_subido_calif["Módulo"].dropna() == modulo_nombre_sel
-                        ).all():
-                            st.error(
-                                f"Este archivo no es de «{modulo_nombre_sel}» — parece ser de otro módulo. "
-                                "Selecciona el módulo correcto arriba antes de subirlo, o descarga la "
-                                "plantilla de nuevo."
-                            )
-                        else:
-                            ids_validos = {p["id"] for p in personal_filtrado}
-                            columnas_calif = ["General"] + columnas_sub_nombres
-                            guardadas, omitidas, filas_id_invalido = 0, 0, 0
-                            for _, fila_subida in df_subido_calif.iterrows():
-                                pid = fila_subida.get("ID")
-                                if pd.isna(pid) or str(pid) not in ids_validos:
-                                    filas_id_invalido += 1
-                                    continue
-                                pid = str(pid)
-                                for columna in columnas_calif:
-                                    if columna not in df_subido_calif.columns:
-                                        continue
-                                    valor = fila_subida.get(columna)
-                                    if pd.isna(valor):
-                                        continue
-                                    try:
-                                        valor_num = float(valor)
-                                    except (TypeError, ValueError):
-                                        omitidas += 1
-                                        continue
-                                    if not (0 <= valor_num <= 100):
-                                        omitidas += 1
-                                        continue
-                                    submod_id_col = None if columna == "General" else next(
-                                        (sm["id"] for sm in submods_sel if sm["nombre"] == columna), None,
-                                    )
-                                    db.upsert_calificacion(pid, modulo_id_sel, submod_id_col, round(valor_num))
-                                    guardadas += 1
-                            mensaje_carga = f"Se guardaron {guardadas} calificación(es)."
-                            if omitidas:
-                                mensaje_carga += (
-                                    f" Se omitieron {omitidas} celda(s) con un valor inválido "
-                                    "(debe ser un número entre 0 y 100)."
-                                )
-                            if filas_id_invalido:
-                                mensaje_carga += (
-                                    f" Se omitieron {filas_id_invalido} fila(s) cuyo ID no corresponde a "
-                                    "nadie en este filtro de tienda."
-                                )
-                            st.success(mensaje_carga)
-                            st.rerun()
+# Las 3 "caritas" con las que el cliente responde una pregunta de tipo
+# 'carita' — simple a propósito (nada de escalas de 0 a 10 en el celular del
+# cliente). "categoria_nps" es a qué categoría del cálculo formal de NPS
+# corresponde cada una (ver database.calcular_nps: %promotores - %detractores).
+NPS_CARITAS = [
+    {"valor": "malo", "emoji": "😠", "label": "Malo", "color": STATUS["critical"], "categoria_nps": "detractor"},
+    {"valor": "regular", "emoji": "🙂", "label": "Regular", "color": STATUS["warning"], "categoria_nps": "neutro"},
+    {"valor": "excelente", "emoji": "🥳", "label": "Excelente", "color": STATUS["good"], "categoria_nps": "promotor"},
+]
 
-            st.divider()
+# Las 4 preguntas de la encuesta. El texto (y, en la de opción múltiple, las
+# opciones) se pueden editar desde NPS → "⚙️ Parametrización" sin tocar
+# código — esto es solo el valor de fábrica, la primera vez que se consulta
+# y todavía no se ha guardado nada (ver database.get_nps_preguntas). El
+# "tipo" de cada pregunta NO se puede cambiar desde la plataforma: 'carita'
+# = las 3 caritas de arriba, 'opcion' = opción múltiple (una sola respuesta),
+# 'texto' = texto libre opcional.
+NPS_PREGUNTAS_INICIAL = [
+    {
+        "id": "servicio", "tipo": "carita",
+        "texto": "¿Cómo estuvo el servicio dentro de Visión Digital?",
+    },
+    {
+        "id": "medio_publicidad", "tipo": "opcion",
+        "texto": "¿Por qué medio de publicidad ha visto Visión Digital?",
+        "opciones": ["Facebook", "Instagram", "TikTok", "Otro"],
+    },
+    {
+        "id": "recomendaria", "tipo": "carita",
+        "texto": "¿Recomendarías Visión Digital a un amigo o familiar?",
+    },
+    {
+        "id": "mejora", "tipo": "texto",
+        "texto": "¿Alguna mejora que nos quieras contar? (opcional)",
+    },
+]
 
-        st.markdown("##### Resumen de calificaciones registradas")
-        if not todas_calif:
-            st.caption("Todavía no hay calificaciones registradas.")
-        else:
-            personal_lookup = {p["id"]: p for p in db.list_personal_tiendas(solo_activos=False)}
-            modulos_lookup = {m["id"]: m for m in modulos_all}
-            submods_lookup = {sm["id"]: sm for sm in submodulos_all}
-            filas_calif = []
-            for c in todas_calif:
-                persona_c = personal_lookup.get(c.get("persona_id"))
-                modulo_c = modulos_lookup.get(c.get("modulo_id"))
-                submod_c = submods_lookup.get(c.get("submodulo_id")) if c.get("submodulo_id") else None
-                filas_calif.append({
-                    "Persona": persona_c["nombre"] if persona_c else "—",
-                    "Tienda": persona_c["tienda"] if persona_c else "—",
-                    "Módulo": modulo_c["nombre"] if modulo_c else "—",
-                    "Submódulo": submod_c["nombre"] if submod_c else "General",
-                    "Calificación": c.get("calificacion"),
-                    "Actualizado": c.get("actualizado_en"),
-                })
-            df_calif = pd.DataFrame(filas_calif).sort_values(["Persona", "Módulo", "Submódulo"])
-            st.dataframe(df_calif, use_container_width=True, hide_index=True)
-            download_excel_button(df_calif, "calificaciones_capacitacion.xlsx", key="cap_descargar_calif")
+# ---------------------------------------------------------------------------
+# Mantenimiento de Tiendas: tablero de solicitudes estilo Trello, mismo
+# concepto que el tablero de Diseño Gráfico — el jefe de tienda (o admin)
+# reporta qué hay que arreglar en su sucursal, y el 'Jefe de Mantenimiento'
+# la va moviendo por el tablero conforme avanza.
+# ---------------------------------------------------------------------------
+ESTADOS_MANT_TIENDAS = ["Lista de tareas", "Emergencia", "En cotización", "En proceso", "Finalizado"]
+ESTADOS_MANT_TIENDAS_INICIALES = ["Lista de tareas", "Emergencia"]
+# A qué columna pasa una solicitud al presionar el botón "➡️ Mover a la
+# siguiente etapa" — 'Lista de tareas' y 'Emergencia' son dos puertas de
+# entrada distintas que confluyen en el mismo siguiente paso (En cotización);
+# de ahí en adelante el flujo es lineal. 'Finalizado' no tiene siguiente.
+MANT_TIENDA_SIGUIENTE_ESTADO = {
+    "Lista de tareas": "En cotización",
+    "Emergencia": "En cotización",
+    "En cotización": "En proceso",
+    "En proceso": "Finalizado",
+}
+MANT_TIENDAS_FOTO_MAX_BYTES = 900_000  # ~900 KB por foto — mismo límite práctico que Diseño/Capacitación
+MANT_TIENDAS_FOTOS_MAX = 5
+# Cotización: PDFs que sube el jefe de planta mientras la solicitud está en
+# la columna "En cotización" — solo el admin puede autorizarla.
+MANT_TIENDAS_COTIZACION_MAX_BYTES = 900_000  # ~900 KB por PDF — mismo límite práctico que el resto
+MANT_TIENDAS_COTIZACION_MAX_ARCHIVOS = 3
+
+# ---------------------------------------------------------------------------
+# Litografía: cotizador técnico (ficha del trabajo + cálculo automático de
+# costo en pliegos, planchas y pasadas de máquina), inspirado en Logic Print.
+# ---------------------------------------------------------------------------
+# Máquinas y tipos de papel de ejemplo — se cargan solos la primera vez que
+# arranca la app (igual que LOGISTICA_VENDEDORES_INICIAL) para que el
+# cotizador no empiece vacío. SON DATOS DE EJEMPLO: hay que entrar a
+# Litografía → "🖨️ Máquinas" / "📄 Papel" y corregir los precios y medidas
+# reales antes de cotizar un trabajo de verdad.
+LITO_MAQUINAS_INICIAL = [
+    # nombre, ancho_max (cm), alto_max (cm), costo por millar de pasadas (Q), costo por plancha (Q)
+    {"nombre": "Offset 65x90 (ejemplo)", "ancho_max": 65, "alto_max": 90,
+     "costo_millar_pasadas": 350.0, "costo_plancha": 45.0},
+    {"nombre": "Offset 52x72 (ejemplo)", "ancho_max": 52, "alto_max": 72,
+     "costo_millar_pasadas": 280.0, "costo_plancha": 35.0},
+    {"nombre": "Digital carta/oficio (ejemplo)", "ancho_max": 32, "alto_max": 45,
+     "costo_millar_pasadas": 180.0, "costo_plancha": 0.0},
+]
+LITO_PAPELES_INICIAL = [
+    # tipo, fabricante, gramaje (g/m²), ancho (cm), alto (cm), costo por pliego (Q)
+    {"tipo": "Bond", "fabricante": "Genérico", "gramaje": 80, "ancho": 65, "alto": 90, "costo_pliego": 1.20},
+    {"tipo": "Couché brillante", "fabricante": "Genérico", "gramaje": 115, "ancho": 65, "alto": 90, "costo_pliego": 2.10},
+    {"tipo": "Cartulina SBS", "fabricante": "Genérico", "gramaje": 250, "ancho": 65, "alto": 90, "costo_pliego": 3.50},
+]
+
+# Combinaciones comunes de tintas (frente + dorso), para que el usuario elija
+# rápido en vez de escribir números — "Personalizado" permite cualquier otra.
+LITO_TINTAS_PRESETS = {
+    "4+4 (full color ambos lados)": (4, 4),
+    "4+0 (full color un lado)": (4, 0),
+    "4+1": (4, 1),
+    "2+2": (2, 2),
+    "1+1 (un color ambos lados)": (1, 1),
+    "1+0 (un color un lado)": (1, 0),
+    "Personalizado": None,
+}
+
+# Estados de una cotización técnica de litografía.
+ESTADOS_LITO_COTIZACION = ["Borrador", "Cotizado", "Aprobado", "Rechazado"]
+
+# ---------------------------------------------------------------------------
+# Historial (pestaña "Historial" dentro de "Ventas por mes"): serie
+# histórica año por año, mes por mes, de la Venta total y la Utilidad total
+# de la empresa — viene del Excel "VENTAS PARA PLATAFORMA" que llevaba
+# Steven aparte. Es independiente del desglose por vendedor/planta que ya
+# tienen las pestañas "Ventas" y "Utilidades" de esa misma página.
+# ---------------------------------------------------------------------------
+HISTORIAL_CATEGORIAS = ["venta", "utilidad"]
+HISTORIAL_CATEGORIA_LABEL = {"venta": "Venta", "utilidad": "Utilidad"}
+
+# ---------------------------------------------------------------------------
+# Phara: pestaña exclusiva para este cliente — cronograma de entregas +
+# tablero de producción estilo Trello (mismo concepto que Diseño Gráfico).
+# Solo la ven admin, quien tenga acceso extra otorgado (ver Administración de
+# usuarios) y el rol 'cliente_phara' (que solo puede consultar, no editar).
+# ---------------------------------------------------------------------------
+ESTADOS_PHARA = ["Sherpa", "Pre prensa", "Impresión", "Acabados", "En logística", "Entregado"]
+# A partir de qué etapa es obligatorio tener una fecha de entrega asignada.
+# Un pedido nace en "Sherpa" sin fecha; en cuanto se mueve a "Pre prensa" (o
+# cualquier etapa posterior) el sistema exige que se indique la fecha antes
+# de guardar el cambio.
+PHARA_ETAPA_FECHA_OBLIGATORIA = "Pre prensa"
+
+# ---------------------------------------------------------------------------
+# Documentos: biblioteca de PDFs (legales, políticas, presentaciones, etc.)
+# organizada por categoría. Solo el administrador puede subir o eliminar
+# documentos; vendedor, vista, mercadeo y administrador pueden consultar y
+# descargar (ver app_pages/23_Documentos.py y app.py).
+# ---------------------------------------------------------------------------
+DOCUMENTOS_CATEGORIAS = ["Legal", "Políticas", "Presentaciones", "Otros"]
+DOCUMENTOS_ARCHIVO_MAX_BYTES = 900_000  # ~900 KB — límite práctico dentro del documento de Firestore
+DOCUMENTOS_ARCHIVO_MAX_BYTES_STORAGE = 200_000_000  # 200 MB si Firebase Storage está configurado
+
+# ---------------------------------------------------------------------------
+# Colorado: pestaña para generar y dar seguimiento a órdenes de producción de
+# la planta Colorado — mismo concepto que Phara (cronograma de entregas +
+# tablero de producción estilo Trello + avisos por correo), pero de uso
+# interno: vendedores, jefes de tienda y subjefes de tienda (además de
+# admin) pueden crear, mover y eliminar órdenes — ver auth.puede_editar_colorado.
+# ---------------------------------------------------------------------------
+ESTADOS_COLORADO = ["Nuevo", "En producción", "Acabados", "Entregado"]
+# Unidades para las dimensiones del arte (ancho x alto) y opciones de tipo de
+# color de la orden — usadas en el formulario de la pestaña Colorado.
+COLORADO_DIMENSION_UNIDADES = ["Pulgadas", "Metros", "Centímetros", "Milímetros"]
+COLORADO_TIPOS_COLOR = ["Blanco y Negro", "Color", "Con clear", "Con blanco"]
+# Archivos de referencia adjuntos a una orden (arte, cotización, etc.) —
+# reutiliza los mismos límites de tamaño que Diseño Gráfico
+# (DISENO_ARCHIVO_MAX_BYTES / DISENO_ARCHIVO_MAX_BYTES_STORAGE), solo cambia
+# cuántos archivos se permiten por orden.
+PRODUCCION_ARCHIVOS_MAX = 5
+
+# ---------------------------------------------------------------------------
+# Galaxy: pestaña idéntica a Colorado (mismo formulario de 15 campos,
+# cronograma, tablero de producción y avisos por correo), pero como línea de
+# producción / colección de datos totalmente independiente — ver
+# auth.puede_editar_galaxy. Reutiliza las mismas listas de unidades y tipos
+# de color que Colorado (COLORADO_DIMENSION_UNIDADES / COLORADO_TIPOS_COLOR),
+# ya que son genéricas y no específicas de esa planta.
+# ---------------------------------------------------------------------------
+ESTADOS_GALAXY = ["Nuevo", "En producción", "Acabados", "Entregado"]
+
+# ---------------------------------------------------------------------------
+# Drive: pestaña solo para admin, mercadeo y jefes de tienda (jefe_tienda /
+# subjefe_tienda) — trae en la plataforma los números que Steven llevaba en
+# un Google Sheet aparte ("DASHBOARD VD"), tabla "DATOS GENERALES" y tabla
+# "KRISPY 2", con vista numérica y gráfica, y totalmente editable desde aquí
+# (no hay sincronización en vivo con el Google Sheet original — los datos
+# históricos se cargan una sola vez, la primera vez que arranca la app con
+# esta pestaña, y de ahí en adelante se editan directamente aquí).
+# ---------------------------------------------------------------------------
+DG_MESES = [
+    "ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO",
+    "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE",
+]
+# Categorías de la pestaña "Datos generales" (mismo orden en que aparecen en
+# el Google Sheet original) y, para cada una, las "entidades" (tienda/línea/
+# total) que se pueden consultar por separado.
+DG_CATEGORIAS = ["ventas_totales", "por_linea", "flujo", "ticket_promedio"]
+DG_CATEGORIA_LABEL = {
+    "ventas_totales": "Ventas totales",
+    "por_linea": "Ventas por línea",
+    "flujo": "Flujo (clientes atendidos)",
+    "ticket_promedio": "Ticket promedio",
+}
+DG_ENTIDADES = {
+    "ventas_totales": ["GENERAL", "CAYALA", "VISTA HERMOSA", "MAJADAS", "CAES"],
+    "por_linea": ["TIENDA", "DIGITAL", "OFFSET", "COLORADO", "VALLOY"],
+    "flujo": ["TOTAL"],
+    "ticket_promedio": ["TOTAL"],
+}
+# Nombre bonito para mostrar en pantalla (las claves de arriba son las que
+# usa el Google Sheet original / los datos guardados).
+DG_ENTIDAD_LABEL = {
+    "GENERAL": "General (todas las tiendas)", "CAYALA": "Cayalá", "VISTA HERMOSA": "Vista Hermosa",
+    "MAJADAS": "Majadas", "CAES": "CAES", "TOTAL": "Total",
+    "TIENDA": "Tienda", "DIGITAL": "Digital", "OFFSET": "Offset", "COLORADO": "Colorado", "VALLOY": "Valloy",
+}
+# Años a los que se limita la GRÁFICA (la tabla numérica sí muestra todos los
+# años disponibles) — pedido explícito de Steven.
+DG_ANIOS_GRAFICA = [2024, 2025, 2026]
+
+# Pestaña "Krispy 2": desglose mensual por tienda y por producto (Bites/Mini).
+KRISPY_TIENDAS = ["CAYALA", "VISTA HERMOSA", "CAES", "MAJADAS"]
+KRISPY_TIENDA_LABEL = {"CAYALA": "Cayalá", "VISTA HERMOSA": "Vista Hermosa", "CAES": "CAES", "MAJADAS": "Majadas"}
+KRISPY_PRODUCTOS = ["bites", "mini"]
+KRISPY_PRODUCTO_LABEL = {"bites": "Bites", "mini": "Mini"}
+KRISPY_METRICAS = ["unidades", "dinero", "utilidad"]
+KRISPY_METRICA_LABEL = {"unidades": "Unidades", "dinero": "Dinero (Q)", "utilidad": "Utilidad (Q)"}
+# El Google Sheet original ("KRISPY 2") no tiene ninguna columna de año — los
+# datos cargados (Enero a Julio) se guardaron asumiendo que corresponden a
+# 2026 (coincide con el lanzamiento de la tienda CAES). Si esto no es
+# correcto, se puede corregir año por año directamente desde la pestaña.
+KRISPY_ANIO_ASUMIDO = 2026
