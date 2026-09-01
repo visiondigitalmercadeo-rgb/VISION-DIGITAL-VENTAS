@@ -51,6 +51,33 @@ def _grafica_donut(conteo, score, titulo):
     return base_layout(fig, title=titulo, height=280)
 
 
+def _calificacion_tienda_promedio(tienda):
+    """Promedio de la calificación de servicio (pregunta tipo carita
+    'servicio': ¿Cómo estuvo el servicio?) de una tienda, sobre TODAS las
+    respuestas guardadas (no cambia con los filtros de fecha/tienda de la
+    tabla de abajo — es un resumen general). Se devuelve la carita de
+    NPS_CARITAS más cercana al promedio (malo/regular/excelente), junto con
+    el promedio numérico y cuántas respuestas se usaron. None si la tienda
+    todavía no tiene ninguna respuesta a esa pregunta."""
+    valores = {"malo": 1, "regular": 2, "excelente": 3}
+    puntos = [
+        valores[(r.get("respuestas") or {}).get("servicio")]
+        for r in db.list_nps_respuestas(tienda=tienda)
+        if (r.get("respuestas") or {}).get("servicio") in valores
+    ]
+    if not puntos:
+        return None
+    promedio = sum(puntos) / len(puntos)
+    if promedio < (1 + 2 / 3):
+        carita_valor = "malo"
+    elif promedio < (1 + 4 / 3):
+        carita_valor = "regular"
+    else:
+        carita_valor = "excelente"
+    carita = next(c for c in NPS_CARITAS if c["valor"] == carita_valor)
+    return {"promedio": promedio, "carita": carita, "total": len(puntos)}
+
+
 def _seccion_carita(respuestas, pregunta_id, titulo_seccion, titulo_score):
     conteo, total = _breakdown_carita(respuestas, pregunta_id)
     st.markdown(f"###### {titulo_seccion}")
@@ -73,6 +100,33 @@ def _seccion_carita(respuestas, pregunta_id, titulo_seccion, titulo_score):
 # KPIs
 # ---------------------------------------------------------------------------
 with tab_kpis:
+    st.markdown("###### 🏪 Calificación promedio por tienda")
+    st.caption(
+        "Promedio de todas las respuestas guardadas a '¿Cómo estuvo el servicio?' — no cambia con "
+        "los filtros de abajo."
+    )
+    cols_resumen = st.columns(len(NPS_TIENDAS))
+    for col_resumen, tienda_resumen in zip(cols_resumen, NPS_TIENDAS):
+        with col_resumen:
+            with st.container(border=True):
+                st.markdown(f"**{tienda_resumen}**")
+                info = _calificacion_tienda_promedio(tienda_resumen)
+                if info is None:
+                    st.markdown(
+                        "<div style='text-align:center;font-size:2.4rem;'>—</div>",
+                        unsafe_allow_html=True,
+                    )
+                    st.caption("Sin respuestas todavía")
+                else:
+                    carita = info["carita"]
+                    st.markdown(
+                        f"<div style='text-align:center;font-size:2.6rem;line-height:1.1;'>{carita['emoji']}</div>"
+                        f"<div style='text-align:center;font-weight:700;color:{carita['color']};'>{carita['label']}</div>",
+                        unsafe_allow_html=True,
+                    )
+                    st.caption(f"{info['promedio']:.1f} / 3.0 · {info['total']} respuesta(s)")
+    st.divider()
+
     fcol1, fcol2, fcol3 = st.columns(3)
     tienda_sel = fcol1.selectbox("Tienda", ["Todas"] + NPS_TIENDAS, key="nps_kpi_tienda")
     desde = fcol2.date_input("Desde", value=date.today().replace(day=1), key="nps_kpi_desde")
