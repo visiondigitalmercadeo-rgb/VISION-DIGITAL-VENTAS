@@ -1347,11 +1347,11 @@ def get_capacitacion_programacion(programacion_id):
 
 
 def create_capacitacion_programacion(
-    fecha, modulo_id, submodulo_id=None, tienda=None, responsable=None, notas=None,
+    fecha, modulo_id, submodulo_id=None, tienda=None, responsable=None, notas=None, modalidad=None,
 ):
     get_client().collection("capacitacion_programaciones").document().set({
         "fecha": str(fecha), "modulo_id": modulo_id, "submodulo_id": submodulo_id,
-        "tienda": tienda, "responsable": responsable, "notas": notas,
+        "tienda": tienda, "responsable": responsable, "notas": notas, "modalidad": modalidad,
         "creado_en": datetime.now().isoformat(timespec="seconds"),
     })
 
