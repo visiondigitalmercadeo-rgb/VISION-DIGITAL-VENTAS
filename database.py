@@ -2238,17 +2238,26 @@ def get_colorado_pedido(pedido_id):
     return _doc_to_dict(snap) if snap.exists else None
 
 
+def _siguiente_numero_colorado():
+    """Numeración corrida (no reinicia), empezando en 1 — el 'N° de orden'
+    que se muestra en la orden de producción en PDF, igual que el número de
+    envío de Logística."""
+    rows = [_doc_to_dict(s) for s in get_client().collection("colorado_pedidos").stream()]
+    numeros = [r.get("numero_orden") for r in rows if isinstance(r.get("numero_orden"), int)]
+    return (max(numeros, default=0)) + 1
+
+
 def create_colorado_pedido(datos: dict, creado_por_id=None):
     """Toda orden nueva entra siempre por la primera columna del tablero
     ('Nuevo') — ver config.ESTADOS_COLORADO. 'datos' trae los campos de la
     orden de producción (cliente, pieza, dimensiones, material, color,
-    acabados, precio, cantidad, notas, NIT, dirección, fecha de entrega —
-    ver app_pages/24_Colorado.py)."""
+    acabados, precio, cantidad, notas, NIT, dirección, fecha de entrega,
+    archivos adjuntos — ver app_pages/24_Colorado.py)."""
     from config import ESTADOS_COLORADO
     doc_ref = get_client().collection("colorado_pedidos").document()
     doc_ref.set({
         **datos,
-        "estado": ESTADOS_COLORADO[0],
+        "estado": ESTADOS_COLORADO[0], "numero_orden": _siguiente_numero_colorado(),
         "creado_por_id": creado_por_id, "creado_en": datetime.now().isoformat(timespec="seconds"),
     })
     return doc_ref.id
@@ -2260,7 +2269,10 @@ def update_colorado_pedido(pedido_id, **kwargs):
 
 
 def delete_colorado_pedido(pedido_id):
+    doc = get_colorado_pedido(pedido_id)
     get_client().collection("colorado_pedidos").document(pedido_id).delete()
+    if doc and doc.get("archivos"):
+        eliminar_archivos_storage(doc["archivos"])
 
 
 def get_colorado_correos_aviso() -> list:
@@ -2298,17 +2310,26 @@ def get_galaxy_pedido(pedido_id):
     return _doc_to_dict(snap) if snap.exists else None
 
 
+def _siguiente_numero_galaxy():
+    """Numeración corrida (no reinicia), empezando en 1 — el 'N° de orden'
+    que se muestra en la orden de producción en PDF, igual que el número de
+    envío de Logística."""
+    rows = [_doc_to_dict(s) for s in get_client().collection("galaxy_pedidos").stream()]
+    numeros = [r.get("numero_orden") for r in rows if isinstance(r.get("numero_orden"), int)]
+    return (max(numeros, default=0)) + 1
+
+
 def create_galaxy_pedido(datos: dict, creado_por_id=None):
     """Toda orden nueva entra siempre por la primera columna del tablero
     ('Nuevo') — ver config.ESTADOS_GALAXY. 'datos' trae los campos de la
     orden de producción (cliente, pieza, dimensiones, material, color,
-    acabados, precio, cantidad, notas, NIT, dirección, fecha de entrega —
-    ver app_pages/25_Galaxy.py)."""
+    acabados, precio, cantidad, notas, NIT, dirección, fecha de entrega,
+    archivos adjuntos — ver app_pages/25_Galaxy.py)."""
     from config import ESTADOS_GALAXY
     doc_ref = get_client().collection("galaxy_pedidos").document()
     doc_ref.set({
         **datos,
-        "estado": ESTADOS_GALAXY[0],
+        "estado": ESTADOS_GALAXY[0], "numero_orden": _siguiente_numero_galaxy(),
         "creado_por_id": creado_por_id, "creado_en": datetime.now().isoformat(timespec="seconds"),
     })
     return doc_ref.id
@@ -2320,7 +2341,10 @@ def update_galaxy_pedido(pedido_id, **kwargs):
 
 
 def delete_galaxy_pedido(pedido_id):
+    doc = get_galaxy_pedido(pedido_id)
     get_client().collection("galaxy_pedidos").document(pedido_id).delete()
+    if doc and doc.get("archivos"):
+        eliminar_archivos_storage(doc["archivos"])
 
 
 def get_galaxy_correos_aviso() -> list:
