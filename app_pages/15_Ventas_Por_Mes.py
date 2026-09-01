@@ -158,6 +158,16 @@ def _render_historial():
         "mensual completo, mes a mes y año a año)."
     )
 
+    # Limpieza automática de filas duplicadas (por ejemplo, si la carga
+    # inicial del Excel se llegó a ejecutar dos veces) — se hace como mucho
+    # una vez por sesión, y no borra nada si ya está todo bien. Mismo
+    # concepto que la limpieza de Drive (ver 21_Drive.py).
+    if user["rol"] == "admin" and not st.session_state.get("_vpm_hist_dedupe_hecho"):
+        _borrados_dup = db.eliminar_duplicados_historial_vpm()
+        st.session_state["_vpm_hist_dedupe_hecho"] = True
+        if _borrados_dup:
+            st.success(f"🧹 Se limpiaron {_borrados_dup} fila(s) duplicada(s) que habían quedado del Historial.")
+
     # Corrección puntual (una sola vez por sesión, no borra nada si ya está
     # bien): la meta solo aplica a 2026 — los años anteriores no deben tener
     # fila de meta propia.
