@@ -1,7 +1,26 @@
+import base64
+
 import streamlit as st
 
 import database as db
 from config import EMPRESA_LEMA, EMPRESA_NOMBRE, LOGO_PATH
+
+
+def _logo_centrado(path, width):
+    """st.image() alinea la imagen a la izquierda de su columna aunque el
+    texto de al lado esté centrado — para el logo del login se ve mejor
+    centrarlo de verdad, incrustándolo como <img> dentro de un <div>
+    centrado."""
+    try:
+        with open(path, "rb") as f:
+            b64 = base64.b64encode(f.read()).decode("ascii")
+        st.markdown(
+            f"<div style='text-align:center;'>"
+            f"<img src='data:image/png;base64,{b64}' width='{width}' /></div>",
+            unsafe_allow_html=True,
+        )
+    except Exception:
+        st.image(path, width=width)
 
 
 def do_login(username: str, password: str) -> bool:
@@ -37,7 +56,7 @@ def require_login():
 
     _, col, _ = st.columns([1, 1.2, 1])
     with col:
-        st.image(LOGO_PATH, width=320)
+        _logo_centrado(LOGO_PATH, 320)
         st.markdown(
             f"<h3 style='text-align:center;margin-top:0.5rem;'>{EMPRESA_NOMBRE} · Plataforma Comercial</h3>"
             f"<p style='text-align:center;color:#52514e;'>{EMPRESA_LEMA} · "
