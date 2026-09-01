@@ -1,24 +1,25 @@
-"""Página pública de la encuesta NPS: el formulario que el cliente llena
-desde su celular al escanear el código QR de su tienda. No requiere haber
-iniciado sesión — se llama desde app.py ANTES de auth.require_login(), igual
-que public_tickets.py."""
+"""Páginas públicas del Sistema de Tickets — Tiendas: el formulario de
+check-in que el cliente llena desde su celular al escanear el código QR, y
+la pantalla pública "Ahora atendiendo" para mostrar en una TV/tablet dentro
+de la tienda. Ninguna de las dos requiere haber iniciado sesión — se llaman
+desde app.py ANTES de auth.require_login()."""
 
 import streamlit as st
 
 import database as db
-from config import EMPRESA_NOMBRE, LOGO_PATH, NPS_CARITAS, NPS_SLUG_TIENDA
+from config import BRAND_PINK, EMPRESA_NOMBRE, LOGO_PATH, TICKET_SERVICIOS, TICKET_SLUG_TIENDA
 
 
 def _tienda_desde_slug(slug):
-    return NPS_SLUG_TIENDA.get((slug or "").strip().lower())
+    return TICKET_SLUG_TIENDA.get((slug or "").strip().lower())
 
 
-def render_encuesta(slug):
-    """Formulario público de la encuesta. Devuelve True si atendió la
-    solicitud (haya que hacer st.stop() después)."""
+def render_checkin(slug):
+    """Formulario público de check-in. Devuelve True si atendió la solicitud
+    (haya que hacer st.stop() después)."""
     tienda = _tienda_desde_slug(slug)
 
-    _, col, _ = st.columns([1, 1.3, 1])
+    _, col, _ = st.columns([1, 1.2, 1])
     with col:
         try:
             st.image(LOGO_PATH, width=280)
@@ -27,59 +28,125 @@ def render_encuesta(slug):
 
         if not tienda:
             st.error(
-                "Este enlace de encuesta no es válido. Por favor pide ayuda a un colaborador "
+                "Este enlace de check-in no es válido. Por favor pide ayuda a un colaborador "
                 "de la tienda."
             )
             return True
 
-        if st.session_state.get("nps_encuesta_enviada_tienda") == tienda:
-            st.success("✅ ¡Gracias por tu opinión! Nos ayuda mucho a seguir mejorando.")
-            if st.button("Responder otra encuesta", use_container_width=True):
-                st.session_state.pop("nps_encuesta_enviada_tienda", None)
+        if st.session_state.get("tt_checkin_ok_tienda") == tienda:
+            numero = st.session_state.get("tt_checkin_ok_numero")
+            st.success(f"✅ ¡Listo! Tu número de turno en **{tienda}** es **#{numero}**.")
+            st.info(
+                "Te atenderemos en el orden en que llegaste. Por favor toma asiento — en cuanto "
+                "sea tu turno, un colaborador te llamará por tu nombre."
+            )
+            if st.button("Registrar a otra persona", use_container_width=True):
+                st.session_state.pop("tt_checkin_ok_tienda", None)
+                st.session_state.pop("tt_checkin_ok_numero", None)
                 st.rerun()
             return True
 
         st.markdown(
-            f"<h3 style='text-align:center;margin-top:0.5rem;'>{EMPRESA_NOMBRE} · {tienda}</h3>"
-            "<p style='text-align:center;color:#52514e;'>Tu opinión nos ayuda a mejorar — "
+            f"<h3 style='text-align:center;margin-top:0.5rem;'>Bienvenido a {EMPRESA_NOMBRE} · {tienda}</h3>"
+            "<p style='text-align:center;color:#52514e;'>Regístrate para que te atendamos — "
             "toma menos de un minuto.</p>",
             unsafe_allow_html=True,
         )
-
-        preguntas = db.get_nps_preguntas()
-        opciones_carita = {f"{c['emoji']} {c['label']}": c["valor"] for c in NPS_CARITAS}
-
-        with st.form("nps_encuesta_form"):
-            respuestas = {}
-            for p in preguntas:
-                if p["tipo"] == "carita":
-                    elegido = st.radio(
-                        p["texto"], list(opciones_carita.keys()),
-                        index=None, horizontal=True, key=f"nps_q_{p['id']}",
-                    )
-                    respuestas[p["id"]] = opciones_carita.get(elegido)
-                elif p["tipo"] == "opcion":
-                    respuestas[p["id"]] = st.radio(
-                        p["texto"], p.get("opciones") or [],
-                        index=None, key=f"nps_q_{p['id']}",
-                    )
-                elif p["tipo"] == "texto":
-                    respuestas[p["id"]] = st.text_area(p["texto"], key=f"nps_q_{p['id']}")
-
-            enviado = st.form_submit_button("✅ Enviar", use_container_width=True)
+        with st.form("tt_checkin_form"):
+            nombre = st.text_input("Nombre completo")
+            telefono = st.text_input("Número de teléfono")
+            servicio = st.multiselect(
+                "¿Qué servicio o producto necesitas? (puedes elegir varios)",
+                TICKET_SERVICIOS,
+            )
+            enviado = st.form_submit_button("✅ Registrarme", use_container_width=True)
             if enviado:
-                faltantes = [
-                    p["texto"] for p in preguntas
-                    if p["tipo"] in ("carita", "opcion") and not respuestas.get(p["id"])
-                ]
-                if faltantes:
-                    st.error("Por favor responde todas las preguntas antes de enviar.")
+                if not nombre.strip() or not servicio:
+                    st.error("Por favor completa al menos tu nombre y qué necesitas.")
                 else:
-                    respuestas_limpias = {
-                        pid: (v.strip() if isinstance(v, str) else v) or None
-                        for pid, v in respuestas.items()
-                    }
-                    db.create_nps_respuesta(tienda, respuestas_limpias)
-                    st.session_state["nps_encuesta_enviada_tienda"] = tienda
+                    r = db.create_ticket_tienda(tienda, nombre, telefono, servicio)
+                    st.session_state["tt_checkin_ok_tienda"] = tienda
+                    st.session_state["tt_checkin_ok_numero"] = r["numero_ticket"]
                     st.rerun()
+    return True
+
+
+def render_pantalla(slug):
+    """Pantalla pública 'Ahora atendiendo', pensada para dejar abierta en una
+    TV/tablet dentro de la tienda. Se auto-refresca cada 15 segundos."""
+    tienda = _tienda_desde_slug(slug)
+
+    st.markdown('<meta http-equiv="refresh" content="15">', unsafe_allow_html=True)
+
+    if not tienda:
+        st.error("Enlace de pantalla no válido.")
+        return True
+
+    hoy = str(db.hoy_guatemala())
+    tickets_hoy = db.list_tickets_tienda(tienda=tienda, fecha=hoy)
+
+    # Ya no existe la etapa "Esperando"/"Ingresado": el ticket entra directo a
+    # "En atención" ("En espera" en el tablero). Así que "ahora atendiendo"
+    # muestra solo lo que de verdad se está elaborando ("En elaboración"), y
+    # "siguen en la fila" muestra a quienes todavía esperan su turno
+    # ("En atención").
+    en_curso = [t for t in tickets_hoy if t["estado"] == "En elaboración"]
+    en_curso.sort(key=lambda t: t.get("numero_ticket") or 0)
+    en_espera = [t for t in tickets_hoy if t["estado"] == "En atención"]
+    en_espera.sort(key=lambda t: t.get("numero_ticket") or 0)
+
+    st.markdown(
+        f"<h1 style='text-align:center;'>{tienda} — Ahora atendiendo</h1>",
+        unsafe_allow_html=True,
+    )
+
+    if en_curso:
+        cols = st.columns(len(en_curso))
+        for c, t in zip(cols, en_curso):
+            with c:
+                st.markdown(
+                    f"<div style='text-align:center;padding:1.5rem;border-radius:12px;"
+                    f"background:#eaf4ec;'>"
+                    f"<div style='font-size:3rem;font-weight:800;'>#{t['numero_ticket']}</div>"
+                    f"<div style='font-size:1.3rem;'>{t['nombre']}</div>"
+                    f"<div style='color:#52514e;'>{t['estado']}</div></div>",
+                    unsafe_allow_html=True,
+                )
+    else:
+        st.markdown(
+            "<p style='text-align:center;font-size:1.3rem;color:#898781;'>"
+            "Ningún cliente en atención por el momento.</p>",
+            unsafe_allow_html=True,
+        )
+
+    st.markdown("<h3 style='text-align:center;margin-top:2rem;'>Siguen en la fila</h3>", unsafe_allow_html=True)
+    if en_espera:
+        # Se muestran los siguientes 5 en orden de llegada (número + nombre),
+        # para que sepan que ya casi les toca.
+        siguientes = en_espera[:5]
+        filas_html = "".join(
+            "<div style='display:flex;align-items:center;justify-content:center;gap:1rem;"
+            "padding:0.6rem 0;border-bottom:1px solid #e1e0d9;font-size:1.35rem;'>"
+            f"<span style='font-weight:800;color:{BRAND_PINK};min-width:3.5rem;text-align:right;'>"
+            f"#{t['numero_ticket']}</span>"
+            f"<span style='text-align:left;flex:1;max-width:280px;'>{t['nombre']}</span></div>"
+            for t in siguientes
+        )
+        st.markdown(
+            f"<div style='max-width:420px;margin:0 auto;'>{filas_html}</div>",
+            unsafe_allow_html=True,
+        )
+        restantes = len(en_espera) - len(siguientes)
+        if restantes > 0:
+            st.markdown(
+                f"<p style='text-align:center;color:#898781;margin-top:0.75rem;'>"
+                f"y {restantes} persona{'s' if restantes != 1 else ''} más en espera</p>",
+                unsafe_allow_html=True,
+            )
+    else:
+        st.markdown(
+            "<p style='text-align:center;color:#898781;'>No hay nadie esperando ahora mismo.</p>",
+            unsafe_allow_html=True,
+        )
+
     return True
