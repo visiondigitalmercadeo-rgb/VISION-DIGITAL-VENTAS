@@ -275,6 +275,17 @@ def puede_editar_drive():
     return u is not None and u["rol"] == "admin"
 
 
+def puede_editar_nps():
+    """Quién puede editar la parametrización (texto de las preguntas y
+    opciones de la de opción múltiple) de la encuesta NPS: solo el
+    administrador — mismo criterio que puede_editar_drive. Mercadeo, jefe de
+    tienda y sub jefe de tienda también entran a esta pestaña (mismo grupo
+    que ya entra a Drive), pero solo para consultar los KPIs y descargar los
+    códigos QR, sin poder cambiar las preguntas."""
+    u = current_user()
+    return u is not None and u["rol"] == "admin"
+
+
 def is_cliente_phara():
     u = current_user()
     return u is not None and u["rol"] == "cliente_phara"
