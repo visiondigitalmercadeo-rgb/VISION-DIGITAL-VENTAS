@@ -1231,13 +1231,17 @@ def update_modulo(modulo_id, **kwargs):
 
 
 def delete_modulo(modulo_id):
-    """Elimina el módulo junto con todos sus submódulos y las calificaciones
-    (generales y por submódulo) ligadas a él — para no dejar nada huérfano."""
+    """Elimina el módulo junto con todos sus submódulos, las calificaciones
+    (generales y por submódulo) y las capacitaciones programadas ligadas a
+    él — para no dejar nada huérfano."""
     client = get_client()
     for sub in list_submodulos(modulo_id):
         delete_submodulo(sub["id"])
     for c in list_calificaciones(modulo_id=modulo_id):
         client.collection("capacitacion_calificaciones").document(c["id"]).delete()
+    for pr in list_capacitacion_programaciones():
+        if pr.get("modulo_id") == modulo_id:
+            client.collection("capacitacion_programaciones").document(pr["id"]).delete()
     client.collection("capacitacion_modulos").document(modulo_id).delete()
 
 
@@ -1272,6 +1276,9 @@ def delete_submodulo(submodulo_id):
     client = get_client()
     for c in list_calificaciones(submodulo_id=submodulo_id):
         client.collection("capacitacion_calificaciones").document(c["id"]).delete()
+    for pr in list_capacitacion_programaciones():
+        if pr.get("submodulo_id") == submodulo_id:
+            client.collection("capacitacion_programaciones").document(pr["id"]).delete()
     client.collection("capacitacion_submodulos").document(submodulo_id).delete()
 
 
@@ -1315,6 +1322,47 @@ def upsert_calificacion(persona_id, modulo_id, submodulo_id, calificacion, notas
         client.collection("capacitacion_calificaciones").document(existente["id"]).set(data)
     else:
         client.collection("capacitacion_calificaciones").document().set(data)
+
+
+# ---------------------------------------------------------------------------
+# Capacitación — cronograma (programación mensual de capacitaciones): cuándo
+# se va a impartir cada módulo/submódulo, a qué tienda y quién la da. Es
+# independiente de las calificaciones — aquí solo se PLANEA la fecha, no se
+# califica a nadie.
+# ---------------------------------------------------------------------------
+def list_capacitacion_programaciones(mes=None):
+    """'mes' es 'YYYY-MM' para filtrar por mes (opcional). Ordenadas por
+    fecha, la más próxima primero."""
+    client = get_client()
+    rows = [_doc_to_dict(s) for s in client.collection("capacitacion_programaciones").stream()]
+    if mes:
+        rows = [r for r in rows if (r.get("fecha") or "")[:7] == mes]
+    rows.sort(key=lambda r: r.get("fecha") or "")
+    return rows
+
+
+def get_capacitacion_programacion(programacion_id):
+    snap = get_client().collection("capacitacion_programaciones").document(programacion_id).get()
+    return _doc_to_dict(snap) if snap.exists else None
+
+
+def create_capacitacion_programacion(
+    fecha, modulo_id, submodulo_id=None, tienda=None, responsable=None, notas=None,
+):
+    get_client().collection("capacitacion_programaciones").document().set({
+        "fecha": str(fecha), "modulo_id": modulo_id, "submodulo_id": submodulo_id,
+        "tienda": tienda, "responsable": responsable, "notas": notas,
+        "creado_en": datetime.now().isoformat(timespec="seconds"),
+    })
+
+
+def update_capacitacion_programacion(programacion_id, **kwargs):
+    if kwargs:
+        get_client().collection("capacitacion_programaciones").document(programacion_id).update(kwargs)
+
+
+def delete_capacitacion_programacion(programacion_id):
+    get_client().collection("capacitacion_programaciones").document(programacion_id).delete()
 
 
 # ---------------------------------------------------------------------------
