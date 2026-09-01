@@ -19,6 +19,11 @@ sidebar_user_box()
 hoy = date.today()
 manana = hoy + timedelta(days=1)
 
+# Limpieza automática de la columna "Entregados": borra los pedidos ya
+# entregados cuya fecha de entrega ya pasó, para que esa columna no vaya
+# acumulando pedidos día tras día (ver database.limpiar_pedidos_entregados_vencidos).
+db.limpiar_pedidos_entregados_vencidos()
+
 st.title("🚚 Logística — Ruta de reparto")
 st.caption(
     "El jefe de logística ingresa los pedidos AM/PM de cada día y asigna un repartidor. "
@@ -477,11 +482,23 @@ with tab_vista:
             "pedidos_logistica.xlsx", key="log_descargar_excel",
         )
 
-    col1, col2, col3 = st.columns(3)
+    # Los pedidos ya entregados se muestran aparte, en su propia columna
+    # "Entregados", en vez de seguir mezclados con los pendientes/en ruta de
+    # su franja — así las columnas de arriba solo muestran lo que todavía
+    # falta por resolver. (La limpieza automática de esta columna, para que
+    # no acumule entregados de días anteriores, corre arriba al cargar la
+    # página — ver database.limpiar_pedidos_entregados_vencidos.)
+    entregados = [p for p in (hoy_am + hoy_pm + manana_am) if p.get("estado") == "Entregado"]
+    hoy_am = [p for p in hoy_am if p.get("estado") != "Entregado"]
+    hoy_pm = [p for p in hoy_pm if p.get("estado") != "Entregado"]
+    manana_am = [p for p in manana_am if p.get("estado") != "Entregado"]
+
+    col1, col2, col3, col4 = st.columns(4)
     columnas = [
         (col1, f"🌅 Hoy AM ({hoy.strftime('%d/%m')})", hoy_am),
         (col2, f"🌇 Hoy PM ({hoy.strftime('%d/%m')})", hoy_pm),
         (col3, f"🌄 Mañana AM ({manana.strftime('%d/%m')})", manana_am),
+        (col4, "✅ Entregados", entregados),
     ]
     for col, titulo, items in columnas:
         with col:
