@@ -1,3 +1,5 @@
+from datetime import date
+
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
@@ -38,6 +40,76 @@ MESES_LABEL = {m: m.capitalize() for m in DG_MESES}
 def _fila_total(valores: dict) -> float:
     return sum(float(v or 0) for v in valores.values())
 
+
+# ---------------------------------------------------------------------------
+# KPIs de ventas (arriba de todo, antes de las pestañas) — la tienda con más
+# venta acumulada en el año en curso, y el mes con más venta general de ese
+# mismo año. Se calculan sobre 'Ventas totales' (Datos generales) y solo con
+# datos reales (nunca con las filas de "meta"/objetivo). Si el año en curso
+# todavía no tiene nada cargado, cae al año real más reciente que sí tenga
+# datos, para no mostrar vacío innecesariamente.
+# ---------------------------------------------------------------------------
+_TIENDAS_VENTAS = [e for e in DG_ENTIDADES["ventas_totales"] if e != "GENERAL"]
+_anio_actual = date.today().year
+_anios_con_datos_reales = sorted({
+    int(r["anio"])
+    for ent in DG_ENTIDADES["ventas_totales"]
+    for r in db.get_dg_datos("ventas_totales", ent)
+    if not r.get("meta")
+})
+anio_kpi = _anio_actual if _anio_actual in _anios_con_datos_reales else (
+    _anios_con_datos_reales[-1] if _anios_con_datos_reales else None
+)
+
+mejor_tienda_nombre = mejor_tienda_total = None
+mejor_mes_nombre = mejor_mes_total = None
+if anio_kpi is not None:
+    _totales_por_tienda = {}
+    for _tienda in _TIENDAS_VENTAS:
+        _registros_tienda = [
+            r for r in db.get_dg_datos("ventas_totales", _tienda)
+            if int(r["anio"]) == anio_kpi and not r.get("meta")
+        ]
+        if _registros_tienda:
+            _totales_por_tienda[_tienda] = sum(_fila_total(r.get("valores") or {}) for r in _registros_tienda)
+    if _totales_por_tienda:
+        mejor_tienda_nombre = max(_totales_por_tienda, key=_totales_por_tienda.get)
+        mejor_tienda_total = _totales_por_tienda[mejor_tienda_nombre]
+
+    _registros_general = [
+        r for r in db.get_dg_datos("ventas_totales", "GENERAL")
+        if int(r["anio"]) == anio_kpi and not r.get("meta")
+    ]
+    _valores_por_mes = {}
+    for r in _registros_general:
+        for _mes, _v in (r.get("valores") or {}).items():
+            if _v is not None:
+                _valores_por_mes[_mes] = float(_v)
+    if _valores_por_mes:
+        mejor_mes_nombre = max(_valores_por_mes, key=_valores_por_mes.get)
+        mejor_mes_total = _valores_por_mes[mejor_mes_nombre]
+
+st.markdown(f"###### 🏆 KPIs de ventas{f' — {anio_kpi}' if anio_kpi else ''}")
+kpi_col1, kpi_col2 = st.columns(2)
+with kpi_col1:
+    st.metric(
+        "Mejor tienda (venta acumulada del año)",
+        DG_ENTIDAD_LABEL.get(mejor_tienda_nombre, mejor_tienda_nombre) if mejor_tienda_nombre else "—",
+    )
+    st.caption(
+        f"💰 {money(mejor_tienda_total)} acumulado en {anio_kpi}" if mejor_tienda_nombre
+        else "Todavía no hay datos de 'Ventas totales' por tienda para calcular esto."
+    )
+with kpi_col2:
+    st.metric(
+        "Mejor mes de venta del año",
+        MESES_LABEL[mejor_mes_nombre] if mejor_mes_nombre else "—",
+    )
+    st.caption(
+        f"💰 {money(mejor_mes_total)} en ventas ({DG_ENTIDAD_LABEL['GENERAL']})" if mejor_mes_nombre
+        else "Todavía no hay datos de 'Ventas totales · General' para calcular esto."
+    )
+st.divider()
 
 tab_generales, tab_krispy = st.tabs(["📊 Datos generales", "🍩 Krispy 2"])
 
