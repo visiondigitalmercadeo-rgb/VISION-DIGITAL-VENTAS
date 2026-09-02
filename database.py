@@ -1337,20 +1337,13 @@ def upsert_calificacion(persona_id, modulo_id, submodulo_id, calificacion, notas
 # independiente de las calificaciones — aquí solo se PLANEA la fecha, no se
 # califica a nadie.
 # ---------------------------------------------------------------------------
-def list_capacitacion_programaciones(mes=None, modulo_id=None, submodulo_id=None):
-    """'mes' es 'YYYY-MM' para filtrar por mes (opcional). 'modulo_id' /
-    'submodulo_id' filtran por módulo o submódulo (opcional — se usa para ver
-    el historial y las grabaciones de un módulo/submódulo específico, por
-    ejemplo desde su expediente). Ordenadas por fecha, la más próxima
-    primero."""
+def list_capacitacion_programaciones(mes=None):
+    """'mes' es 'YYYY-MM' para filtrar por mes (opcional). Ordenadas por
+    fecha, la más próxima primero."""
     client = get_client()
     rows = [_doc_to_dict(s) for s in client.collection("capacitacion_programaciones").stream()]
     if mes:
         rows = [r for r in rows if (r.get("fecha") or "")[:7] == mes]
-    if modulo_id:
-        rows = [r for r in rows if r.get("modulo_id") == modulo_id]
-    if submodulo_id is not None:
-        rows = [r for r in rows if r.get("submodulo_id") == submodulo_id]
     rows.sort(key=lambda r: r.get("fecha") or "")
     return rows
 
