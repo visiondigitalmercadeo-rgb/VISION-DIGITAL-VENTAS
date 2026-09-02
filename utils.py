@@ -1070,10 +1070,12 @@ def diploma_pdf_bytes(persona_nombre: str, tienda: str, modulo_nombre: str, fech
     pdf.set_xy(38, firmas_y + 8)
     pdf.cell(80, 5, _pdf_safe("Fecha de finalización"), align="C")
 
-    # Derecha: firma escaneada + nombre y puesto
+    # Derecha: firma escaneada + nombre y puesto — la firma se centra sobre
+    # el mismo bloque (161 a 241) que la línea, el nombre y el puesto, para
+    # que quede justo encima de "Steven Gabriel" y no desplazada.
     try:
         firma_w = 46
-        pdf.image(FIRMA_STEVEN_PATH, x=(ancho - firma_w) / 2 + 80, y=firmas_y - 18, w=firma_w)
+        pdf.image(FIRMA_STEVEN_PATH, x=161 + (80 - firma_w) / 2, y=firmas_y - 18, w=firma_w)
     except Exception:
         pass
     pdf.set_draw_color(120, 120, 120)
