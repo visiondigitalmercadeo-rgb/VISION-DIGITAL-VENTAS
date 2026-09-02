@@ -1232,8 +1232,9 @@ def update_modulo(modulo_id, **kwargs):
 
 def delete_modulo(modulo_id):
     """Elimina el módulo junto con todos sus submódulos, las calificaciones
-    (generales y por submódulo), las capacitaciones programadas y los
-    diplomas de finalización ligados a él — para no dejar nada huérfano."""
+    (generales y por submódulo), las capacitaciones programadas, las
+    asistencias registradas y los diplomas de finalización ligados a él —
+    para no dejar nada huérfano."""
     client = get_client()
     for sub in list_submodulos(modulo_id):
         delete_submodulo(sub["id"])
@@ -1244,6 +1245,8 @@ def delete_modulo(modulo_id):
             client.collection("capacitacion_programaciones").document(pr["id"]).delete()
     for dip in list_capacitacion_diplomas(modulo_id=modulo_id):
         client.collection("capacitacion_diplomas").document(dip["id"]).delete()
+    for a in list_capacitacion_asistencias(modulo_id=modulo_id):
+        client.collection("capacitacion_asistencias").document(a["id"]).delete()
     client.collection("capacitacion_modulos").document(modulo_id).delete()
 
 
@@ -1281,6 +1284,8 @@ def delete_submodulo(submodulo_id):
     for pr in list_capacitacion_programaciones():
         if pr.get("submodulo_id") == submodulo_id:
             client.collection("capacitacion_programaciones").document(pr["id"]).delete()
+    for a in list_capacitacion_asistencias(submodulo_id=submodulo_id):
+        client.collection("capacitacion_asistencias").document(a["id"]).delete()
     client.collection("capacitacion_submodulos").document(submodulo_id).delete()
 
 
@@ -1350,11 +1355,12 @@ def get_capacitacion_programacion(programacion_id):
 
 def create_capacitacion_programacion(
     fecha, modulo_id, submodulo_id=None, tienda=None, responsable=None, notas=None, modalidad=None,
+    link_virtual=None,
 ):
     get_client().collection("capacitacion_programaciones").document().set({
         "fecha": str(fecha), "modulo_id": modulo_id, "submodulo_id": submodulo_id,
         "tienda": tienda, "responsable": responsable, "notas": notas, "modalidad": modalidad,
-        "creado_en": datetime.now().isoformat(timespec="seconds"),
+        "link_virtual": link_virtual, "creado_en": datetime.now().isoformat(timespec="seconds"),
     })
 
 
@@ -1364,7 +1370,58 @@ def update_capacitacion_programacion(programacion_id, **kwargs):
 
 
 def delete_capacitacion_programacion(programacion_id):
-    get_client().collection("capacitacion_programaciones").document(programacion_id).delete()
+    """Al eliminar la capacitación programada también se borran las
+    asistencias que la gente ya haya confirmado para ella (ya no tiene
+    sentido conservarlas sin la programación a la que pertenecen)."""
+    client = get_client()
+    for a in list_capacitacion_asistencias(programacion_id=programacion_id):
+        client.collection("capacitacion_asistencias").document(a["id"]).delete()
+    client.collection("capacitacion_programaciones").document(programacion_id).delete()
+
+
+# ---------------------------------------------------------------------------
+# Capacitación — asistencias: registro de quién confirmó su asistencia a una
+# capacitación programada (vía el formulario público que se abre al escanear
+# el QR de esa programación). Queda ligada tanto a la programación como al
+# módulo/submódulo, para poder verla desde el expediente del submódulo (o del
+# módulo, si la capacitación era general, sin submódulo específico).
+# ---------------------------------------------------------------------------
+def list_capacitacion_asistencias(programacion_id=None, modulo_id=None, submodulo_id=None):
+    client = get_client()
+    query = client.collection("capacitacion_asistencias")
+    if programacion_id:
+        query = query.where("programacion_id", "==", programacion_id)
+    if modulo_id:
+        query = query.where("modulo_id", "==", modulo_id)
+    rows = [_doc_to_dict(s) for s in query.stream()]
+    if submodulo_id is not None:
+        rows = [r for r in rows if r.get("submodulo_id") == submodulo_id]
+    rows.sort(key=lambda r: r.get("confirmado_en") or "")
+    return rows
+
+
+def create_capacitacion_asistencia(programacion_id, nombre, tienda):
+    """Registra la asistencia de una persona a una capacitación programada,
+    a partir del formulario público del QR. Copia el módulo/submódulo/fecha
+    de la programación al momento de confirmar, para que la asistencia se
+    pueda consultar sin tener que ir a buscar la programación cada vez."""
+    prog = get_capacitacion_programacion(programacion_id)
+    if not prog:
+        raise ValueError("Esta capacitación programada ya no existe.")
+    data = {
+        "programacion_id": programacion_id, "modulo_id": prog.get("modulo_id"),
+        "submodulo_id": prog.get("submodulo_id"), "fecha": prog.get("fecha"),
+        "nombre": nombre, "tienda": tienda,
+        "confirmado_en": datetime.now().isoformat(timespec="seconds"),
+    }
+    doc_ref = get_client().collection("capacitacion_asistencias").document()
+    doc_ref.set(data)
+    data["id"] = doc_ref.id
+    return data
+
+
+def delete_capacitacion_asistencia(asistencia_id):
+    get_client().collection("capacitacion_asistencias").document(asistencia_id).delete()
 
 
 # ---------------------------------------------------------------------------
