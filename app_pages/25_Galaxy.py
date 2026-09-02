@@ -156,6 +156,7 @@ if not pedidos:
 else:
     pedidos_cronograma = sorted(pedidos, key=lambda p: p.get("fecha_entrega") or "9999-99-99")
     df_cron = pd.DataFrame([{
+        "Solicita": p.get("quien_solicita") or "—",
         "Cliente": p.get("cliente_nombre") or "—",
         "Tipo de pieza": p.get("tipo_pieza") or "—",
         "Cantidad": p.get("cantidad_unidades") if p.get("cantidad_unidades") not in (None, "") else "—",
@@ -172,6 +173,9 @@ else:
 if puede_editar:
     with st.expander("➕ Agregar orden nueva"):
         with st.form("galaxy_nuevo_pedido", clear_on_submit=True):
+            quien_solicita_n = st.text_input(
+                "¿Quién solicita? (persona interna que hace el pedido, opcional)",
+            )
             st.markdown("**Datos del cliente**")
             cliente_nombre_n = st.text_input("Nombre del cliente")
             c1, c2 = st.columns(2)
@@ -227,6 +231,7 @@ if puede_editar:
                     st.error(error_msg)
                 else:
                     datos = {
+                        "quien_solicita": quien_solicita_n.strip() or None,
                         "cliente_nombre": cliente_nombre_n.strip(),
                         "cliente_telefono": cliente_telefono_n.strip() or None,
                         "cliente_correo": cliente_correo_n.strip() or None,
@@ -251,6 +256,7 @@ if puede_editar:
                     _avisar_por_correo(
                         f"Galaxy — Nueva orden: {cliente_nombre_n.strip()}",
                         f"Se agregó una nueva orden de producción en Galaxy.\n\n"
+                        f"Solicita: {quien_solicita_n.strip() or '—'}\n"
                         f"Cliente: {cliente_nombre_n.strip()}\n"
                         f"Tipo de pieza: {tipo_pieza_n.strip() or '—'}\n"
                         f"Cantidad: {cantidad_unidades_n or '—'}\n"
@@ -292,6 +298,8 @@ for col, estado in zip(cols, ESTADOS_GALAXY):
                             st.session_state[editando_key] = not st.session_state.get(editando_key, False)
                             st.rerun()
 
+                if p.get("quien_solicita"):
+                    st.caption(f"🙋 Solicita: {p['quien_solicita']}")
                 if p.get("tipo_pieza"):
                     st.caption(f"🧩 {p['tipo_pieza']}")
                 if p.get("cliente_telefono") or p.get("cliente_correo"):
@@ -409,6 +417,10 @@ for col, estado in zip(cols, ESTADOS_GALAXY):
 
                 if puede_editar and st.session_state.get(editando_key):
                     with st.form(f"galaxy_gestionar_{pid}"):
+                        quien_solicita_ed = st.text_input(
+                            "¿Quién solicita? (persona interna que hace el pedido, opcional)",
+                            value=p.get("quien_solicita") or "",
+                        )
                         st.markdown("**Datos del cliente**")
                         cliente_nombre_ed = st.text_input(
                             "Nombre del cliente", value=p.get("cliente_nombre") or "",
@@ -508,6 +520,7 @@ for col, estado in zip(cols, ESTADOS_GALAXY):
                         if guardar:
                             error_msg = None
                             update_kwargs = {
+                                "quien_solicita": quien_solicita_ed.strip() or None,
                                 "cliente_nombre": cliente_nombre_ed.strip(),
                                 "cliente_telefono": cliente_telefono_ed.strip() or None,
                                 "cliente_correo": cliente_correo_ed.strip() or None,
