@@ -92,8 +92,28 @@ if anio_kpi is not None:
         mejor_mes_nombre = max(_valores_por_mes, key=_valores_por_mes.get)
         mejor_mes_total = _valores_por_mes[mejor_mes_nombre]
 
+# ---------------------------------------------------------------------------
+# % de la meta del mes en curso — sobre "Ventas totales · General". A
+# diferencia de los dos KPIs de arriba, este NO cae a otro año/mes si todavía
+# no hay nada cargado: debe reflejar el mes calendario real, para que se note
+# si falta cargar la meta o la venta real de este mes.
+# ---------------------------------------------------------------------------
+mes_actual_nombre = DG_MESES[date.today().month - 1]
+_registros_general_todos = db.get_dg_datos("ventas_totales", "GENERAL")
+_fila_real_actual = next(
+    (r for r in _registros_general_todos if int(r["anio"]) == _anio_actual and not r.get("meta")), None,
+)
+_fila_meta_actual = next(
+    (r for r in _registros_general_todos if int(r["anio"]) == _anio_actual and r.get("meta")), None,
+)
+_venta_real_mes = (_fila_real_actual.get("valores") or {}).get(mes_actual_nombre) if _fila_real_actual else None
+_meta_mes = (_fila_meta_actual.get("valores") or {}).get(mes_actual_nombre) if _fila_meta_actual else None
+_pct_meta_mes = (
+    float(_venta_real_mes) / float(_meta_mes) * 100 if _venta_real_mes is not None and _meta_mes else None
+)
+
 st.markdown(f"###### 🏆 KPIs de ventas{f' — {anio_kpi}' if anio_kpi else ''}")
-kpi_col1, kpi_col2 = st.columns(2)
+kpi_col1, kpi_col2, kpi_col3 = st.columns(3)
 with kpi_col1:
     st.metric(
         "Mejor tienda (venta acumulada del año)",
@@ -112,6 +132,20 @@ with kpi_col2:
         f"💰 {money(mejor_mes_total)} en ventas ({DG_ENTIDAD_LABEL['GENERAL']})" if mejor_mes_nombre
         else "Todavía no hay datos de 'Ventas totales · General' para calcular esto."
     )
+with kpi_col3:
+    st.metric(
+        f"🎯 Meta del mes ({MESES_LABEL[mes_actual_nombre]} {_anio_actual})",
+        f"{_pct_meta_mes:.0f}%" if _pct_meta_mes is not None else "—",
+    )
+    if _pct_meta_mes is not None:
+        st.caption(f"💰 {money(_venta_real_mes)} de {money(_meta_mes)} de meta")
+    elif _meta_mes is None:
+        st.caption(
+            "Todavía no se ha cargado la meta de este mes (Ventas totales · General) — "
+            + ("se puede agregar abajo, marcando 'Es meta'." if puede_editar else "pídele al administrador que la cargue.")
+        )
+    else:
+        st.caption("Todavía no hay venta real cargada para este mes (Ventas totales · General).")
 st.divider()
 
 tab_generales, tab_krispy = st.tabs(["📊 Datos generales", "🍩 Krispy 2"])
