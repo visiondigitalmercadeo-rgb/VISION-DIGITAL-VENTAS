@@ -2,6 +2,7 @@ import streamlit as st
 
 import auth
 import database as db
+import public_capacitacion
 import public_nps
 import public_tickets
 from config import EMPRESA_NOMBRE, FAVICON_PATH, LOGO_PATH, PAGINAS_REGISTRO
@@ -37,6 +38,7 @@ db.init_db(seed_demo=True)
 _qp_ticket = st.query_params.get("ticket")
 _qp_pantalla = st.query_params.get("pantalla")
 _qp_nps = st.query_params.get("nps")
+_qp_capacitacion = st.query_params.get("capacitacion")
 if _qp_ticket:
     public_tickets.render_checkin(_qp_ticket)
     st.stop()
@@ -45,6 +47,9 @@ elif _qp_pantalla:
     st.stop()
 elif _qp_nps:
     public_nps.render_encuesta(_qp_nps)
+    st.stop()
+elif _qp_capacitacion:
+    public_capacitacion.render_registro(_qp_capacitacion)
     st.stop()
 
 if not db.firebase_conectado():
