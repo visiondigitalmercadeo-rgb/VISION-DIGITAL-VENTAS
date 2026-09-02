@@ -177,6 +177,73 @@ def minutos_legible(minutos):
     return f"{h} h {m} min"
 
 
+def mant_tienda_historial_o_reconstruido(row):
+    """Historial de etapas de una solicitud de Mantenimiento de Tiendas —
+    usa 'historial_etapas' si ya existe (ver database.avanzar_mant_tienda,
+    que agrega una entrada cada vez que la solicitud entra a una columna
+    nueva, desde que se agregó este campo en adelante). Si la solicitud es
+    de antes de que existiera ese campo, lo reconstruye lo mejor posible a
+    partir de los campos anteriores (creado_en, tipo_solicitud_inicial,
+    fecha_cotizacion, fecha_en_proceso, fecha_finalizado) — esa
+    reconstrucción asume que la solicitud siguió el camino normal sin
+    saltos ni retrocesos, así que puede quedar incompleta para casos raros,
+    pero nunca falla (en el peor caso retorna una lista corta o vacía)."""
+    historial = row.get("historial_etapas")
+    if historial:
+        return historial
+    entradas = []
+    tipo_inicial = row.get("tipo_solicitud_inicial") or (
+        row.get("estado") if row.get("estado") in ("Lista de tareas", "Emergencia") else None
+    )
+    if tipo_inicial and row.get("creado_en"):
+        entradas.append({"estado": tipo_inicial, "entrada_en": row["creado_en"]})
+    if row.get("fecha_cotizacion"):
+        entradas.append({"estado": "En cotización", "entrada_en": row["fecha_cotizacion"]})
+    if row.get("fecha_en_proceso"):
+        entradas.append({"estado": "En proceso", "entrada_en": row["fecha_en_proceso"]})
+    if row.get("fecha_finalizado"):
+        entradas.append({"estado": "Finalizado", "entrada_en": row["fecha_finalizado"]})
+    return entradas
+
+
+def mant_tienda_segmentos_etapa(row):
+    """A partir del historial de etapas de una solicitud de Mantenimiento de
+    Tiendas (ver mant_tienda_historial_o_reconstruido), retorna una lista de
+    tuplas (etapa, minutos, en_curso) — una por cada vez que la solicitud
+    entró a una columna. 'en_curso' es True solo para el último tramo, y
+    solo si la solicitud sigue en esa columna ahora mismo (en ese caso mide
+    desde que entró hasta la hora actual, en vez de hasta la siguiente
+    entrada, que todavía no existe); la columna terminal 'Finalizado' nunca
+    se marca 'en_curso' (no tiene sentido medir cuánto lleva finalizada)."""
+    historial = mant_tienda_historial_o_reconstruido(row)
+    segmentos = []
+    for i, entrada in enumerate(historial):
+        estado_etapa = entrada.get("estado")
+        siguiente = historial[i + 1] if i + 1 < len(historial) else None
+        if siguiente is not None:
+            minutos = minutos_entre(entrada.get("entrada_en"), siguiente.get("entrada_en"))
+            en_curso = False
+        elif estado_etapa == "Finalizado":
+            continue
+        else:
+            minutos = minutos_entre(entrada.get("entrada_en"))
+            en_curso = True
+        if minutos is not None:
+            segmentos.append((estado_etapa, minutos, en_curso))
+    return segmentos
+
+
+def mant_tienda_tiempo_en_etapa(row, etapa):
+    """Suma de minutos que una solicitud de Mantenimiento de Tiendas estuvo
+    en una etapa dada, sumando todas las veces que pasó por ahí (por si se
+    movió hacia atrás y volvió a entrar) — solo cuenta tramos YA
+    COMPLETADOS; si la solicitud está actualmente en esa columna, ese tramo
+    en curso no se incluye aquí (ver mant_tienda_segmentos_etapa). None si
+    nunca completó un tramo en esa etapa."""
+    minutos = [m for (est, m, en_curso) in mant_tienda_segmentos_etapa(row) if est == etapa and not en_curso]
+    return sum(minutos) if minutos else None
+
+
 def selector_hora(label_prefix, key_prefix, hora12=12, minuto=0, ampm="AM"):
     """Muestra 3 selectores (Hora 1-12 / Minuto / AM-PM) y retorna el texto
     'HH:MM' en formato 24 horas, listo para guardar en la base de datos."""
@@ -882,6 +949,7 @@ def orden_produccion_pdf_bytes(p: dict, linea: str) -> bytes:
     y = _caja(y, "DATOS DEL CLIENTE", [
         ("LÍNEA:", linea),
         ("FECHA:", _fecha_legible(p.get("creado_en")) or "—"),
+        ("SOLICITA:", p.get("quien_solicita") or "—"),
         ("CLIENTE:", p.get("cliente_nombre") or "—"),
         ("TELÉFONO:", p.get("cliente_telefono") or "—"),
         ("CORREO:", p.get("cliente_correo") or "—"),
