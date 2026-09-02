@@ -416,12 +416,6 @@ TICKET_SLUG_TIENDA = {v: k for k, v in TICKET_TIENDA_SLUG.items()}
 # Streamlit Cloud, solo hay que actualizar esto.
 APP_URL = "https://vision-digital-ventas.streamlit.app"
 
-# Videollamada integrada para capacitaciones virtuales — Jitsi Meet (gratis,
-# no requiere cuenta ni instalar nada). Si el campo "link_virtual" de una
-# capacitación programada se deja vacío, la plataforma arma su propia sala de
-# videollamada usando este dominio (ver utils.jitsi_sala_url).
-JITSI_DOMAIN = "meet.jit.si"
-
 # ---------------------------------------------------------------------------
 # NPS (Net Promoter Score): encuesta pública de servicio al cliente, con
 # check-in por QR — un código por tienda, mismo concepto que el Sistema de
