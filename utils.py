@@ -2,8 +2,6 @@ import base64
 import hashlib
 import html
 import io
-import re
-import urllib.parse
 from datetime import date
 
 import pandas as pd
@@ -15,8 +13,7 @@ import auth
 import database as db
 from config import (
     CATEGORICAL, EMPRESA_DIRECCION_LINEA1, EMPRESA_DIRECCION_LINEA2, EMPRESA_NOMBRE, FIRMA_STEVEN_NOMBRE,
-    FIRMA_STEVEN_PATH, FIRMA_STEVEN_PUESTO, GRIDLINE, INK_MUTED, INK_PRIMARY, JITSI_DOMAIN, LOGO_PATH,
-    ROLES_LABEL, SURFACE,
+    FIRMA_STEVEN_PATH, FIRMA_STEVEN_PUESTO, GRIDLINE, INK_MUTED, INK_PRIMARY, LOGO_PATH, ROLES_LABEL, SURFACE,
 )
 
 
@@ -1091,36 +1088,3 @@ def diploma_pdf_bytes(persona_nombre: str, tienda: str, modulo_nombre: str, fech
     pdf.cell(80, 5, _pdf_safe(FIRMA_STEVEN_PUESTO), align="C")
 
     return bytes(pdf.output())
-
-
-# ---------------------------------------------------------------------------
-# Videollamada integrada para capacitaciones virtuales — Jitsi Meet (gratis,
-# no requiere cuenta ni instalar nada, incluye compartir pantalla). Se usa
-# cuando una capacitación programada es "Virtual" y no se puso un link de
-# Zoom/Meet/Teams propio en su lugar (ver app_pages/16_Capacitacion.py y
-# public_capacitacion.py).
-# ---------------------------------------------------------------------------
-def jitsi_sala_nombre(programacion_id):
-    """Nombre de la sala — solo letras/números, sin eso Jitsi la rechaza."""
-    limpio = re.sub(r"[^A-Za-z0-9]", "", str(programacion_id))
-    return f"VisionDigitalCap{limpio}"
-
-
-def jitsi_sala_url(programacion_id, nombre_mostrar=None):
-    """Link de la videollamada propia de esta capacitación — se arma solo, a
-    partir del id de la programación, sin necesidad de crear nada aparte. Si
-    se da 'nombre_mostrar', la persona entra ya con su nombre puesto y sin
-    la pantalla previa de Jitsi (config por el '#' del link, soportado por
-    Jitsi directamente, sin tener que cargar su script aparte)."""
-    url = f"https://{JITSI_DOMAIN}/{jitsi_sala_nombre(programacion_id)}"
-    if nombre_mostrar:
-        nombre_qs = urllib.parse.quote(str(nombre_mostrar))
-        url += f'#config.prejoinPageEnabled=false&userInfo.displayName="{nombre_qs}"'
-    return url
-
-
-def render_videollamada_incrustada(programacion_id, nombre_mostrar, alto=520):
-    """Incrusta la videollamada directamente en la página. Es un
-    complemento — junto a esto siempre debe mostrarse también el botón para
-    abrirla en una pestaña nueva, que es más confiable en celular."""
-    st.iframe(jitsi_sala_url(programacion_id, nombre_mostrar), height=alto)
