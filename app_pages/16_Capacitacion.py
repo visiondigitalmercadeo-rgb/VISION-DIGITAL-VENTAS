@@ -1,14 +1,17 @@
 import base64
 import calendar
+import io
 from datetime import date
 
 import pandas as pd
+import qrcode
 import streamlit as st
 
 import auth
 import database as db
 from config import (
-    CAPACITACION_ARCHIVO_MAX_BYTES, CAPACITACION_ARCHIVOS_MAX, CAPACITACION_MODALIDADES, CAPACITACION_TIENDAS,
+    APP_URL, CAPACITACION_ARCHIVO_MAX_BYTES, CAPACITACION_ARCHIVOS_MAX, CAPACITACION_MODALIDADES,
+    CAPACITACION_TIENDAS,
 )
 from utils import (
     archivos_a_b64_lista, diploma_pdf_bytes, diseno_archivos_lista, download_excel_button, sidebar_user_box,
@@ -59,7 +62,7 @@ st.markdown(f"##### {_label_mes_largo(anio_mes_cronograma)}")
 
 programaciones_mes = db.list_capacitacion_programaciones(mes=anio_mes_cronograma)
 
-tab_cron_lista, tab_cron_calendario = st.tabs(["📋 Lista", "📅 Calendario"])
+tab_cron_lista, tab_cron_calendario, tab_cron_registro = st.tabs(["📋 Lista", "📅 Calendario", "🔗 Registro (QR)"])
 
 # --------------------------------------------------------------------------
 # Lista: la tabla + programar/editar/eliminar.
@@ -78,6 +81,7 @@ with tab_cron_lista:
             "Modalidad": pr.get("modalidad") or "—",
             "Tienda": pr.get("tienda") or "Todas",
             "Responsable": pr.get("responsable") or "—",
+            "Link virtual": pr.get("link_virtual") or "—",
             "Notas": pr.get("notas") or "—",
         } for pr in programaciones_mes])
         st.dataframe(df_cron, use_container_width=True, hide_index=True)
@@ -115,14 +119,22 @@ with tab_cron_lista:
                     responsable_prog = st.text_input(
                         "Responsable / capacitador (opcional)", key="cap_prog_responsable_n",
                     )
+                    link_virtual_prog = st.text_input(
+                        "Link de la capacitación virtual (solo si es Virtual)", key="cap_prog_link_n",
+                    )
                     notas_prog = st.text_area("Notas (opcional)", key="cap_prog_notas_n")
                     if st.form_submit_button("📅 Agregar al cronograma", use_container_width=True):
                         db.create_capacitacion_programacion(
                             fecha_prog_n, modulo_prog_id, submod_prog_id,
                             None if tienda_prog == "Todas" else tienda_prog,
                             responsable_prog.strip() or None, notas_prog.strip() or None, modalidad_prog,
+                            link_virtual_prog.strip() or None,
                         )
-                        st.success("Capacitación agregada al cronograma.")
+                        st.success(
+                            "Capacitación agregada al cronograma. En la pestaña '🔗 Registro' de "
+                            "abajo puedes descargar su código QR para que el personal confirme su "
+                            "asistencia."
+                        )
                         st.rerun()
 
         if programaciones_mes:
@@ -183,6 +195,10 @@ with tab_cron_lista:
                     responsable_prog_ed = st.text_input(
                         "Responsable / capacitador (opcional)", value=pr_ed.get("responsable") or "",
                     )
+                    link_virtual_prog_ed = st.text_input(
+                        "Link de la capacitación virtual (solo si es Virtual)",
+                        value=pr_ed.get("link_virtual") or "",
+                    )
                     notas_prog_ed = st.text_area("Notas (opcional)", value=pr_ed.get("notas") or "")
                     colp1, colp2 = st.columns(2)
                     guardar_prog = colp1.form_submit_button("💾 Guardar cambios", use_container_width=True)
@@ -195,6 +211,7 @@ with tab_cron_lista:
                             submodulo_id=submod_prog_id_ed, modalidad=modalidad_prog_ed,
                             tienda=None if tienda_prog_ed == "Todas" else tienda_prog_ed,
                             responsable=responsable_prog_ed.strip() or None,
+                            link_virtual=link_virtual_prog_ed.strip() or None,
                             notas=notas_prog_ed.strip() or None,
                         )
                         st.success("Cronograma actualizado.")
@@ -262,6 +279,59 @@ with tab_cron_calendario:
         "Para editar o eliminar una capacitación, usa la pestaña «Lista»."
     )
 
+# --------------------------------------------------------------------------
+# Registro (QR): cada capacitación programada tiene su propio código QR /
+# link — el personal lo escanea desde su celular, confirma su asistencia (sin
+# necesidad de iniciar sesión) y, si la capacitación es virtual, ahí mismo
+# recibe el link para entrar. Se genera solo, no hay que crearlo aparte: en
+# cuanto la capacitación queda en el cronograma, ya tiene su QR listo.
+# --------------------------------------------------------------------------
+with tab_cron_registro:
+    if not programaciones_mes:
+        st.caption("No hay capacitaciones programadas para este mes todavía.")
+    else:
+        st.caption(
+            "Comparte este código QR (o el link) con el personal para que confirme su asistencia "
+            "desde su celular, sin necesidad de iniciar sesión. Si la capacitación es virtual, al "
+            "confirmar recibe ahí mismo el link para entrar."
+        )
+        opciones_prog_qr = {
+            f"[{pr.get('fecha')}] "
+            f"{(modulos_lookup_cron.get(pr.get('modulo_id')) or {}).get('nombre') or '—'}"
+            + (f" · {pr.get('tienda')}" if pr.get("tienda") else ""): pr["id"]
+            for pr in programaciones_mes
+        }
+        elegido_prog_qr = st.selectbox(
+            "Selecciona una capacitación programada", list(opciones_prog_qr.keys()), key="cap_prog_qr_select",
+        )
+        prog_id_qr = opciones_prog_qr[elegido_prog_qr]
+        link_registro = f"{APP_URL}/?capacitacion={prog_id_qr}"
+
+        col_qr, col_asist = st.columns([1, 1.4])
+        with col_qr:
+            qr_img = qrcode.make(link_registro, box_size=8, border=2)
+            buf_qr = io.BytesIO()
+            qr_img.save(buf_qr, format="PNG")
+            png_qr = buf_qr.getvalue()
+            st.image(png_qr, caption="Código QR de registro", width=220)
+            st.download_button(
+                "⬇️ Descargar QR (PNG)", data=png_qr, file_name=f"qr_capacitacion_{prog_id_qr}.png",
+                mime="image/png", use_container_width=True, key=f"cap_qr_descargar_{prog_id_qr}",
+            )
+            st.code(link_registro)
+
+        with col_asist:
+            st.markdown("###### 👥 Asistencias confirmadas")
+            asistencias_prog = db.list_capacitacion_asistencias(programacion_id=prog_id_qr)
+            if not asistencias_prog:
+                st.caption("Todavía nadie ha confirmado su asistencia con este QR.")
+            else:
+                df_asist_prog = pd.DataFrame([{
+                    "Nombre": a["nombre"], "Tienda": a.get("tienda") or "—",
+                    "Confirmado": (a.get("confirmado_en") or "")[:16].replace("T", " "),
+                } for a in asistencias_prog])
+                st.dataframe(df_asist_prog, use_container_width=True, hide_index=True)
+
 st.divider()
 
 # ---------------------------------------------------------------------------
@@ -328,6 +398,22 @@ with tab_modulos:
                             else:
                                 st.caption("Sin archivos adjuntos.")
 
+                            asistencias_sm = db.list_capacitacion_asistencias(
+                                modulo_id=m["id"], submodulo_id=sm["id"],
+                            )
+                            with st.expander(f"👥 Asistencias registradas ({len(asistencias_sm)})"):
+                                if not asistencias_sm:
+                                    st.caption(
+                                        "Nadie ha confirmado asistencia a una capacitación de este "
+                                        "submódulo todavía."
+                                    )
+                                else:
+                                    df_asist_sm = pd.DataFrame([{
+                                        "Nombre": a["nombre"], "Tienda": a.get("tienda") or "—",
+                                        "Fecha": a.get("fecha") or "—",
+                                    } for a in asistencias_sm])
+                                    st.dataframe(df_asist_sm, use_container_width=True, hide_index=True)
+
                             if puede_editar:
                                 editando_key = f"cap_editando_sm_{sm['id']}"
                                 if st.button(
@@ -381,6 +467,25 @@ with tab_modulos:
                                             st.session_state.pop(editando_key, None)
                                             st.success("Submódulo eliminado.")
                                             st.rerun()
+
+                st.divider()
+                st.markdown("###### 👥 Asistencias — capacitaciones generales del módulo")
+                st.caption(
+                    "Asistencias confirmadas a capacitaciones programadas para todo el módulo "
+                    "(sin un submódulo específico). Las de cada submódulo aparecen dentro de "
+                    "'Asistencias registradas' en su propio recuadro, arriba."
+                )
+                asistencias_mod_general = [
+                    a for a in db.list_capacitacion_asistencias(modulo_id=m["id"]) if not a.get("submodulo_id")
+                ]
+                if not asistencias_mod_general:
+                    st.caption("Nadie ha confirmado asistencia todavía.")
+                else:
+                    df_asist_mod = pd.DataFrame([{
+                        "Nombre": a["nombre"], "Tienda": a.get("tienda") or "—",
+                        "Fecha": a.get("fecha") or "—",
+                    } for a in asistencias_mod_general])
+                    st.dataframe(df_asist_mod, use_container_width=True, hide_index=True)
 
                 st.divider()
                 st.markdown("###### 🎓 Diploma de finalización")
