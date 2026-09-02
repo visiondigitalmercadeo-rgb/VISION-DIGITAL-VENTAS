@@ -14,8 +14,8 @@ from config import (
     CAPACITACION_TIENDAS,
 )
 from utils import (
-    archivos_a_b64_lista, diploma_pdf_bytes, diseno_archivos_lista, download_excel_button, jitsi_sala_url,
-    render_videollamada_incrustada, sidebar_user_box, to_excel_bytes,
+    archivos_a_b64_lista, diploma_pdf_bytes, diseno_archivos_lista, download_excel_button, sidebar_user_box,
+    to_excel_bytes,
 )
 
 _MESES_LABEL_LARGO = {
@@ -82,7 +82,6 @@ with tab_cron_lista:
             "Tienda": pr.get("tienda") or "Todas",
             "Responsable": pr.get("responsable") or "—",
             "Link virtual": pr.get("link_virtual") or "—",
-            "Grabación": pr.get("grabacion_url") or "—",
             "Notas": pr.get("notas") or "—",
         } for pr in programaciones_mes])
         st.dataframe(df_cron, use_container_width=True, hide_index=True)
@@ -121,12 +120,7 @@ with tab_cron_lista:
                         "Responsable / capacitador (opcional)", key="cap_prog_responsable_n",
                     )
                     link_virtual_prog = st.text_input(
-                        "Link de Zoom/Meet/Teams (opcional, solo si es Virtual)", key="cap_prog_link_n",
-                    )
-                    st.caption(
-                        "Si la dejas vacía y la modalidad es Virtual, la plataforma arma su propia "
-                        "videollamada gratis (pestaña «🔗 Registro (QR)», más abajo) — no hace falta "
-                        "otra cuenta."
+                        "Link de la capacitación virtual (solo si es Virtual)", key="cap_prog_link_n",
                     )
                     notas_prog = st.text_area("Notas (opcional)", key="cap_prog_notas_n")
                     if st.form_submit_button("📅 Agregar al cronograma", use_container_width=True):
@@ -202,22 +196,8 @@ with tab_cron_lista:
                         "Responsable / capacitador (opcional)", value=pr_ed.get("responsable") or "",
                     )
                     link_virtual_prog_ed = st.text_input(
-                        "Link de Zoom/Meet/Teams (opcional, solo si es Virtual)",
+                        "Link de la capacitación virtual (solo si es Virtual)",
                         value=pr_ed.get("link_virtual") or "",
-                    )
-                    st.caption(
-                        "Si la dejas vacía, se usa la videollamada propia de la plataforma (pestaña "
-                        "«🔗 Registro (QR)»)."
-                    )
-                    grabacion_prog_ed = st.text_input(
-                        "Link de la grabación (opcional, se agrega después de que ya se dio la capacitación)",
-                        value=pr_ed.get("grabacion_url") or "",
-                        help=(
-                            "La videollamada propia no graba automáticamente. Si alguien grabó la "
-                            "sesión (con OBS, celular, etc.) y la subió a Drive, YouTube (como no "
-                            "listado) o similar, pega aquí el link para que quede junto a esta "
-                            "capacitación."
-                        ),
                     )
                     notas_prog_ed = st.text_area("Notas (opcional)", value=pr_ed.get("notas") or "")
                     colp1, colp2 = st.columns(2)
@@ -232,7 +212,6 @@ with tab_cron_lista:
                             tienda=None if tienda_prog_ed == "Todas" else tienda_prog_ed,
                             responsable=responsable_prog_ed.strip() or None,
                             link_virtual=link_virtual_prog_ed.strip() or None,
-                            grabacion_url=grabacion_prog_ed.strip() or None,
                             notas=notas_prog_ed.strip() or None,
                         )
                         st.success("Cronograma actualizado.")
@@ -353,39 +332,6 @@ with tab_cron_registro:
                 } for a in asistencias_prog])
                 st.dataframe(df_asist_prog, use_container_width=True, hide_index=True)
 
-        # -- Videollamada (solo si es Virtual) -------------------------------
-        prog_qr_data = db.get_capacitacion_programacion(prog_id_qr) or {}
-        if prog_qr_data.get("modalidad") == "Virtual":
-            st.divider()
-            st.markdown("###### 🎥 Videollamada")
-            if (prog_qr_data.get("link_virtual") or "").strip():
-                st.caption("Esta capacitación usa un link externo (Zoom/Meet/Teams) en vez de la videollamada propia.")
-                st.link_button(
-                    "🎥 Abrir el link de la capacitación", prog_qr_data["link_virtual"].strip(),
-                    use_container_width=True,
-                )
-            else:
-                sala_url_capacitador = jitsi_sala_url(prog_id_qr)
-                st.caption(
-                    "Videollamada propia de la plataforma (gratis, incluye compartir pantalla). "
-                    "Ábrela en una pestaña nueva para presentar — es lo más confiable."
-                )
-                st.link_button(
-                    "🎥 Entrar a la videollamada (pestaña nueva)", sala_url_capacitador, use_container_width=True,
-                )
-                with st.expander("O únete aquí mismo, sin salir de esta página"):
-                    render_videollamada_incrustada(prog_id_qr, user.get("nombre") or "Capacitador")
-            if not (prog_qr_data.get("grabacion_url") or "").strip():
-                st.caption(
-                    "💡 La videollamada propia no graba sola. Si alguien la graba (con OBS, el "
-                    "celular, etc.) y la sube a Drive/YouTube, pega ese link en «✏️ Editar / "
-                    "eliminar» (pestaña «📋 Lista») para que quede junto a esta capacitación."
-                )
-            else:
-                st.link_button(
-                    "🎬 Ver la grabación", prog_qr_data["grabacion_url"].strip(), use_container_width=True,
-                )
-
 st.divider()
 
 # ---------------------------------------------------------------------------
@@ -468,19 +414,6 @@ with tab_modulos:
                                     } for a in asistencias_sm])
                                     st.dataframe(df_asist_sm, use_container_width=True, hide_index=True)
 
-                            grabaciones_sm = [
-                                pr for pr in db.list_capacitacion_programaciones(submodulo_id=sm["id"])
-                                if (pr.get("grabacion_url") or "").strip()
-                            ]
-                            if grabaciones_sm:
-                                with st.expander(f"🎬 Grabaciones disponibles ({len(grabaciones_sm)})"):
-                                    for pr_g in grabaciones_sm:
-                                        st.link_button(
-                                            f"🎬 Grabación del {pr_g.get('fecha') or '—'}",
-                                            pr_g["grabacion_url"].strip(), use_container_width=True,
-                                            key=f"cap_grab_sm_{sm['id']}_{pr_g['id']}",
-                                        )
-
                             if puede_editar:
                                 editando_key = f"cap_editando_sm_{sm['id']}"
                                 if st.button(
@@ -553,18 +486,6 @@ with tab_modulos:
                         "Fecha": a.get("fecha") or "—",
                     } for a in asistencias_mod_general])
                     st.dataframe(df_asist_mod, use_container_width=True, hide_index=True)
-
-                grabaciones_mod_general = [
-                    pr for pr in db.list_capacitacion_programaciones(modulo_id=m["id"])
-                    if not pr.get("submodulo_id") and (pr.get("grabacion_url") or "").strip()
-                ]
-                if grabaciones_mod_general:
-                    st.markdown("###### 🎬 Grabaciones disponibles — módulo completo")
-                    for pr_g in grabaciones_mod_general:
-                        st.link_button(
-                            f"🎬 Grabación del {pr_g.get('fecha') or '—'}", pr_g["grabacion_url"].strip(),
-                            use_container_width=True, key=f"cap_grab_mod_{m['id']}_{pr_g['id']}",
-                        )
 
                 st.divider()
                 st.markdown("###### 🎓 Diploma de finalización")
