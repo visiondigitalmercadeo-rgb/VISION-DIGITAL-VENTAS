@@ -8,7 +8,6 @@ import streamlit as st
 
 import database as db
 from config import CAPACITACION_TIENDAS, EMPRESA_NOMBRE, LOGO_PATH
-from utils import jitsi_sala_url, render_videollamada_incrustada
 
 _MESES_LABEL_CORTO = {
     "01": "enero", "02": "febrero", "03": "marzo", "04": "abril", "05": "mayo", "06": "junio",
@@ -50,22 +49,14 @@ def render_registro(programacion_id):
 
         if st.session_state.get("cap_reg_ok_prog") == programacion_id:
             st.success("✅ ¡Listo! Tu asistencia quedó registrada.")
-            link_externo = (prog.get("link_virtual") or "").strip()
-            if prog.get("modalidad") == "Virtual" and link_externo:
+            if prog.get("modalidad") == "Virtual" and (prog.get("link_virtual") or "").strip():
                 st.info("Usa este enlace para entrar a la capacitación en línea:")
-                st.link_button("🔗 Entrar a la capacitación virtual", link_externo, use_container_width=True)
-                st.code(link_externo)
-            elif prog.get("modalidad") == "Virtual":
-                nombre_asistente = st.session_state.get("cap_reg_ok_nombre") or "Invitado"
-                sala_url = jitsi_sala_url(programacion_id)
-                st.info("Entra a la videollamada de la capacitación:")
-                st.link_button("🎥 Entrar a la videollamada (pestaña nueva)", sala_url, use_container_width=True)
-                st.caption("En celular, abrirla en una pestaña nueva funciona mejor que aquí abajo.")
-                with st.expander("O únete aquí mismo, sin salir de esta página"):
-                    render_videollamada_incrustada(programacion_id, nombre_asistente)
+                st.link_button(
+                    "🔗 Entrar a la capacitación virtual", prog["link_virtual"].strip(), use_container_width=True,
+                )
+                st.code(prog["link_virtual"].strip())
             if st.button("Registrar a otra persona", use_container_width=True):
                 st.session_state.pop("cap_reg_ok_prog", None)
-                st.session_state.pop("cap_reg_ok_nombre", None)
                 st.rerun()
             return True
 
@@ -108,6 +99,5 @@ def render_registro(programacion_id):
                         st.error(str(e))
                     else:
                         st.session_state["cap_reg_ok_prog"] = programacion_id
-                        st.session_state["cap_reg_ok_nombre"] = nombre_reg.strip()
                         st.rerun()
     return True
