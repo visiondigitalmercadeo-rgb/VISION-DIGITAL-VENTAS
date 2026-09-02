@@ -177,6 +177,28 @@ def minutos_legible(minutos):
     return f"{h} h {m} min"
 
 
+def duracion_legible(minutos):
+    """int -> '7 min', '3 h 20 min', o ya pasando de 24 horas, en días:
+    '2 días 4 h'. None -> '—'. A diferencia de minutos_legible (que se usa
+    en Diseño Gráfico y Tickets Tienda y no se toca), esta se usa donde el
+    tiempo puede acumular varios días — como los KPIs de Mantenimiento de
+    Tiendas — para que no se vea como '1500 min' o un número de horas
+    gigante, sino que cambie a días automáticamente pasando las 24 horas."""
+    if minutos is None:
+        return "—"
+    if minutos < 60:
+        return f"{minutos} min"
+    if minutos < 1440:
+        h, m = divmod(minutos, 60)
+        return f"{h} h {m} min"
+    dias, resto = divmod(minutos, 1440)
+    h, _ = divmod(resto, 60)
+    texto = f"{dias} día{'s' if dias != 1 else ''}"
+    if h:
+        texto += f" {h} h"
+    return texto
+
+
 def mant_tienda_historial_o_reconstruido(row):
     """Historial de etapas de una solicitud de Mantenimiento de Tiendas —
     usa 'historial_etapas' si ya existe (ver database.avanzar_mant_tienda,
