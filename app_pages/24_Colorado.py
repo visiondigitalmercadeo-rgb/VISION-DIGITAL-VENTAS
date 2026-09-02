@@ -365,304 +365,300 @@ if puede_editar:
 st.divider()
 
 # ---------------------------------------------------------------------------
-# Tablero de producción (abajo) — mismo concepto que Phara.
+# Tablero de producción e Historial de órdenes entregadas, como dos pestañas.
 # ---------------------------------------------------------------------------
-st.markdown("#### 🗂️ Tablero de producción")
-if not puede_editar:
-    st.caption("Tu acceso es de solo consulta para este tablero.")
+tab_tablero, tab_historial = st.tabs([
+    "🗂️ Tablero de producción", "📜 Historial de órdenes entregadas",
+])
 
-cols = st.columns(len(ESTADOS_COLORADO))
-for col, estado in zip(cols, ESTADOS_COLORADO):
-    items = [p for p in pedidos if p.get("estado") == estado]
-    with col:
-        st.markdown(f"##### {COLUMN_EMOJI.get(estado, '')} {estado} ({len(items)})")
-        if not items:
-            st.caption("Sin órdenes.")
-        for p in items:
-            with st.container(border=True):
-                pid = p["id"]
-                editando_key = f"colorado_editando_{pid}"
+with tab_tablero:
+    if not puede_editar:
+        st.caption("Tu acceso es de solo consulta para este tablero.")
 
-                title_col2, edit_col = st.columns([5, 1])
-                with title_col2:
-                    vencido_marca = "🔴 " if _es_vencido(p) else ""
-                    st.markdown(f"{vencido_marca}**{p.get('cliente_nombre') or 'Sin cliente'}**")
-                with edit_col:
+    cols = st.columns(len(ESTADOS_COLORADO))
+    for col, estado in zip(cols, ESTADOS_COLORADO):
+        items = [p for p in pedidos if p.get("estado") == estado]
+        with col:
+            st.markdown(f"##### {COLUMN_EMOJI.get(estado, '')} {estado} ({len(items)})")
+            if not items:
+                st.caption("Sin órdenes.")
+            for p in items:
+                with st.container(border=True):
+                    pid = p["id"]
+                    editando_key = f"colorado_editando_{pid}"
+
+                    title_col2, edit_col = st.columns([5, 1])
+                    with title_col2:
+                        vencido_marca = "🔴 " if _es_vencido(p) else ""
+                        st.markdown(f"{vencido_marca}**{p.get('cliente_nombre') or 'Sin cliente'}**")
+                    with edit_col:
+                        if puede_editar:
+                            if st.button("✏️", key=f"colorado_editar_{pid}", help="Editar esta orden"):
+                                st.session_state[editando_key] = not st.session_state.get(editando_key, False)
+                                st.rerun()
+
+                    _render_detalle_pedido(p, "colorado")
+
+                    # ------------------------------------------------------------
+                    # Acciones rápidas: pasar a la siguiente etapa y eliminar,
+                    # directo desde la tarjeta (sin tener que abrir el formulario
+                    # de edición) — mismo estilo que Phara.
+                    # ------------------------------------------------------------
                     if puede_editar:
-                        if st.button("✏️", key=f"colorado_editar_{pid}", help="Editar esta orden"):
-                            st.session_state[editando_key] = not st.session_state.get(editando_key, False)
-                            st.rerun()
-
-                _render_detalle_pedido(p, "colorado")
-
-                # ------------------------------------------------------------
-                # Acciones rápidas: pasar a la siguiente etapa y eliminar,
-                # directo desde la tarjeta (sin tener que abrir el formulario
-                # de edición) — mismo estilo que Phara.
-                # ------------------------------------------------------------
-                if puede_editar:
-                    siguiente = _siguiente_estado(p.get("estado"))
-                    accion_col1, accion_col2 = st.columns(2)
-                    with accion_col1:
-                        if siguiente:
-                            if st.button(
-                                f"➡️ {siguiente}", key=f"colorado_avanzar_{pid}", use_container_width=True,
-                                help=f"Pasar a la columna «{siguiente}»",
-                            ):
-                                db.update_colorado_pedido(pid, estado=siguiente)
-                                _avisar_por_correo(
-                                    f"Colorado — {p.get('cliente_nombre') or 'Orden'} pasó a '{siguiente}'",
-                                    f"La orden de '{p.get('cliente_nombre') or 'cliente'}' cambió de columna en "
-                                    f"el tablero.\n\n"
-                                    f"De: {p.get('estado') or '—'}\nA: {siguiente}\n\n"
-                                    f"Fecha de entrega: {p.get('fecha_entrega') or 'sin definir'}",
-                                )
-                                st.success(f"Orden movida a «{siguiente}».")
-                                st.rerun()
-                    with accion_col2:
-                        if st.button(
-                            "🗑️ Eliminar", key=f"colorado_borrar_{pid}", use_container_width=True,
-                        ):
-                            db.delete_colorado_pedido(pid)
-                            st.session_state.pop(editando_key, None)
-                            st.success("Orden eliminada.")
-                            st.rerun()
-
-                if puede_editar and st.session_state.get(editando_key):
-                    with st.form(f"colorado_gestionar_{pid}"):
-                        quien_solicita_ed = st.text_input(
-                            "¿Quién solicita? (persona interna que hace el pedido, opcional)",
-                            value=p.get("quien_solicita") or "",
-                        )
-                        st.markdown("**Datos del cliente**")
-                        cliente_nombre_ed = st.text_input(
-                            "Nombre del cliente", value=p.get("cliente_nombre") or "",
-                        )
-                        ce1, ce2 = st.columns(2)
-                        cliente_telefono_ed = ce1.text_input(
-                            "Número tel. del cliente (opcional)", value=p.get("cliente_telefono") or "",
-                        )
-                        cliente_correo_ed = ce2.text_input(
-                            "Correo electrónico del cliente (opcional)", value=p.get("cliente_correo") or "",
-                        )
-                        nit_ed = st.text_input("NIT del cliente (opcional)", value=p.get("nit") or "")
-                        direccion_entrega_ed = st.text_area(
-                            "Dirección de entrega (opcional)", value=p.get("direccion_entrega") or "",
-                        )
-
-                        st.markdown("**Datos de la pieza**")
-                        tipo_pieza_ed = st.text_input("Tipo de pieza (opcional)", value=p.get("tipo_pieza") or "")
-                        ce3, ce4, ce5 = st.columns(3)
-                        dim_ancho_ed = ce3.number_input(
-                            "Ancho del arte", min_value=0.0, step=0.1, value=float(p.get("dimension_ancho") or 0),
-                        )
-                        dim_alto_ed = ce4.number_input(
-                            "Alto del arte", min_value=0.0, step=0.1, value=float(p.get("dimension_alto") or 0),
-                        )
-                        dim_unidad_ed = ce5.selectbox(
-                            "Unidad", COLORADO_DIMENSION_UNIDADES,
-                            index=COLORADO_DIMENSION_UNIDADES.index(p["dimension_unidad"])
-                            if p.get("dimension_unidad") in COLORADO_DIMENSION_UNIDADES else 0,
-                        )
-                        material_ed = st.text_input(
-                            "Papel o material a usar (opcional)", value=p.get("material") or "",
-                        )
-                        tipo_color_ed = st.selectbox(
-                            "Tipo de color", COLORADO_TIPOS_COLOR,
-                            index=COLORADO_TIPOS_COLOR.index(p["tipo_color"])
-                            if p.get("tipo_color") in COLORADO_TIPOS_COLOR else 0,
-                        )
-                        acabados_ed = st.text_input("Acabados (opcional)", value=p.get("acabados") or "")
-
-                        st.markdown("**Precio y cantidad**")
-                        ce6, ce7 = st.columns(2)
-                        precio_unidad_ed = ce6.number_input(
-                            "Precio por unidad (Q)", min_value=0.0, step=0.01,
-                            value=float(p.get("precio_unidad") or 0),
-                        )
-                        cantidad_unidades_ed = ce7.number_input(
-                            "Cantidad de unidades", min_value=0, step=1,
-                            value=int(p.get("cantidad_unidades") or 0),
-                        )
-                        if precio_unidad_ed and cantidad_unidades_ed:
-                            st.caption(f"Total: {money(precio_unidad_ed * cantidad_unidades_ed)}")
-
-                        notas_ed = st.text_area("Notas adicionales", value=p.get("notas") or "")
-
-                        archivos_actuales = p.get("archivos") or []
-                        st.caption(
-                            f"Archivos actuales: {', '.join(a['nombre'] for a in archivos_actuales)}"
-                            if archivos_actuales else "Archivos actuales: ninguno."
-                        )
-                        nuevos_archivos_ed = st.file_uploader(
-                            f"Reemplazar archivos adjuntos (opcional, máximo {PRODUCCION_ARCHIVOS_MAX})",
-                            type=_TIPOS_ARCHIVO_ORDEN, accept_multiple_files=True,
-                            key=f"colorado_archivo_ed_{pid}",
-                            help="Si subes archivos aquí, reemplazan a TODOS los actuales. Déjalo vacío para no cambiarlos.",
-                        )
-                        _caption_limite_archivo()
-
-                        boleta_pago_actual = p.get("boleta_pago")
-                        st.caption(
-                            f"Boleta de pago actual: {boleta_pago_actual['nombre']}"
-                            if boleta_pago_actual else "Boleta de pago actual: ninguna."
-                        )
-                        nueva_boleta_ed = st.file_uploader(
-                            "🧾 Reemplazar boleta de pago (opcional) — PDF, JPG o PNG",
-                            type=_TIPOS_BOLETA_PAGO, accept_multiple_files=False,
-                            key=f"colorado_boleta_ed_{pid}",
-                            help="Si subes un archivo aquí, reemplaza la boleta actual. Déjalo vacío para no cambiarla.",
-                        )
-                        _caption_limite_archivo()
-
-                        fecha_entrega_ed = st.date_input(
-                            "Fecha de entrega (opcional)",
-                            value=date.fromisoformat(p["fecha_entrega"]) if p.get("fecha_entrega") else None,
-                        )
-                        estado_ed = st.selectbox(
-                            "Etapa (columna del tablero)", ESTADOS_COLORADO,
-                            index=ESTADOS_COLORADO.index(p["estado"]) if p.get("estado") in ESTADOS_COLORADO else 0,
-                            help="Además de «➡️» (que avanza a la siguiente), aquí puedes mandar la "
-                                 "orden a cualquier columna, incluso hacia atrás si fue un error.",
-                        )
-
-                        colf1, colf2 = st.columns(2)
-                        guardar = colf1.form_submit_button("💾 Guardar", use_container_width=True)
-                        cancelar = colf2.form_submit_button("Cancelar", use_container_width=True)
-
-                        if guardar:
-                            error_msg = None
-                            update_kwargs = {
-                                "quien_solicita": quien_solicita_ed.strip() or None,
-                                "cliente_nombre": cliente_nombre_ed.strip(),
-                                "cliente_telefono": cliente_telefono_ed.strip() or None,
-                                "cliente_correo": cliente_correo_ed.strip() or None,
-                                "nit": nit_ed.strip() or None,
-                                "direccion_entrega": direccion_entrega_ed.strip() or None,
-                                "tipo_pieza": tipo_pieza_ed.strip() or None,
-                                "dimension_ancho": dim_ancho_ed or None,
-                                "dimension_alto": dim_alto_ed or None,
-                                "dimension_unidad": dim_unidad_ed,
-                                "material": material_ed.strip() or None,
-                                "tipo_color": tipo_color_ed,
-                                "acabados": acabados_ed.strip() or None,
-                                "precio_unidad": precio_unidad_ed or None,
-                                "cantidad_unidades": cantidad_unidades_ed or None,
-                                "notas": notas_ed.strip() or None,
-                                "fecha_entrega": str(fecha_entrega_ed) if fecha_entrega_ed else None,
-                                "estado": estado_ed,
-                            }
-                            archivos_a_reemplazar = None
-                            boleta_a_reemplazar = None
-                            if not cliente_nombre_ed.strip():
-                                error_msg = "El nombre del cliente es obligatorio."
-                            else:
-                                if nuevos_archivos_ed:
-                                    try:
-                                        update_kwargs["archivos"] = _subir_archivos_orden(nuevos_archivos_ed)
-                                        # Los archivos actuales se borran de Storage recién
-                                        # después de guardar el reemplazo con éxito (más abajo).
-                                        archivos_a_reemplazar = archivos_actuales
-                                    except ValueError as e:
-                                        error_msg = str(e)
-                                if not error_msg and nueva_boleta_ed is not None:
-                                    try:
-                                        update_kwargs["boleta_pago"] = _subir_boleta_pago(nueva_boleta_ed)
-                                        boleta_a_reemplazar = boleta_pago_actual
-                                    except ValueError as e:
-                                        error_msg = str(e)
-
-                            if error_msg:
-                                st.error(error_msg)
-                            else:
-                                cambio_de_columna = estado_ed != p.get("estado")
-                                db.update_colorado_pedido(pid, **update_kwargs)
-                                if archivos_a_reemplazar:
-                                    db.eliminar_archivos_storage(archivos_a_reemplazar)
-                                if boleta_a_reemplazar:
-                                    db.eliminar_archivos_storage([boleta_a_reemplazar])
-                                if cambio_de_columna:
+                        siguiente = _siguiente_estado(p.get("estado"))
+                        accion_col1, accion_col2 = st.columns(2)
+                        with accion_col1:
+                            if siguiente:
+                                if st.button(
+                                    f"➡️ {siguiente}", key=f"colorado_avanzar_{pid}", use_container_width=True,
+                                    help=f"Pasar a la columna «{siguiente}»",
+                                ):
+                                    db.update_colorado_pedido(pid, estado=siguiente)
                                     _avisar_por_correo(
-                                        f"Colorado — {cliente_nombre_ed.strip()} pasó a '{estado_ed}'",
-                                        f"La orden de '{cliente_nombre_ed.strip()}' cambió de columna en el "
-                                        f"tablero.\n\n"
-                                        f"De: {p.get('estado') or '—'}\n"
-                                        f"A: {estado_ed}\n\n"
-                                        f"Fecha de entrega: {fecha_entrega_ed or 'sin definir'}",
+                                        f"Colorado — {p.get('cliente_nombre') or 'Orden'} pasó a '{siguiente}'",
+                                        f"La orden de '{p.get('cliente_nombre') or 'cliente'}' cambió de columna en "
+                                        f"el tablero.\n\n"
+                                        f"De: {p.get('estado') or '—'}\nA: {siguiente}\n\n"
+                                        f"Fecha de entrega: {p.get('fecha_entrega') or 'sin definir'}",
                                     )
+                                    st.success(f"Orden movida a «{siguiente}».")
+                                    st.rerun()
+                        with accion_col2:
+                            if st.button(
+                                "🗑️ Eliminar", key=f"colorado_borrar_{pid}", use_container_width=True,
+                            ):
+                                db.delete_colorado_pedido(pid)
                                 st.session_state.pop(editando_key, None)
-                                st.success("Orden actualizada.")
+                                st.success("Orden eliminada.")
                                 st.rerun()
-                        if cancelar:
-                            st.session_state.pop(editando_key, None)
-                            st.rerun()
 
-st.divider()
+                    if puede_editar and st.session_state.get(editando_key):
+                        with st.form(f"colorado_gestionar_{pid}"):
+                            quien_solicita_ed = st.text_input(
+                                "¿Quién solicita? (persona interna que hace el pedido, opcional)",
+                                value=p.get("quien_solicita") or "",
+                            )
+                            st.markdown("**Datos del cliente**")
+                            cliente_nombre_ed = st.text_input(
+                                "Nombre del cliente", value=p.get("cliente_nombre") or "",
+                            )
+                            ce1, ce2 = st.columns(2)
+                            cliente_telefono_ed = ce1.text_input(
+                                "Número tel. del cliente (opcional)", value=p.get("cliente_telefono") or "",
+                            )
+                            cliente_correo_ed = ce2.text_input(
+                                "Correo electrónico del cliente (opcional)", value=p.get("cliente_correo") or "",
+                            )
+                            nit_ed = st.text_input("NIT del cliente (opcional)", value=p.get("nit") or "")
+                            direccion_entrega_ed = st.text_area(
+                                "Dirección de entrega (opcional)", value=p.get("direccion_entrega") or "",
+                            )
 
-# ---------------------------------------------------------------------------
-# Historial de órdenes entregadas — archivo permanente y consultable, aparte
-# del tablero de arriba (que solo muestra el estado actual). Una orden que
-# llega a "Entregado" sigue viéndose aquí para siempre, con todos sus datos
-# y archivos, aunque después se elimine o se acumulen muchas órdenes nuevas.
-# ---------------------------------------------------------------------------
-st.markdown("#### 📜 Historial de órdenes entregadas")
-st.caption(
-    "Busca cualquier orden ya entregada para volver a ver sus datos, descargar su PDF, sus archivos "
-    "adjuntos o su boleta de pago."
-)
+                            st.markdown("**Datos de la pieza**")
+                            tipo_pieza_ed = st.text_input("Tipo de pieza (opcional)", value=p.get("tipo_pieza") or "")
+                            ce3, ce4, ce5 = st.columns(3)
+                            dim_ancho_ed = ce3.number_input(
+                                "Ancho del arte", min_value=0.0, step=0.1, value=float(p.get("dimension_ancho") or 0),
+                            )
+                            dim_alto_ed = ce4.number_input(
+                                "Alto del arte", min_value=0.0, step=0.1, value=float(p.get("dimension_alto") or 0),
+                            )
+                            dim_unidad_ed = ce5.selectbox(
+                                "Unidad", COLORADO_DIMENSION_UNIDADES,
+                                index=COLORADO_DIMENSION_UNIDADES.index(p["dimension_unidad"])
+                                if p.get("dimension_unidad") in COLORADO_DIMENSION_UNIDADES else 0,
+                            )
+                            material_ed = st.text_input(
+                                "Papel o material a usar (opcional)", value=p.get("material") or "",
+                            )
+                            tipo_color_ed = st.selectbox(
+                                "Tipo de color", COLORADO_TIPOS_COLOR,
+                                index=COLORADO_TIPOS_COLOR.index(p["tipo_color"])
+                                if p.get("tipo_color") in COLORADO_TIPOS_COLOR else 0,
+                            )
+                            acabados_ed = st.text_input("Acabados (opcional)", value=p.get("acabados") or "")
 
-entregados = [p for p in pedidos if p.get("estado") == "Entregado"]
+                            st.markdown("**Precio y cantidad**")
+                            ce6, ce7 = st.columns(2)
+                            precio_unidad_ed = ce6.number_input(
+                                "Precio por unidad (Q)", min_value=0.0, step=0.01,
+                                value=float(p.get("precio_unidad") or 0),
+                            )
+                            cantidad_unidades_ed = ce7.number_input(
+                                "Cantidad de unidades", min_value=0, step=1,
+                                value=int(p.get("cantidad_unidades") or 0),
+                            )
+                            if precio_unidad_ed and cantidad_unidades_ed:
+                                st.caption(f"Total: {money(precio_unidad_ed * cantidad_unidades_ed)}")
 
-if not entregados:
-    st.info("Todavía no hay órdenes marcadas como 'Entregado'.")
-else:
-    busqueda_hist = st.text_input(
-        "🔎 Buscar por cliente, quién solicita, tipo de pieza o NIT",
-        key="colorado_hist_buscar",
+                            notas_ed = st.text_area("Notas adicionales", value=p.get("notas") or "")
+
+                            archivos_actuales = p.get("archivos") or []
+                            st.caption(
+                                f"Archivos actuales: {', '.join(a['nombre'] for a in archivos_actuales)}"
+                                if archivos_actuales else "Archivos actuales: ninguno."
+                            )
+                            nuevos_archivos_ed = st.file_uploader(
+                                f"Reemplazar archivos adjuntos (opcional, máximo {PRODUCCION_ARCHIVOS_MAX})",
+                                type=_TIPOS_ARCHIVO_ORDEN, accept_multiple_files=True,
+                                key=f"colorado_archivo_ed_{pid}",
+                                help="Si subes archivos aquí, reemplazan a TODOS los actuales. Déjalo vacío para no cambiarlos.",
+                            )
+                            _caption_limite_archivo()
+
+                            boleta_pago_actual = p.get("boleta_pago")
+                            st.caption(
+                                f"Boleta de pago actual: {boleta_pago_actual['nombre']}"
+                                if boleta_pago_actual else "Boleta de pago actual: ninguna."
+                            )
+                            nueva_boleta_ed = st.file_uploader(
+                                "🧾 Reemplazar boleta de pago (opcional) — PDF, JPG o PNG",
+                                type=_TIPOS_BOLETA_PAGO, accept_multiple_files=False,
+                                key=f"colorado_boleta_ed_{pid}",
+                                help="Si subes un archivo aquí, reemplaza la boleta actual. Déjalo vacío para no cambiarla.",
+                            )
+                            _caption_limite_archivo()
+
+                            fecha_entrega_ed = st.date_input(
+                                "Fecha de entrega (opcional)",
+                                value=date.fromisoformat(p["fecha_entrega"]) if p.get("fecha_entrega") else None,
+                            )
+                            estado_ed = st.selectbox(
+                                "Etapa (columna del tablero)", ESTADOS_COLORADO,
+                                index=ESTADOS_COLORADO.index(p["estado"]) if p.get("estado") in ESTADOS_COLORADO else 0,
+                                help="Además de «➡️» (que avanza a la siguiente), aquí puedes mandar la "
+                                     "orden a cualquier columna, incluso hacia atrás si fue un error.",
+                            )
+
+                            colf1, colf2 = st.columns(2)
+                            guardar = colf1.form_submit_button("💾 Guardar", use_container_width=True)
+                            cancelar = colf2.form_submit_button("Cancelar", use_container_width=True)
+
+                            if guardar:
+                                error_msg = None
+                                update_kwargs = {
+                                    "quien_solicita": quien_solicita_ed.strip() or None,
+                                    "cliente_nombre": cliente_nombre_ed.strip(),
+                                    "cliente_telefono": cliente_telefono_ed.strip() or None,
+                                    "cliente_correo": cliente_correo_ed.strip() or None,
+                                    "nit": nit_ed.strip() or None,
+                                    "direccion_entrega": direccion_entrega_ed.strip() or None,
+                                    "tipo_pieza": tipo_pieza_ed.strip() or None,
+                                    "dimension_ancho": dim_ancho_ed or None,
+                                    "dimension_alto": dim_alto_ed or None,
+                                    "dimension_unidad": dim_unidad_ed,
+                                    "material": material_ed.strip() or None,
+                                    "tipo_color": tipo_color_ed,
+                                    "acabados": acabados_ed.strip() or None,
+                                    "precio_unidad": precio_unidad_ed or None,
+                                    "cantidad_unidades": cantidad_unidades_ed or None,
+                                    "notas": notas_ed.strip() or None,
+                                    "fecha_entrega": str(fecha_entrega_ed) if fecha_entrega_ed else None,
+                                    "estado": estado_ed,
+                                }
+                                archivos_a_reemplazar = None
+                                boleta_a_reemplazar = None
+                                if not cliente_nombre_ed.strip():
+                                    error_msg = "El nombre del cliente es obligatorio."
+                                else:
+                                    if nuevos_archivos_ed:
+                                        try:
+                                            update_kwargs["archivos"] = _subir_archivos_orden(nuevos_archivos_ed)
+                                            # Los archivos actuales se borran de Storage recién
+                                            # después de guardar el reemplazo con éxito (más abajo).
+                                            archivos_a_reemplazar = archivos_actuales
+                                        except ValueError as e:
+                                            error_msg = str(e)
+                                    if not error_msg and nueva_boleta_ed is not None:
+                                        try:
+                                            update_kwargs["boleta_pago"] = _subir_boleta_pago(nueva_boleta_ed)
+                                            boleta_a_reemplazar = boleta_pago_actual
+                                        except ValueError as e:
+                                            error_msg = str(e)
+
+                                if error_msg:
+                                    st.error(error_msg)
+                                else:
+                                    cambio_de_columna = estado_ed != p.get("estado")
+                                    db.update_colorado_pedido(pid, **update_kwargs)
+                                    if archivos_a_reemplazar:
+                                        db.eliminar_archivos_storage(archivos_a_reemplazar)
+                                    if boleta_a_reemplazar:
+                                        db.eliminar_archivos_storage([boleta_a_reemplazar])
+                                    if cambio_de_columna:
+                                        _avisar_por_correo(
+                                            f"Colorado — {cliente_nombre_ed.strip()} pasó a '{estado_ed}'",
+                                            f"La orden de '{cliente_nombre_ed.strip()}' cambió de columna en el "
+                                            f"tablero.\n\n"
+                                            f"De: {p.get('estado') or '—'}\n"
+                                            f"A: {estado_ed}\n\n"
+                                            f"Fecha de entrega: {fecha_entrega_ed or 'sin definir'}",
+                                        )
+                                    st.session_state.pop(editando_key, None)
+                                    st.success("Orden actualizada.")
+                                    st.rerun()
+                            if cancelar:
+                                st.session_state.pop(editando_key, None)
+                                st.rerun()
+
+with tab_historial:
+    st.caption(
+        "Busca cualquier orden ya entregada para volver a ver sus datos, descargar su PDF, sus archivos "
+        "adjuntos o su boleta de pago."
     )
 
-    def _coincide_busqueda_colorado(p, texto):
-        texto = texto.strip().lower()
-        if not texto:
-            return True
-        campos = [p.get("cliente_nombre"), p.get("quien_solicita"), p.get("tipo_pieza"), p.get("nit")]
-        return any(texto in str(c).lower() for c in campos if c)
+    entregados = [p for p in pedidos if p.get("estado") == "Entregado"]
 
-    entregados_filtrados = [p for p in entregados if _coincide_busqueda_colorado(p, busqueda_hist)]
-    entregados_filtrados = sorted(
-        entregados_filtrados, key=lambda p: p.get("creado_en") or "", reverse=True,
-    )
-
-    if not entregados_filtrados:
-        st.caption("Ninguna orden entregada coincide con esa búsqueda.")
+    if not entregados:
+        st.info("Todavía no hay órdenes marcadas como 'Entregado'.")
     else:
-        opciones_hist = {
-            f"{p.get('cliente_nombre') or 'Sin cliente'} — {p.get('tipo_pieza') or 'sin tipo'} "
-            f"({(p.get('creado_en') or '')[:10]})": p["id"]
-            for p in entregados_filtrados
-        }
-        seleccion_hist = st.selectbox(
-            "Elegir orden para ver el detalle", list(opciones_hist.keys()), key="colorado_hist_selector",
+        busqueda_hist = st.text_input(
+            "🔎 Buscar por cliente, quién solicita, tipo de pieza o NIT",
+            key="colorado_hist_buscar",
         )
-        if seleccion_hist:
-            pid_hist = opciones_hist[seleccion_hist]
-            p_hist = next(p for p in entregados_filtrados if p["id"] == pid_hist)
-            with st.container(border=True):
-                st.markdown(f"**{p_hist.get('cliente_nombre') or 'Sin cliente'}**")
-                _render_detalle_pedido(p_hist, "colorado_hist")
 
-        st.divider()
-        df_hist = pd.DataFrame([{
-            "Solicita": p.get("quien_solicita") or "—",
-            "Cliente": p.get("cliente_nombre") or "—",
-            "Tipo de pieza": p.get("tipo_pieza") or "—",
-            "NIT": p.get("nit") or "—",
-            "Cantidad": p.get("cantidad_unidades") if p.get("cantidad_unidades") not in (None, "") else "—",
-            "Total": money(_total_pedido(p)) if _total_pedido(p) is not None else "—",
-            "Fecha de entrega": p.get("fecha_entrega") or "—",
-            "Creado": (p.get("creado_en") or "")[:10],
-        } for p in entregados_filtrados])
-        st.dataframe(df_hist, use_container_width=True, hide_index=True)
-        download_excel_button(
-            df_hist, "historial_colorado_entregados.xlsx", key="colorado_hist_descargar_excel",
+        def _coincide_busqueda_colorado(p, texto):
+            texto = texto.strip().lower()
+            if not texto:
+                return True
+            campos = [p.get("cliente_nombre"), p.get("quien_solicita"), p.get("tipo_pieza"), p.get("nit")]
+            return any(texto in str(c).lower() for c in campos if c)
+
+        entregados_filtrados = [p for p in entregados if _coincide_busqueda_colorado(p, busqueda_hist)]
+        entregados_filtrados = sorted(
+            entregados_filtrados, key=lambda p: p.get("creado_en") or "", reverse=True,
         )
+
+        if not entregados_filtrados:
+            st.caption("Ninguna orden entregada coincide con esa búsqueda.")
+        else:
+            opciones_hist = {
+                f"{p.get('cliente_nombre') or 'Sin cliente'} — {p.get('tipo_pieza') or 'sin tipo'} "
+                f"({(p.get('creado_en') or '')[:10]})": p["id"]
+                for p in entregados_filtrados
+            }
+            seleccion_hist = st.selectbox(
+                "Elegir orden para ver el detalle", list(opciones_hist.keys()), key="colorado_hist_selector",
+            )
+            if seleccion_hist:
+                pid_hist = opciones_hist[seleccion_hist]
+                p_hist = next(p for p in entregados_filtrados if p["id"] == pid_hist)
+                with st.container(border=True):
+                    st.markdown(f"**{p_hist.get('cliente_nombre') or 'Sin cliente'}**")
+                    _render_detalle_pedido(p_hist, "colorado_hist")
+
+            st.divider()
+            df_hist = pd.DataFrame([{
+                "Solicita": p.get("quien_solicita") or "—",
+                "Cliente": p.get("cliente_nombre") or "—",
+                "Tipo de pieza": p.get("tipo_pieza") or "—",
+                "NIT": p.get("nit") or "—",
+                "Cantidad": p.get("cantidad_unidades") if p.get("cantidad_unidades") not in (None, "") else "—",
+                "Total": money(_total_pedido(p)) if _total_pedido(p) is not None else "—",
+                "Fecha de entrega": p.get("fecha_entrega") or "—",
+                "Creado": (p.get("creado_en") or "")[:10],
+            } for p in entregados_filtrados])
+            st.dataframe(df_hist, use_container_width=True, hide_index=True)
+            download_excel_button(
+                df_hist, "historial_colorado_entregados.xlsx", key="colorado_hist_descargar_excel",
+            )
