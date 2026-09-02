@@ -1,9 +1,34 @@
 import base64
+from datetime import datetime, timedelta
 
 import streamlit as st
+from streamlit_cookies_controller import CookieController
 
 import database as db
 from config import EMPRESA_LEMA, EMPRESA_NOMBRE, LOGO_PATH
+
+# Nombre de la cookie donde se guarda el token de "recuérdame" — para que,
+# una vez que alguien inicia sesión, la plataforma no lo vuelva a sacar hasta
+# que él mismo cierre sesión (ni siquiera si la app se reinicia por un nuevo
+# despliegue, o cierra y vuelve a abrir el navegador).
+_COOKIE_SESION = "vd_sesion"
+
+
+def _cookies():
+    """Controlador de cookies del navegador — una sola instancia por sesión
+    de Streamlit (se cachea sola en session_state, ver CookieController)."""
+    return CookieController()
+
+
+def _sincronizar_usuario_sesion(user):
+    st.session_state["user"] = {
+        "id": user["id"],
+        "nombre": user["nombre"],
+        "username": user["username"],
+        "rol": user["rol"],
+        "tienda": user.get("tienda"),
+        "paginas_extra": user.get("paginas_extra") or [],
+    }
 
 
 def _logo_centrado(path, width):
@@ -29,18 +54,32 @@ def do_login(username: str, password: str) -> bool:
         return False
     if not db.check_password(password, user["password_hash"]):
         return False
-    st.session_state["user"] = {
-        "id": user["id"],
-        "nombre": user["nombre"],
-        "username": user["username"],
-        "rol": user["rol"],
-        "tienda": user.get("tienda"),
-        "paginas_extra": user.get("paginas_extra") or [],
-    }
+    _sincronizar_usuario_sesion(user)
+    # Guarda un token de "recuérdame" en una cookie del navegador, para que
+    # esta sesión sobreviva un refresh, cerrar y abrir el navegador, o que la
+    # plataforma se reinicie por un nuevo despliegue — hasta que la persona
+    # cierre sesión ella misma. Si la cookie falla por cualquier motivo (ej.
+    # el navegador la bloquea), el inicio de sesión normal sigue funcionando
+    # igual, solo que sin "recordar" para la próxima vez.
+    try:
+        token = db.crear_sesion_recordada(user["id"])
+        _cookies().set(
+            _COOKIE_SESION, token, expires=datetime.now() + timedelta(days=db.SESION_RECORDAR_DIAS),
+        )
+    except Exception:
+        pass
     return True
 
 
 def do_logout():
+    try:
+        controller = _cookies()
+        token = controller.get(_COOKIE_SESION)
+        if token:
+            db.eliminar_sesion_recordada(token)
+        controller.remove(_COOKIE_SESION)
+    except Exception:
+        pass
     st.session_state.pop("user", None)
 
 
@@ -50,9 +89,32 @@ def current_user():
 
 def require_login():
     """Muestra el formulario de login si no hay sesión activa. Debe llamarse
-    al inicio de app.py. Devuelve True si hay un usuario autenticado."""
+    al inicio de app.py. Devuelve True si hay un usuario autenticado.
+
+    Antes de pedir usuario/contraseña, revisa si ya hay una cookie de
+    "recuérdame" válida en el navegador (de un inicio de sesión anterior) —
+    si la hay, entra directo sin pedir nada, para que la sesión de admin (o
+    cualquier usuario) no se cierre sola nunca, salvo que la persona cierre
+    sesión a propósito."""
+    controller = None
+    try:
+        controller = _cookies()
+    except Exception:
+        controller = None
+
     if current_user():
         return True
+
+    if controller is not None:
+        try:
+            token = controller.get(_COOKIE_SESION)
+        except Exception:
+            token = None
+        if token:
+            user = db.usuario_desde_token_sesion(token)
+            if user:
+                _sincronizar_usuario_sesion(user)
+                return True
 
     _, col, _ = st.columns([1, 1.2, 1])
     with col:
