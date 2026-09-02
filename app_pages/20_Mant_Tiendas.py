@@ -6,7 +6,7 @@ import streamlit as st
 import auth
 import database as db
 from config import (
-    ESTADOS_MANT_TIENDAS, ESTADOS_MANT_TIENDAS_INICIALES, MANT_TIENDA_SIGUIENTE_ESTADO,
+    APP_URL, ESTADOS_MANT_TIENDAS, ESTADOS_MANT_TIENDAS_INICIALES, MANT_TIENDA_SIGUIENTE_ESTADO,
     MANT_TIENDAS_COTIZACION_MAX_ARCHIVOS, MANT_TIENDAS_COTIZACION_MAX_BYTES, MANT_TIENDAS_FOTO_MAX_BYTES,
     MANT_TIENDAS_FOTOS_MAX, TICKET_TIENDAS,
 )
@@ -35,22 +35,30 @@ COLUMN_EMOJI = {
 COLUMNAS_CON_SEMAFORO = {"En cotización", "En proceso", "Finalizado"}
 
 # Etapas que se miden para los KPIs de tiempo de arriba: (etiqueta, campo de
-# hora de inicio, campo de hora de fin). El promedio de cada una se calcula
-# solo con las solicitudes que ya completaron esa etapa (tienen ambas horas
-# guardadas) — ver database.avanzar_mant_tienda, que registra la hora exacta
-# la primera vez que una solicitud entra a cada etapa.
+# hora de inicio, campo de hora de fin, filtro opcional). El promedio de cada
+# una se calcula solo con las solicitudes que ya completaron esa etapa
+# (tienen ambas horas guardadas) — ver database.avanzar_mant_tienda, que
+# registra la hora exacta la primera vez que una solicitud entra a cada
+# etapa. "Lista de tareas" y "Emergencia" son las dos puertas de entrada que
+# confluyen en "En cotización" (ver config.MANT_TIENDA_SIGUIENTE_ESTADO), así
+# que para separarlas se usa 'tipo_solicitud_inicial' (el tipo con el que se
+# abrió el ticket, guardado en database.create_mant_tienda) — las
+# solicitudes creadas antes de este campo existir simplemente no cuentan en
+# estos dos KPIs (no se puede saber su tipo original), pero sí en los demás.
 _ETAPAS_KPI = [
-    ("🧾 Solicitud → Cotización", "creado_en", "fecha_cotizacion"),
-    ("💰 Cotización → Proceso", "fecha_cotizacion", "fecha_en_proceso"),
-    ("🔧 Proceso → Finalización", "fecha_en_proceso", "fecha_finalizado"),
-    ("🏁 Total (solicitud → finalización)", "creado_en", "fecha_finalizado"),
+    ("📋 Tareas → Cotización", "creado_en", "fecha_cotizacion", lambda r: r.get("tipo_solicitud_inicial") == "Lista de tareas"),
+    ("🚨 Emergencia → Cotización", "creado_en", "fecha_cotizacion", lambda r: r.get("tipo_solicitud_inicial") == "Emergencia"),
+    ("💰 Cotización → Proceso", "fecha_cotizacion", "fecha_en_proceso", None),
+    ("🔧 Proceso → Finalización", "fecha_en_proceso", "fecha_finalizado", None),
+    ("🏁 Total (solicitud → finalización)", "creado_en", "fecha_finalizado", None),
 ]
 
 
-def _promedio_minutos(rows, campo_ini, campo_fin):
+def _promedio_minutos(rows, campo_ini, campo_fin, filtro=None):
+    candidatos = [r for r in rows if filtro is None or filtro(r)]
     valores = [
         minutos_entre(r.get(campo_ini), r.get(campo_fin))
-        for r in rows if r.get(campo_ini) and r.get(campo_fin)
+        for r in candidatos if r.get(campo_ini) and r.get(campo_fin)
     ]
     return (sum(valores) / len(valores)) if valores else None
 
@@ -62,6 +70,56 @@ def _label_numero(numero_solicitud):
 puede_crear = auth.puede_crear_mant_tiendas()
 puede_mover = auth.puede_mover_mant_tiendas()
 tienda_usuario = auth.current_user_tienda()
+
+
+def _avisar_nueva_solicitud_por_correo(row):
+    """Manda un aviso a los correos configurados SOLO cuando se crea una
+    solicitud nueva — a propósito NO se manda nada cuando una solicitud
+    cambia de columna/etapa (pedido explícito de Steven, para no saturar de
+    correos en cada movimiento del tablero). No hace nada (ni muestra
+    error) si todavía no hay correos guardados o si el remitente no está
+    configurado — ver database.correo_disponible."""
+    correos = db.get_mant_tiendas_correos_aviso()
+    if not correos:
+        return
+    numero_txt = f"#{row['numero_solicitud']:04d}" if isinstance(row.get("numero_solicitud"), int) else "—"
+    asunto = f"🏬 Nueva solicitud de mantenimiento {numero_txt} — {row.get('tienda') or '—'}"
+    cuerpo = (
+        f"Se abrió una nueva solicitud de mantenimiento de tiendas.\n\n"
+        f"N° de solicitud: {numero_txt}\n"
+        f"Tienda: {row.get('tienda') or '—'}\n"
+        f"Tipo: {row.get('estado') or '—'}\n"
+        f"Quién solicita: {row.get('quien_solicita') or '—'}\n"
+        f"Descripción: {row.get('descripcion') or '—'}\n\n"
+        f"Ver en la plataforma: {APP_URL}"
+    )
+    db.enviar_correo_aviso(correos, asunto, cuerpo)
+
+
+if puede_mover:
+    with st.expander("✉️ Avisos por correo (solo al crear una solicitud nueva)"):
+        if not db.correo_disponible():
+            st.info(
+                "Todavía no está configurado el correo que manda los avisos (falta conectar una cuenta "
+                "de Gmail en la configuración de la plataforma) — mientras tanto, esta sección no manda "
+                "nada, pero puedes ir guardando los correos de una vez."
+            )
+        correos_actuales_mt = db.get_mant_tiendas_correos_aviso()
+        with st.form("mant_tiendas_correos_aviso"):
+            correos_texto_mt = st.text_area(
+                "Correos que reciben el aviso — uno por línea (o separados por coma)",
+                value="\n".join(correos_actuales_mt),
+                help=(
+                    "Se les avisa automáticamente solo cuando se crea una solicitud NUEVA (tanto de 'Lista "
+                    "de tareas' como de 'Emergencia'). NO se manda correo cuando una solicitud cambia de "
+                    "columna/etapa en el tablero."
+                ),
+            )
+            if st.form_submit_button("💾 Guardar correos", use_container_width=True):
+                nuevos_correos_mt = [c.strip() for c in correos_texto_mt.replace(",", "\n").split("\n") if c.strip()]
+                db.set_mant_tiendas_correos_aviso(nuevos_correos_mt)
+                st.success("Correos actualizados.")
+                st.rerun()
 
 if tienda_usuario:
     filtro_tienda = tienda_usuario
@@ -82,8 +140,8 @@ rows = db.list_mant_tiendas(tienda=filtro_tienda)  # ya vienen ordenadas: más n
 st.markdown("#### ⏱️ Tiempos promedio por etapa")
 st.caption("Promedio de todas las solicitudes que ya completaron cada etapa (con el filtro de tienda de arriba).")
 kcols = st.columns(len(_ETAPAS_KPI))
-for col, (etiqueta, campo_ini, campo_fin) in zip(kcols, _ETAPAS_KPI):
-    promedio = _promedio_minutos(rows, campo_ini, campo_fin)
+for col, (etiqueta, campo_ini, campo_fin, filtro) in zip(kcols, _ETAPAS_KPI):
+    promedio = _promedio_minutos(rows, campo_ini, campo_fin, filtro)
     col.metric(etiqueta, minutos_legible(round(promedio)) if promedio is not None else "Sin datos")
 
 st.divider()
@@ -447,9 +505,12 @@ with tab_nueva:
                     except ValueError as e:
                         st.error(str(e))
                     else:
-                        db.create_mant_tienda(
+                        nuevo_id_mt = db.create_mant_tienda(
                             user["id"], tienda, quien_solicita.strip(), descripcion.strip(),
                             tipo_solicitud, fotos=fotos_lista,
                         )
+                        nueva_solicitud_mt = db.get_mant_tienda(nuevo_id_mt)
+                        if nueva_solicitud_mt:
+                            _avisar_nueva_solicitud_por_correo(nueva_solicitud_mt)
                         st.success(f"Solicitud enviada a la columna '{tipo_solicitud}'.")
                         st.rerun()
