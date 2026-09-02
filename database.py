@@ -17,9 +17,11 @@ Cómo se eligen las credenciales, en este orden:
                                       avisa que Firebase no está conectado.
 """
 
+import hashlib
 import json
 import math
 import os
+import secrets
 import smtplib
 import uuid
 from datetime import date, datetime, timedelta, timezone
@@ -400,6 +402,13 @@ def get_user_by_username(username):
     return None
 
 
+def get_usuario(user_id):
+    if not user_id:
+        return None
+    snap = get_client().collection("usuarios").document(user_id).get()
+    return _doc_to_dict(snap) if snap.exists else None
+
+
 def list_usuarios(solo_activos=False):
     client = get_client()
     rows = [_doc_to_dict(s) for s in client.collection("usuarios").stream()]
@@ -500,6 +509,71 @@ def nombre_vendedor(vendedor_id, vendedores=None):
         if v["id"] == vendedor_id:
             return v["nombre"]
     return "—"
+
+
+# ---------------------------------------------------------------------------
+# Sesiones "recuérdame" — para que, una vez que alguien inicia sesión, la
+# plataforma no lo vuelva a sacar hasta que él mismo cierre sesión (incluso
+# si la app se reinicia por un nuevo despliegue, o el navegador se cierra).
+# Se guarda un token al azar (nunca la contraseña) en una cookie del
+# navegador; aquí solo se guarda el HASH de ese token — igual que con las
+# contraseñas, para que aunque alguien vea la base de datos no pueda armar
+# una cookie válida a partir de lo guardado.
+# ---------------------------------------------------------------------------
+SESION_RECORDAR_DIAS = 30
+
+
+def _hash_token_sesion(token):
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def crear_sesion_recordada(user_id):
+    """Crea un nuevo token de 'recuérdame' para este usuario y lo guarda (ya
+    hasheado) en la base de datos. Devuelve el token SIN hashear — ese es el
+    que se guarda en la cookie del navegador, nunca el hash."""
+    token = secrets.token_urlsafe(32)
+    expira = datetime.now() + timedelta(days=SESION_RECORDAR_DIAS)
+    get_client().collection("sesiones_recordadas").document().set({
+        "token_hash": _hash_token_sesion(token), "usuario_id": user_id,
+        "creado_en": datetime.now().isoformat(timespec="seconds"),
+        "expira_en": expira.isoformat(timespec="seconds"),
+    })
+    return token
+
+
+def usuario_desde_token_sesion(token):
+    """Devuelve el usuario dueño de este token de 'recuérdame' guardado en su
+    cookie — solo si el token existe, no ha expirado y el usuario sigue
+    activo. None en cualquier otro caso (obliga a iniciar sesión de nuevo)."""
+    if not token:
+        return None
+    client = get_client()
+    coincidencias = [
+        _doc_to_dict(s) for s in
+        client.collection("sesiones_recordadas").where("token_hash", "==", _hash_token_sesion(token)).stream()
+    ]
+    if not coincidencias:
+        return None
+    sesion = coincidencias[0]
+    try:
+        if datetime.fromisoformat(sesion["expira_en"]) < datetime.now():
+            return None
+    except (KeyError, ValueError, TypeError):
+        return None
+    user = get_usuario(sesion.get("usuario_id"))
+    if not user or not user.get("activo", True):
+        return None
+    return user
+
+
+def eliminar_sesion_recordada(token):
+    """Invalida un token de 'recuérdame' — se usa al cerrar sesión, para que
+    la cookie que quede en ese navegador ya no sirva para volver a entrar."""
+    if not token:
+        return
+    client = get_client()
+    for s in client.collection("sesiones_recordadas").where("token_hash", "==", _hash_token_sesion(token)).stream():
+        client.collection("sesiones_recordadas").document(s.id).delete()
 
 
 # ---------------------------------------------------------------------------
