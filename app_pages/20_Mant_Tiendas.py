@@ -11,8 +11,8 @@ from config import (
     MANT_TIENDAS_FOTOS_MAX, TICKET_TIENDAS,
 )
 from utils import (
-    archivos_a_b64_lista, download_excel_button, mant_tienda_pdf_bytes, mant_tiendas_resumen_html,
-    minutos_entre, minutos_legible, sidebar_user_box,
+    archivos_a_b64_lista, download_excel_button, mant_tienda_pdf_bytes, mant_tienda_segmentos_etapa,
+    mant_tienda_tiempo_en_etapa, mant_tiendas_resumen_html, minutos_entre, minutos_legible, sidebar_user_box,
 )
 
 user = auth.current_user()
@@ -34,31 +34,33 @@ COLUMN_EMOJI = {
 # "Lista de tareas" ni "Emergencia", que todavía no están en curso.
 COLUMNAS_CON_SEMAFORO = {"En cotización", "En proceso", "Finalizado"}
 
-# Etapas que se miden para los KPIs de tiempo de arriba: (etiqueta, campo de
-# hora de inicio, campo de hora de fin, filtro opcional). El promedio de cada
-# una se calcula solo con las solicitudes que ya completaron esa etapa
-# (tienen ambas horas guardadas) — ver database.avanzar_mant_tienda, que
-# registra la hora exacta la primera vez que una solicitud entra a cada
-# etapa. "Lista de tareas" y "Emergencia" son las dos puertas de entrada que
-# confluyen en "En cotización" (ver config.MANT_TIENDA_SIGUIENTE_ESTADO), así
-# que para separarlas se usa 'tipo_solicitud_inicial' (el tipo con el que se
-# abrió el ticket, guardado en database.create_mant_tienda) — las
-# solicitudes creadas antes de este campo existir simplemente no cuentan en
-# estos dos KPIs (no se puede saber su tipo original), pero sí en los demás.
+# Etapas que se miden para los KPIs de tiempo de arriba: (etiqueta, nombre
+# exacto de la columna). El promedio de cada una se calcula a partir del
+# historial completo de cada solicitud (ver utils.mant_tienda_segmentos_etapa
+# / database.avanzar_mant_tienda, que agrega una entrada al historial cada
+# vez que la solicitud entra a una columna nueva) — así queda correcto
+# incluso si una solicitud se movió hacia atrás y volvió a pasar por la
+# misma columna más de una vez (se suman todos los tramos completados). Las
+# solicitudes de antes de que existiera el historial se reconstruyen lo
+# mejor posible a partir de los campos anteriores (ver
+# utils.mant_tienda_historial_o_reconstruido).
 _ETAPAS_KPI = [
-    ("📋 Tareas → Cotización", "creado_en", "fecha_cotizacion", lambda r: r.get("tipo_solicitud_inicial") == "Lista de tareas"),
-    ("🚨 Emergencia → Cotización", "creado_en", "fecha_cotizacion", lambda r: r.get("tipo_solicitud_inicial") == "Emergencia"),
-    ("💰 Cotización → Proceso", "fecha_cotizacion", "fecha_en_proceso", None),
-    ("🔧 Proceso → Finalización", "fecha_en_proceso", "fecha_finalizado", None),
-    ("🏁 Total (solicitud → finalización)", "creado_en", "fecha_finalizado", None),
+    ("📋 Tiempo en Lista de tareas", "Lista de tareas"),
+    ("🚨 Tiempo en Emergencia", "Emergencia"),
+    ("💰 Tiempo en cotización", "En cotización"),
+    ("🔧 Tiempo en proceso", "En proceso"),
 ]
 
 
-def _promedio_minutos(rows, campo_ini, campo_fin, filtro=None):
-    candidatos = [r for r in rows if filtro is None or filtro(r)]
+def _promedio_minutos_etapa(rows, etapa):
+    valores = [t for t in (mant_tienda_tiempo_en_etapa(r, etapa) for r in rows) if t is not None]
+    return (sum(valores) / len(valores)) if valores else None
+
+
+def _promedio_minutos_total(rows):
     valores = [
-        minutos_entre(r.get(campo_ini), r.get(campo_fin))
-        for r in candidatos if r.get(campo_ini) and r.get(campo_fin)
+        minutos_entre(r.get("creado_en"), r.get("fecha_finalizado"))
+        for r in rows if r.get("fecha_finalizado")
     ]
     return (sum(valores) / len(valores)) if valores else None
 
@@ -138,11 +140,20 @@ rows = db.list_mant_tiendas(tienda=filtro_tienda)  # ya vienen ordenadas: más n
 # completaron esa etapa).
 # ------------------------------------------------------------------
 st.markdown("#### ⏱️ Tiempos promedio por etapa")
-st.caption("Promedio de todas las solicitudes que ya completaron cada etapa (con el filtro de tienda de arriba).")
-kcols = st.columns(len(_ETAPAS_KPI))
-for col, (etiqueta, campo_ini, campo_fin, filtro) in zip(kcols, _ETAPAS_KPI):
-    promedio = _promedio_minutos(rows, campo_ini, campo_fin, filtro)
+st.caption(
+    "Promedio de todas las solicitudes que ya completaron cada etapa (con el filtro de tienda de arriba) "
+    "— suma el tiempo de todas las veces que una solicitud pasó por esa columna, por si se movió hacia "
+    "atrás y volvió a entrar."
+)
+kcols = st.columns(len(_ETAPAS_KPI) + 1)
+for col, (etiqueta, etapa) in zip(kcols, _ETAPAS_KPI):
+    promedio = _promedio_minutos_etapa(rows, etapa)
     col.metric(etiqueta, minutos_legible(round(promedio)) if promedio is not None else "Sin datos")
+promedio_total = _promedio_minutos_total(rows)
+kcols[-1].metric(
+    "🏁 Total (solicitud → finalización)",
+    minutos_legible(round(promedio_total)) if promedio_total is not None else "Sin datos",
+)
 
 st.divider()
 
@@ -175,21 +186,10 @@ with tab_tablero:
                 ),
                 "Fotos adjuntas": len(r.get("fotos") or []),
                 "Creado": r.get("creado_en"),
-                "Entró a cotización": r.get("fecha_cotizacion") or "—",
-                "Entró a proceso": r.get("fecha_en_proceso") or "—",
-                "Finalizado": r.get("fecha_finalizado") or "—",
-                "Solicitud→Cotización (min)": (
-                    minutos_entre(r.get("creado_en"), r.get("fecha_cotizacion"))
-                    if r.get("fecha_cotizacion") else "—"
-                ),
-                "Cotización→Proceso (min)": (
-                    minutos_entre(r.get("fecha_cotizacion"), r.get("fecha_en_proceso"))
-                    if r.get("fecha_cotizacion") and r.get("fecha_en_proceso") else "—"
-                ),
-                "Proceso→Finalización (min)": (
-                    minutos_entre(r.get("fecha_en_proceso"), r.get("fecha_finalizado"))
-                    if r.get("fecha_en_proceso") and r.get("fecha_finalizado") else "—"
-                ),
+                "Tiempo en Lista de tareas (min)": mant_tienda_tiempo_en_etapa(r, "Lista de tareas") or "—",
+                "Tiempo en Emergencia (min)": mant_tienda_tiempo_en_etapa(r, "Emergencia") or "—",
+                "Tiempo en cotización (min)": mant_tienda_tiempo_en_etapa(r, "En cotización") or "—",
+                "Tiempo en proceso (min)": mant_tienda_tiempo_en_etapa(r, "En proceso") or "—",
                 "Tiempo total (min)": (
                     minutos_entre(r.get("creado_en"), r.get("fecha_finalizado"))
                     if r.get("fecha_finalizado") else "—"
@@ -246,6 +246,23 @@ with tab_tablero:
                     if r.get("descripcion"):
                         st.caption(f"📝 {r['descripcion']}")
                     st.caption(f"🕒 {(r.get('creado_en') or '')[:16].replace('T', ' ')}")
+
+                    # ------------------------------------------------------------
+                    # Cuánto tiempo lleva/estuvo esta solicitud en cada columna
+                    # por la que ha pasado — a partir del historial completo (ver
+                    # utils.mant_tienda_segmentos_etapa). La columna en la que
+                    # está ahora mismo se marca "en curso" (todavía no terminó).
+                    # ------------------------------------------------------------
+                    segmentos_r = mant_tienda_segmentos_etapa(r)
+                    if segmentos_r:
+                        partes_tiempo = []
+                        for estado_etapa, minutos_etapa, en_curso in segmentos_r:
+                            emoji_etapa = COLUMN_EMOJI.get(estado_etapa, "")
+                            texto_etapa = minutos_legible(minutos_etapa)
+                            if en_curso:
+                                texto_etapa += " y contando"
+                            partes_tiempo.append(f"{emoji_etapa} {estado_etapa}: {texto_etapa}")
+                        st.caption("⏱️ " + " · ".join(partes_tiempo))
 
                     st.download_button(
                         "📄 Orden de trabajo (PDF)", data=mant_tienda_pdf_bytes(r),
