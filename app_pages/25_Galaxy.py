@@ -10,7 +10,10 @@ from config import (
     APP_URL, COLORADO_DIMENSION_UNIDADES, COLORADO_TIPOS_COLOR, DISENO_ARCHIVO_MAX_BYTES,
     DISENO_ARCHIVO_MAX_BYTES_STORAGE, ESTADOS_GALAXY, PRODUCCION_ARCHIVOS_MAX,
 )
-from utils import archivo_a_b64, archivos_a_b64_lista, money, orden_produccion_pdf_bytes, sidebar_user_box
+from utils import (
+    archivo_a_b64, archivos_a_b64_lista, download_excel_button, money, orden_produccion_pdf_bytes,
+    sidebar_user_box,
+)
 
 user = auth.current_user()
 sidebar_user_box()
@@ -108,6 +111,98 @@ def _dimensiones_texto(p):
     if not ancho and not alto:
         return None
     return f"{ancho or '—'} x {alto or '—'} {unidad or ''}".strip()
+
+
+def _render_detalle_pedido(p, key_prefix):
+    """Bloque de datos + descargas de una orden (contacto, pieza, precio,
+    archivos adjuntos, boleta de pago) — compartido entre la tarjeta del
+    tablero y el detalle del Historial de abajo, para no repetir la misma
+    lógica en dos lugares. 'key_prefix' evita choques de key entre ambos
+    lugares cuando se muestra la MISMA orden en los dos a la vez."""
+    pid = p["id"]
+    if p.get("quien_solicita"):
+        st.caption(f"🙋 Solicita: {p['quien_solicita']}")
+    if p.get("tipo_pieza"):
+        st.caption(f"🧩 {p['tipo_pieza']}")
+    if p.get("cliente_telefono") or p.get("cliente_correo"):
+        st.caption(f"☎️ {p.get('cliente_telefono') or '—'}  ·  ✉️ {p.get('cliente_correo') or '—'}")
+    if p.get("nit"):
+        st.caption(f"🧾 NIT: {p['nit']}")
+    if p.get("direccion_entrega"):
+        st.caption(f"📍 {p['direccion_entrega']}")
+    dimensiones_txt = _dimensiones_texto(p)
+    if dimensiones_txt:
+        st.caption(f"📐 {dimensiones_txt}")
+    if p.get("material"):
+        st.caption(f"🧵 Material: {p['material']}")
+    if p.get("tipo_color"):
+        st.caption(f"🎨 {p['tipo_color']}")
+    if p.get("acabados"):
+        st.caption(f"✨ Acabados: {p['acabados']}")
+    if p.get("cantidad_unidades") not in (None, "", 0):
+        st.caption(f"Cantidad: {p['cantidad_unidades']}")
+    if p.get("precio_unidad") not in (None, "", 0):
+        st.caption(f"Precio por unidad: {money(p['precio_unidad'])}")
+    total_pedido = _total_pedido(p)
+    if total_pedido is not None:
+        st.caption(f"💲 Total: {money(total_pedido)}")
+    if p.get("notas"):
+        st.caption(f"📝 {p['notas']}")
+    st.caption(f"📅 Entrega: {p.get('fecha_entrega') or 'sin definir'}")
+    st.caption(f"🕒 {(p.get('creado_en') or '')[:16].replace('T', ' ')}")
+
+    pdf_bytes = orden_produccion_pdf_bytes(p, linea="Galaxy")
+    st.download_button(
+        "📄 Orden de producción (PDF)", data=pdf_bytes,
+        file_name=f"orden_produccion_galaxy_{pid}.pdf",
+        mime="application/pdf", use_container_width=True, key=f"{key_prefix}_pdf_{pid}",
+    )
+    for i, arch in enumerate(p.get("archivos") or []):
+        if arch.get("storage_path"):
+            url_archivo = db.url_descarga_archivo_storage(
+                arch["storage_path"], nombre_descarga=arch["nombre"],
+            )
+            if url_archivo:
+                st.link_button(
+                    f"📎 {arch['nombre']}", url_archivo,
+                    use_container_width=True, key=f"{key_prefix}_file_{pid}_{i}",
+                )
+            else:
+                st.caption(f"📎 {arch['nombre']} (no se pudo generar el enlace de descarga)")
+        else:
+            st.download_button(
+                f"📎 {arch['nombre']}",
+                data=base64.b64decode(arch["b64"]),
+                file_name=arch["nombre"],
+                mime=arch.get("tipo") or "application/octet-stream",
+                use_container_width=True, key=f"{key_prefix}_file_{pid}_{i}",
+            )
+
+    boleta_pago = p.get("boleta_pago")
+    if boleta_pago:
+        if boleta_pago.get("storage_path"):
+            url_boleta = db.url_descarga_archivo_storage(
+                boleta_pago["storage_path"], nombre_descarga=boleta_pago["nombre"],
+            )
+            if url_boleta:
+                st.link_button(
+                    f"🧾 Boleta de pago: {boleta_pago['nombre']}", url_boleta,
+                    use_container_width=True, key=f"{key_prefix}_boleta_{pid}",
+                )
+            else:
+                st.caption(
+                    f"🧾 Boleta de pago: {boleta_pago['nombre']} (no se pudo generar el enlace de descarga)"
+                )
+        else:
+            st.download_button(
+                f"🧾 Boleta de pago: {boleta_pago['nombre']}",
+                data=base64.b64decode(boleta_pago["b64"]),
+                file_name=boleta_pago["nombre"],
+                mime=boleta_pago.get("tipo") or "application/octet-stream",
+                use_container_width=True, key=f"{key_prefix}_boleta_{pid}",
+            )
+    else:
+        st.caption("🧾 Boleta de pago: no se ha subido.")
 
 
 def _avisar_por_correo(asunto, cuerpo):
@@ -298,89 +393,7 @@ for col, estado in zip(cols, ESTADOS_GALAXY):
                             st.session_state[editando_key] = not st.session_state.get(editando_key, False)
                             st.rerun()
 
-                if p.get("quien_solicita"):
-                    st.caption(f"🙋 Solicita: {p['quien_solicita']}")
-                if p.get("tipo_pieza"):
-                    st.caption(f"🧩 {p['tipo_pieza']}")
-                if p.get("cliente_telefono") or p.get("cliente_correo"):
-                    st.caption(f"☎️ {p.get('cliente_telefono') or '—'}  ·  ✉️ {p.get('cliente_correo') or '—'}")
-                if p.get("nit"):
-                    st.caption(f"🧾 NIT: {p['nit']}")
-                if p.get("direccion_entrega"):
-                    st.caption(f"📍 {p['direccion_entrega']}")
-                dimensiones_txt = _dimensiones_texto(p)
-                if dimensiones_txt:
-                    st.caption(f"📐 {dimensiones_txt}")
-                if p.get("material"):
-                    st.caption(f"🧵 Material: {p['material']}")
-                if p.get("tipo_color"):
-                    st.caption(f"🎨 {p['tipo_color']}")
-                if p.get("acabados"):
-                    st.caption(f"✨ Acabados: {p['acabados']}")
-                if p.get("cantidad_unidades") not in (None, "", 0):
-                    st.caption(f"Cantidad: {p['cantidad_unidades']}")
-                if p.get("precio_unidad") not in (None, "", 0):
-                    st.caption(f"Precio por unidad: {money(p['precio_unidad'])}")
-                total_pedido = _total_pedido(p)
-                if total_pedido is not None:
-                    st.caption(f"💲 Total: {money(total_pedido)}")
-                if p.get("notas"):
-                    st.caption(f"📝 {p['notas']}")
-                st.caption(f"📅 Entrega: {p.get('fecha_entrega') or 'sin definir'}")
-                st.caption(f"🕒 {(p.get('creado_en') or '')[:16].replace('T', ' ')}")
-
-                pdf_bytes = orden_produccion_pdf_bytes(p, linea="Galaxy")
-                st.download_button(
-                    "📄 Orden de producción (PDF)", data=pdf_bytes,
-                    file_name=f"orden_produccion_galaxy_{pid}.pdf",
-                    mime="application/pdf", use_container_width=True, key=f"galaxy_pdf_{pid}",
-                )
-                for i, arch in enumerate(p.get("archivos") or []):
-                    if arch.get("storage_path"):
-                        url_archivo = db.url_descarga_archivo_storage(
-                            arch["storage_path"], nombre_descarga=arch["nombre"],
-                        )
-                        if url_archivo:
-                            st.link_button(
-                                f"📎 {arch['nombre']}", url_archivo,
-                                use_container_width=True, key=f"galaxy_file_{pid}_{i}",
-                            )
-                        else:
-                            st.caption(f"📎 {arch['nombre']} (no se pudo generar el enlace de descarga)")
-                    else:
-                        st.download_button(
-                            f"📎 {arch['nombre']}",
-                            data=base64.b64decode(arch["b64"]),
-                            file_name=arch["nombre"],
-                            mime=arch.get("tipo") or "application/octet-stream",
-                            use_container_width=True, key=f"galaxy_file_{pid}_{i}",
-                        )
-
-                boleta_pago = p.get("boleta_pago")
-                if boleta_pago:
-                    if boleta_pago.get("storage_path"):
-                        url_boleta = db.url_descarga_archivo_storage(
-                            boleta_pago["storage_path"], nombre_descarga=boleta_pago["nombre"],
-                        )
-                        if url_boleta:
-                            st.link_button(
-                                f"🧾 Boleta de pago: {boleta_pago['nombre']}", url_boleta,
-                                use_container_width=True, key=f"galaxy_boleta_{pid}",
-                            )
-                        else:
-                            st.caption(
-                                f"🧾 Boleta de pago: {boleta_pago['nombre']} (no se pudo generar el enlace de descarga)"
-                            )
-                    else:
-                        st.download_button(
-                            f"🧾 Boleta de pago: {boleta_pago['nombre']}",
-                            data=base64.b64decode(boleta_pago["b64"]),
-                            file_name=boleta_pago["nombre"],
-                            mime=boleta_pago.get("tipo") or "application/octet-stream",
-                            use_container_width=True, key=f"galaxy_boleta_{pid}",
-                        )
-                else:
-                    st.caption("🧾 Boleta de pago: no se ha subido.")
+                _render_detalle_pedido(p, "galaxy")
 
                 # ------------------------------------------------------------
                 # Acciones rápidas: pasar a la siguiente etapa y eliminar,
@@ -583,3 +596,73 @@ for col, estado in zip(cols, ESTADOS_GALAXY):
                         if cancelar:
                             st.session_state.pop(editando_key, None)
                             st.rerun()
+
+st.divider()
+
+# ---------------------------------------------------------------------------
+# Historial de órdenes entregadas — archivo permanente y consultable, aparte
+# del tablero de arriba (que solo muestra el estado actual). Una orden que
+# llega a "Entregado" sigue viéndose aquí para siempre, con todos sus datos
+# y archivos, aunque después se elimine o se acumulen muchas órdenes nuevas.
+# ---------------------------------------------------------------------------
+st.markdown("#### 📜 Historial de órdenes entregadas")
+st.caption(
+    "Busca cualquier orden ya entregada para volver a ver sus datos, descargar su PDF, sus archivos "
+    "adjuntos o su boleta de pago."
+)
+
+entregados = [p for p in pedidos if p.get("estado") == "Entregado"]
+
+if not entregados:
+    st.info("Todavía no hay órdenes marcadas como 'Entregado'.")
+else:
+    busqueda_hist = st.text_input(
+        "🔎 Buscar por cliente, quién solicita, tipo de pieza o NIT",
+        key="galaxy_hist_buscar",
+    )
+
+    def _coincide_busqueda_galaxy(p, texto):
+        texto = texto.strip().lower()
+        if not texto:
+            return True
+        campos = [p.get("cliente_nombre"), p.get("quien_solicita"), p.get("tipo_pieza"), p.get("nit")]
+        return any(texto in str(c).lower() for c in campos if c)
+
+    entregados_filtrados = [p for p in entregados if _coincide_busqueda_galaxy(p, busqueda_hist)]
+    entregados_filtrados = sorted(
+        entregados_filtrados, key=lambda p: p.get("creado_en") or "", reverse=True,
+    )
+
+    if not entregados_filtrados:
+        st.caption("Ninguna orden entregada coincide con esa búsqueda.")
+    else:
+        opciones_hist = {
+            f"{p.get('cliente_nombre') or 'Sin cliente'} — {p.get('tipo_pieza') or 'sin tipo'} "
+            f"({(p.get('creado_en') or '')[:10]})": p["id"]
+            for p in entregados_filtrados
+        }
+        seleccion_hist = st.selectbox(
+            "Elegir orden para ver el detalle", list(opciones_hist.keys()), key="galaxy_hist_selector",
+        )
+        if seleccion_hist:
+            pid_hist = opciones_hist[seleccion_hist]
+            p_hist = next(p for p in entregados_filtrados if p["id"] == pid_hist)
+            with st.container(border=True):
+                st.markdown(f"**{p_hist.get('cliente_nombre') or 'Sin cliente'}**")
+                _render_detalle_pedido(p_hist, "galaxy_hist")
+
+        st.divider()
+        df_hist = pd.DataFrame([{
+            "Solicita": p.get("quien_solicita") or "—",
+            "Cliente": p.get("cliente_nombre") or "—",
+            "Tipo de pieza": p.get("tipo_pieza") or "—",
+            "NIT": p.get("nit") or "—",
+            "Cantidad": p.get("cantidad_unidades") if p.get("cantidad_unidades") not in (None, "") else "—",
+            "Total": money(_total_pedido(p)) if _total_pedido(p) is not None else "—",
+            "Fecha de entrega": p.get("fecha_entrega") or "—",
+            "Creado": (p.get("creado_en") or "")[:10],
+        } for p in entregados_filtrados])
+        st.dataframe(df_hist, use_container_width=True, hide_index=True)
+        download_excel_button(
+            df_hist, "historial_galaxy_entregados.xlsx", key="galaxy_hist_descargar_excel",
+        )
