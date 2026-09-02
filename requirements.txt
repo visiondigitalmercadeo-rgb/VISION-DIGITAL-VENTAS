@@ -7,3 +7,4 @@ firebase-admin>=6.5.0
 openpyxl>=3.1
 fpdf2>=2.7
 qrcode>=7.4
+streamlit-cookies-controller>=0.0.4
