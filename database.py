@@ -1989,23 +1989,31 @@ def _siguiente_numero_mant_tienda():
 
 
 def create_mant_tienda(creado_por_id, tienda, quien_solicita, descripcion, estado, fotos=None):
+    ahora_txt = ahora_guatemala().isoformat(timespec="seconds")
     doc_ref = get_client().collection("mant_tiendas").document()
     doc_ref.set({
         "numero_solicitud": _siguiente_numero_mant_tienda(),
         "creado_por_id": creado_por_id, "tienda": tienda, "quien_solicita": quien_solicita,
         "descripcion": descripcion, "estado": estado, "detenido_emergencia": False,
         "fotos": fotos or [],
-        "creado_en": ahora_guatemala().isoformat(timespec="seconds"),
+        "creado_en": ahora_txt,
         # Tipo de solicitud con el que se abrió el ticket ('Lista de tareas'
         # o 'Emergencia') — se guarda aparte de 'estado' porque 'estado' va
-        # cambiando conforme la solicitud avanza por el tablero, y se
-        # necesita conservar el tipo original para separar los KPIs de
-        # tiempo de "tareas" vs. "emergencias" (ver 20_Mant_Tiendas.py).
+        # cambiando conforme la solicitud avanza por el tablero.
         "tipo_solicitud_inicial": estado,
+        # Historial completo de etapas: se agrega una entrada cada vez que
+        # la solicitud entra a una columna nueva (ver avanzar_mant_tienda) —
+        # a diferencia de las 'fecha_*' de abajo (que solo guardan la
+        # PRIMERA vez que se llega a cada una), esto registra TODAS las
+        # veces, para poder calcular cuánto tiempo estuvo en cada columna
+        # aunque la solicitud se haya movido hacia atrás y haya vuelto a
+        # pasar por la misma columna más de una vez (ver utils.py,
+        # mant_tienda_segmentos_etapa).
+        "historial_etapas": [{"estado": estado, "entrada_en": ahora_txt}],
         # Hora exacta en la que la solicitud entró a cada etapa medida — se
         # llenan solo la primera vez que llega a esa etapa (ver
-        # avanzar_mant_tienda), para poder calcular cuánto tiempo se tarda
-        # cada proceso: solicitud -> cotización -> proceso -> finalización.
+        # avanzar_mant_tienda). Se conservan por compatibilidad, pero los
+        # KPIs de tiempo ahora se calculan a partir de 'historial_etapas'.
         "fecha_cotizacion": None, "fecha_en_proceso": None, "fecha_finalizado": None,
         # Cotización: PDFs subidos (máximo 3) y su autorización — solo el
         # admin puede autorizarla (ver autorizar_cotizacion_mant_tienda).
@@ -2066,13 +2074,19 @@ MANT_TIENDA_TS_POR_ESTADO = {
 
 
 def avanzar_mant_tienda(mant_id, nuevo_estado, extra=None):
-    """Cambia el estado de una solicitud de Mantenimiento de Tiendas y, la
+    """Cambia el estado de una solicitud de Mantenimiento de Tiendas. Cada
+    vez que el estado realmente cambia, se agrega una entrada nueva al
+    historial completo ('historial_etapas') con la hora exacta de entrada a
+    la columna nueva — esto queda registrado SIEMPRE, incluso si la
+    solicitud se mueve hacia atrás y vuelve a pasar por la misma columna más
+    de una vez, para poder calcular con exactitud cuánto tiempo estuvo en
+    cada columna (ver utils.mant_tienda_segmentos_etapa, que usa este
+    historial para los KPIs de tiempo de 20_Mant_Tiendas.py). Además, la
     primera vez que llega a una etapa medida (En cotización / En proceso /
-    Finalizado), registra la hora exacta de entrada — así se puede calcular
-    cuánto tiempo se tarda cada etapa. Si la solicitud se mueve hacia atrás y
-    vuelve a pasar por la misma etapa, NO vuelve a pisar la hora ya guardada.
-    'extra' son otros campos a actualizar en la misma escritura (por ejemplo,
-    si también se editaron los datos de la solicitud en el mismo formulario).
+    Finalizado) se sigue guardando también en las 'fecha_*' de siempre, por
+    compatibilidad. 'extra' son otros campos a actualizar en la misma
+    escritura (por ejemplo, si también se editaron los datos de la
+    solicitud en el mismo formulario).
 
     Regla de negocio: no se puede entrar a 'En proceso' hasta que un admin
     autorice la cotización (ver auth.puede_autorizar_cotizacion_mant_tiendas
@@ -2090,9 +2104,12 @@ def avanzar_mant_tienda(mant_id, nuevo_estado, extra=None):
     cambios = dict(extra or {})
     cambios["estado"] = nuevo_estado
     if actual.get("estado") != nuevo_estado:
+        ahora_txt = ahora_guatemala().isoformat(timespec="seconds")
         campo_ts = MANT_TIENDA_TS_POR_ESTADO.get(nuevo_estado)
         if campo_ts and not actual.get(campo_ts):
-            cambios[campo_ts] = ahora_guatemala().isoformat(timespec="seconds")
+            cambios[campo_ts] = ahora_txt
+        historial_actual = actual.get("historial_etapas") or []
+        cambios["historial_etapas"] = historial_actual + [{"estado": nuevo_estado, "entrada_en": ahora_txt}]
     get_client().collection("mant_tiendas").document(mant_id).update(cambios)
 
 
