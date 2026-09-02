@@ -11,8 +11,9 @@ from config import (
     MANT_TIENDAS_FOTOS_MAX, TICKET_TIENDAS,
 )
 from utils import (
-    archivos_a_b64_lista, download_excel_button, mant_tienda_pdf_bytes, mant_tienda_segmentos_etapa,
-    mant_tienda_tiempo_en_etapa, mant_tiendas_resumen_html, minutos_entre, minutos_legible, sidebar_user_box,
+    archivos_a_b64_lista, download_excel_button, duracion_legible, mant_tienda_pdf_bytes,
+    mant_tienda_segmentos_etapa, mant_tienda_tiempo_en_etapa, mant_tiendas_resumen_html, minutos_entre,
+    sidebar_user_box,
 )
 
 user = auth.current_user()
@@ -148,11 +149,11 @@ st.caption(
 kcols = st.columns(len(_ETAPAS_KPI) + 1)
 for col, (etiqueta, etapa) in zip(kcols, _ETAPAS_KPI):
     promedio = _promedio_minutos_etapa(rows, etapa)
-    col.metric(etiqueta, minutos_legible(round(promedio)) if promedio is not None else "Sin datos")
+    col.metric(etiqueta, duracion_legible(round(promedio)) if promedio is not None else "Sin datos")
 promedio_total = _promedio_minutos_total(rows)
 kcols[-1].metric(
     "🏁 Total (solicitud → finalización)",
-    minutos_legible(round(promedio_total)) if promedio_total is not None else "Sin datos",
+    duracion_legible(round(promedio_total)) if promedio_total is not None else "Sin datos",
 )
 
 st.divider()
@@ -258,7 +259,7 @@ with tab_tablero:
                         partes_tiempo = []
                         for estado_etapa, minutos_etapa, en_curso in segmentos_r:
                             emoji_etapa = COLUMN_EMOJI.get(estado_etapa, "")
-                            texto_etapa = minutos_legible(minutos_etapa)
+                            texto_etapa = duracion_legible(minutos_etapa)
                             if en_curso:
                                 texto_etapa += " y contando"
                             partes_tiempo.append(f"{emoji_etapa} {estado_etapa}: {texto_etapa}")
