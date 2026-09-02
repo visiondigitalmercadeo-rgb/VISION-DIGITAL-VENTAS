@@ -1996,6 +1996,12 @@ def create_mant_tienda(creado_por_id, tienda, quien_solicita, descripcion, estad
         "descripcion": descripcion, "estado": estado, "detenido_emergencia": False,
         "fotos": fotos or [],
         "creado_en": ahora_guatemala().isoformat(timespec="seconds"),
+        # Tipo de solicitud con el que se abrió el ticket ('Lista de tareas'
+        # o 'Emergencia') — se guarda aparte de 'estado' porque 'estado' va
+        # cambiando conforme la solicitud avanza por el tablero, y se
+        # necesita conservar el tipo original para separar los KPIs de
+        # tiempo de "tareas" vs. "emergencias" (ver 20_Mant_Tiendas.py).
+        "tipo_solicitud_inicial": estado,
         # Hora exacta en la que la solicitud entró a cada etapa medida — se
         # llenan solo la primera vez que llega a esa etapa (ver
         # avanzar_mant_tienda), para poder calcular cuánto tiempo se tarda
@@ -2092,6 +2098,24 @@ def avanzar_mant_tienda(mant_id, nuevo_estado, extra=None):
 
 def delete_mant_tienda(mant_id):
     get_client().collection("mant_tiendas").document(mant_id).delete()
+
+
+def get_mant_tiendas_correos_aviso() -> list:
+    """Lista de correos que reciben un aviso automático cuando se crea una
+    solicitud NUEVA en el tablero de Mantenimiento de Tiendas (ver
+    20_Mant_Tiendas.py) — a propósito no se manda nada cuando una solicitud
+    cambia de columna/etapa (pedido explícito de Steven). Vacía si todavía
+    no se ha guardado ninguno."""
+    snap = get_client().collection("mant_tiendas_config").document("notificaciones").get()
+    data = _doc_to_dict(snap) if snap.exists else None
+    return (data or {}).get("correos") or []
+
+
+def set_mant_tiendas_correos_aviso(correos: list):
+    get_client().collection("mant_tiendas_config").document("notificaciones").set({
+        "correos": [c.strip() for c in (correos or []) if c and c.strip()],
+        "actualizado_en": datetime.now().isoformat(timespec="seconds"),
+    })
 
 
 # ---------------------------------------------------------------------------
