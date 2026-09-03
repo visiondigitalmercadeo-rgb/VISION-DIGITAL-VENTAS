@@ -30,6 +30,8 @@ FIRMA_STEVEN_PUESTO = "Gerente Comercial"
 # Firma escaneada para el PDF de "ENVÍO No. ___" de Logística — se coloca
 # sobre la línea izquierda ("ENVÍA") (ver utils.pedido_pdf_bytes).
 FIRMA_ENVIO_PATH = os.path.join(BASE_DIR, "assets", "firma_envio.png")
+FIRMA_ENVIO_NOMBRE = "Carlos de León"
+FIRMA_ENVIO_PUESTO = "Jefe de Logística"
 BRAND_PINK = "#FF0C82"  # color de marca — solo para chrome de la interfaz (botones, acentos),
                          # NO se usa en las gráficas: ahí se mantiene la paleta validada abajo.
 
