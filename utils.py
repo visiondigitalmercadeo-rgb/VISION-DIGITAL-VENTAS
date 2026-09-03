@@ -12,9 +12,9 @@ from fpdf import FPDF
 import auth
 import database as db
 from config import (
-    CATEGORICAL, EMPRESA_DIRECCION_LINEA1, EMPRESA_DIRECCION_LINEA2, EMPRESA_NOMBRE, FIRMA_ENVIO_PATH,
-    FIRMA_STEVEN_NOMBRE, FIRMA_STEVEN_PATH, FIRMA_STEVEN_PUESTO, GRIDLINE, INK_MUTED, INK_PRIMARY, LOGO_PATH,
-    ROLES_LABEL, SURFACE,
+    CATEGORICAL, EMPRESA_DIRECCION_LINEA1, EMPRESA_DIRECCION_LINEA2, EMPRESA_NOMBRE, FIRMA_ENVIO_NOMBRE,
+    FIRMA_ENVIO_PATH, FIRMA_ENVIO_PUESTO, FIRMA_STEVEN_NOMBRE, FIRMA_STEVEN_PATH, FIRMA_STEVEN_PUESTO, GRIDLINE,
+    INK_MUTED, INK_PRIMARY, LOGO_PATH, ROLES_LABEL, SURFACE,
 )
 
 
@@ -723,8 +723,8 @@ def pedido_pdf_bytes(p: dict) -> bytes:
     # "ENVÍA", que se centra sobre esa misma línea.
     firmas_y = fila_y + 26
     try:
-        firma_w = 22
-        pdf.image(FIRMA_ENVIO_PATH, x=15 + (80 - firma_w) / 2, y=firmas_y - 18, w=firma_w)
+        firma_w = 30
+        pdf.image(FIRMA_ENVIO_PATH, x=15 + (80 - firma_w) / 2, y=firmas_y - 20, w=firma_w)
     except Exception:
         pass
     pdf.set_draw_color(0, 0, 0)
@@ -735,8 +735,19 @@ def pedido_pdf_bytes(p: dict) -> bytes:
     pdf.cell(80, 5, _pdf_safe("ENVÍA"), align="C")
     pdf.set_xy(115, firmas_y + 2)
     pdf.cell(80, 5, _pdf_safe("RECIBE"), align="C")
+
+    # Debajo de "ENVÍA" va el nombre y puesto de quien firma ahí siempre
+    # (Carlos, Jefe de Logística) en vez del texto genérico "Firma y Nombre".
+    pdf.set_font("Helvetica", "B", 9)
     pdf.set_xy(15, firmas_y + 7)
-    pdf.cell(80, 5, _pdf_safe("Firma y Nombre"), align="C")
+    pdf.cell(80, 5, _pdf_safe(FIRMA_ENVIO_NOMBRE), align="C")
+    pdf.set_font("Helvetica", "", 8)
+    pdf.set_text_color(90, 90, 90)
+    pdf.set_xy(15, firmas_y + 12)
+    pdf.cell(80, 5, _pdf_safe(FIRMA_ENVIO_PUESTO), align="C")
+    pdf.set_text_color(0, 0, 0)
+
+    pdf.set_font("Helvetica", "", 9)
     pdf.set_xy(115, firmas_y + 7)
     pdf.cell(80, 5, _pdf_safe("Firma, Nombre y Sello."), align="C")
 
