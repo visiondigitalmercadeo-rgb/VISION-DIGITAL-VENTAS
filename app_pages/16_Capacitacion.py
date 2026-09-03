@@ -47,6 +47,38 @@ modulos_lookup_cron = {m["id"]: m for m in modulos_all}
 submods_lookup_cron = {sm["id"]: sm for sm in submodulos_all}
 
 # ---------------------------------------------------------------------------
+# Aviso de módulos con el mismo nombre: cuando dos módulos se llaman igual,
+# los menús desplegables (como "Módulo" al programar una capacitación) solo
+# pueden mostrar uno de los dos, y a veces terminan usando el que no tiene
+# submódulos en vez del correcto — esto lo detecta y lo señala para poder
+# corregirlo, en vez de dejar que confunda en silencio.
+# ---------------------------------------------------------------------------
+_modulos_por_nombre_norm = {}
+for _m in modulos_all:
+    _clave = (_m.get("nombre") or "").strip().lower()
+    _modulos_por_nombre_norm.setdefault(_clave, []).append(_m)
+modulos_duplicados = {k: v for k, v in _modulos_por_nombre_norm.items() if len(v) > 1}
+
+if modulos_duplicados:
+    with st.expander(
+        f"⚠️ Hay {len(modulos_duplicados)} nombre(s) de módulo repetido(s) — puede causar que "
+        "algunos menús elijan el módulo equivocado",
+        expanded=True,
+    ):
+        st.caption(
+            "Cuando dos módulos tienen exactamente el mismo nombre, menús como 'Módulo' al "
+            "programar una capacitación a veces terminan usando el que no tiene submódulos, en "
+            "vez del que sí. Para corregirlo: identifica abajo cuál de cada grupo es el que sobra "
+            "(normalmente el de 0 submódulos) y elimínalo desde la pestaña '📚 Módulos', dentro de "
+            "su recuadro, con «⚙️ Editar / eliminar este módulo»."
+        )
+        for _nombre_norm, _mods_dup in modulos_duplicados.items():
+            st.markdown(f"**«{_mods_dup[0]['nombre']}»** — aparece {len(_mods_dup)} veces:")
+            for _md in _mods_dup:
+                _n_subs = len(db.list_submodulos(_md["id"]))
+                st.caption(f"— {_n_subs} submódulo(s) · creado: {(_md.get('creado_en') or '—')[:10]}")
+
+# ---------------------------------------------------------------------------
 # Cronograma: programación mensual de capacitaciones (cuándo se imparte cada
 # módulo/submódulo, a qué tienda y quién la da) — independiente de las
 # calificaciones, aquí solo se planea la fecha.
@@ -92,18 +124,25 @@ with tab_cron_lista:
             if not modulos_all:
                 st.caption("Primero crea al menos un módulo en la pestaña '📚 Módulos' para poder programarlo.")
             else:
+                # El "Módulo" va FUERA del formulario a propósito: los campos
+                # dentro de un st.form no actualizan la página hasta que se
+                # presiona el botón de enviar, así que si estuviera adentro,
+                # la lista de "Submódulo" se quedaría mostrando los
+                # submódulos del módulo anterior hasta después de guardar.
+                # Estando afuera, en cuanto cambias el Módulo, el Submódulo
+                # se actualiza al instante con los submódulos correctos.
+                opciones_modulo_prog = {m["nombre"]: m["id"] for m in modulos_all}
+                modulo_prog_nombre = st.selectbox(
+                    "Módulo", list(opciones_modulo_prog.keys()), key="cap_prog_modulo_n",
+                )
+                modulo_prog_id = opciones_modulo_prog[modulo_prog_nombre]
+                opciones_submod_prog = {"(módulo completo)": None}
+                opciones_submod_prog.update(
+                    {sm["nombre"]: sm["id"] for sm in db.list_submodulos(modulo_prog_id)}
+                )
                 with st.form("cap_nueva_programacion", clear_on_submit=True):
                     fecha_prog_n = st.date_input(
                         "Fecha de la capacitación", value=date.today(), key="cap_prog_fecha_n",
-                    )
-                    opciones_modulo_prog = {m["nombre"]: m["id"] for m in modulos_all}
-                    modulo_prog_nombre = st.selectbox(
-                        "Módulo", list(opciones_modulo_prog.keys()), key="cap_prog_modulo_n",
-                    )
-                    modulo_prog_id = opciones_modulo_prog[modulo_prog_nombre]
-                    opciones_submod_prog = {"(módulo completo)": None}
-                    opciones_submod_prog.update(
-                        {sm["nombre"]: sm["id"] for sm in db.list_submodulos(modulo_prog_id)}
                     )
                     submod_prog_nombre = st.selectbox(
                         "Submódulo (opcional)", list(opciones_submod_prog.keys()), key="cap_prog_submodulo_n",
@@ -152,26 +191,30 @@ with tab_cron_lista:
             if elegido_prog != "—":
                 prog_id_sel = opciones_prog_ed[elegido_prog]
                 pr_ed = db.get_capacitacion_programacion(prog_id_sel)
+                # El "Módulo" va FUERA del formulario por la misma razón que
+                # en "Programar una capacitación" arriba: dentro de un
+                # st.form, la lista de "Submódulo" no se actualiza hasta
+                # después de guardar — aquí sí se actualiza al instante.
+                opciones_modulo_ed = {m["nombre"]: m["id"] for m in modulos_all}
+                modulo_actual_nombre = (modulos_lookup_cron.get(pr_ed.get("modulo_id")) or {}).get("nombre")
+                modulo_prog_nombre_ed = st.selectbox(
+                    "Módulo", list(opciones_modulo_ed.keys()),
+                    index=list(opciones_modulo_ed.keys()).index(modulo_actual_nombre)
+                    if modulo_actual_nombre in opciones_modulo_ed else 0,
+                    key=f"cap_prog_modulo_ed_{prog_id_sel}",
+                )
+                modulo_prog_id_ed = opciones_modulo_ed[modulo_prog_nombre_ed]
+                opciones_submod_ed = {"(módulo completo)": None}
+                opciones_submod_ed.update(
+                    {sm["nombre"]: sm["id"] for sm in db.list_submodulos(modulo_prog_id_ed)}
+                )
+                submod_actual_nombre = (
+                    (submods_lookup_cron.get(pr_ed.get("submodulo_id")) or {}).get("nombre")
+                    if pr_ed.get("submodulo_id") else "(módulo completo)"
+                )
                 with st.form(f"cap_editar_prog_{prog_id_sel}"):
                     fecha_prog_ed = st.date_input(
                         "Fecha", value=date.fromisoformat(pr_ed["fecha"]) if pr_ed.get("fecha") else date.today(),
-                    )
-                    opciones_modulo_ed = {m["nombre"]: m["id"] for m in modulos_all}
-                    modulo_actual_nombre = (modulos_lookup_cron.get(pr_ed.get("modulo_id")) or {}).get("nombre")
-                    modulo_prog_nombre_ed = st.selectbox(
-                        "Módulo", list(opciones_modulo_ed.keys()),
-                        index=list(opciones_modulo_ed.keys()).index(modulo_actual_nombre)
-                        if modulo_actual_nombre in opciones_modulo_ed else 0,
-                        key=f"cap_prog_modulo_ed_{prog_id_sel}",
-                    )
-                    modulo_prog_id_ed = opciones_modulo_ed[modulo_prog_nombre_ed]
-                    opciones_submod_ed = {"(módulo completo)": None}
-                    opciones_submod_ed.update(
-                        {sm["nombre"]: sm["id"] for sm in db.list_submodulos(modulo_prog_id_ed)}
-                    )
-                    submod_actual_nombre = (
-                        (submods_lookup_cron.get(pr_ed.get("submodulo_id")) or {}).get("nombre")
-                        if pr_ed.get("submodulo_id") else "(módulo completo)"
                     )
                     submod_prog_nombre_ed = st.selectbox(
                         "Submódulo (opcional)", list(opciones_submod_ed.keys()),
@@ -363,8 +406,14 @@ with tab_modulos:
                 nombre_mod = st.text_input("Nombre del módulo (ej. 'Ventas')")
                 desc_mod = st.text_area("Descripción (opcional)")
                 if st.form_submit_button("Crear módulo", use_container_width=True):
+                    _nombres_existentes = {(m.get("nombre") or "").strip().lower() for m in modulos_all}
                     if not nombre_mod.strip():
                         st.error("El nombre del módulo es obligatorio.")
+                    elif nombre_mod.strip().lower() in _nombres_existentes:
+                        st.error(
+                            f"Ya existe un módulo llamado «{nombre_mod.strip()}» — usa otro nombre, o "
+                            "edita el que ya existe en vez de crear uno nuevo."
+                        )
                     else:
                         db.create_modulo(nombre_mod.strip(), desc_mod.strip() or None)
                         st.success(f"Módulo '{nombre_mod}' creado.")
@@ -564,8 +613,17 @@ with tab_modulos:
                             nombre_mod_ed = st.text_input("Nombre del módulo", value=m["nombre"])
                             desc_mod_ed = st.text_area("Descripción", value=m.get("descripcion") or "")
                             if st.form_submit_button("Guardar cambios", use_container_width=True):
+                                _nombres_otros = {
+                                    (otro.get("nombre") or "").strip().lower()
+                                    for otro in modulos_all if otro["id"] != m["id"]
+                                }
                                 if not nombre_mod_ed.strip():
                                     st.error("El nombre del módulo es obligatorio.")
+                                elif nombre_mod_ed.strip().lower() in _nombres_otros:
+                                    st.error(
+                                        f"Ya existe otro módulo llamado «{nombre_mod_ed.strip()}» — usa "
+                                        "otro nombre."
+                                    )
                                 else:
                                     db.update_modulo(
                                         m["id"], nombre=nombre_mod_ed.strip(), descripcion=desc_mod_ed.strip() or None,
