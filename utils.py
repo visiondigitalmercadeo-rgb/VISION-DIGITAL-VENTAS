@@ -12,8 +12,9 @@ from fpdf import FPDF
 import auth
 import database as db
 from config import (
-    CATEGORICAL, EMPRESA_DIRECCION_LINEA1, EMPRESA_DIRECCION_LINEA2, EMPRESA_NOMBRE, FIRMA_STEVEN_NOMBRE,
-    FIRMA_STEVEN_PATH, FIRMA_STEVEN_PUESTO, GRIDLINE, INK_MUTED, INK_PRIMARY, LOGO_PATH, ROLES_LABEL, SURFACE,
+    CATEGORICAL, EMPRESA_DIRECCION_LINEA1, EMPRESA_DIRECCION_LINEA2, EMPRESA_NOMBRE, FIRMA_ENVIO_PATH,
+    FIRMA_STEVEN_NOMBRE, FIRMA_STEVEN_PATH, FIRMA_STEVEN_PUESTO, GRIDLINE, INK_MUTED, INK_PRIMARY, LOGO_PATH,
+    ROLES_LABEL, SURFACE,
 )
 
 
@@ -717,7 +718,15 @@ def pedido_pdf_bytes(p: dict) -> bytes:
         fila_y += alto_fila
 
     # -- Firmas: ENVÍA / RECIBE ----------------------------------------------
-    firmas_y = fila_y + 18
+    # El hueco antes de las líneas se agranda un poco (de 18 a 26) respecto
+    # al resto del PDF para dejarle espacio arriba a la firma escaneada de
+    # "ENVÍA", que se centra sobre esa misma línea.
+    firmas_y = fila_y + 26
+    try:
+        firma_w = 22
+        pdf.image(FIRMA_ENVIO_PATH, x=15 + (80 - firma_w) / 2, y=firmas_y - 18, w=firma_w)
+    except Exception:
+        pass
     pdf.set_draw_color(0, 0, 0)
     pdf.line(15, firmas_y, 95, firmas_y)
     pdf.line(115, firmas_y, 195, firmas_y)
