@@ -265,6 +265,15 @@ else:
     )
     st.dataframe(styler, use_container_width=True, hide_index=True)
 
+    total_cantidad_cron = sum(
+        p["cantidad_unidades"] for p in pedidos_cronograma if p.get("cantidad_unidades") not in (None, "")
+    )
+    total_monto_cron = sum(_total_pedido(p) or 0 for p in pedidos_cronograma)
+    kpi_cron1, kpi_cron2, kpi_cron3 = st.columns(3)
+    kpi_cron1.metric("📦 Órdenes en el cronograma", len(pedidos_cronograma))
+    kpi_cron2.metric("🔢 Cantidad total de unidades", f"{total_cantidad_cron:,.0f}")
+    kpi_cron3.metric("💲 Monto total", money(total_monto_cron))
+
 if puede_editar:
     with st.expander("➕ Agregar orden nueva"):
         with st.form("colorado_nuevo_pedido", clear_on_submit=True):
