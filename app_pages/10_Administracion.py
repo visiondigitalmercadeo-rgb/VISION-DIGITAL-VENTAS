@@ -7,8 +7,8 @@ import streamlit as st
 import auth
 import database as db
 from config import (
-    PAGINAS_ASIGNABLES_EXTRA, PAGINAS_REGISTRO, PERSONAL_TIENDA_INICIAL, ROLES, ROLES_DE_TIENDA, ROLES_LABEL,
-    TICKET_TIENDA_SLUG, TICKET_TIENDAS,
+    PAGINAS_ASIGNABLES_EXTRA, PAGINAS_BASE_POR_ROL, PAGINAS_REGISTRO, PERSONAL_TIENDA_INICIAL, ROLES,
+    ROLES_DE_TIENDA, ROLES_LABEL, TICKET_TIENDA_SLUG, TICKET_TIENDAS,
 )
 from utils import download_excel_button, sidebar_user_box
 
@@ -41,6 +41,29 @@ with tab_lista:
     if elegido != "—":
         uid = opciones[elegido]
         u = next(x for x in usuarios if x["id"] == uid)
+
+        st.markdown("#### 🔎 Accesos actuales de este usuario")
+        etiquetas_paginas_acceso = {p["key"]: f"{p['icon']} {p['title']}" for p in PAGINAS_REGISTRO}
+        paginas_base_actuales = PAGINAS_BASE_POR_ROL.get(u["rol"], [])
+        paginas_extra_actuales_vista = [
+            k for k in (u.get("paginas_extra") or []) if k in PAGINAS_ASIGNABLES_EXTRA
+        ]
+        if not paginas_base_actuales and not paginas_extra_actuales_vista:
+            st.caption("Este usuario todavía no tiene acceso a ninguna pestaña.")
+        else:
+            filas_acceso_actual = [
+                {"Pestaña": etiquetas_paginas_acceso.get(k, k), "Cómo lo obtiene": f"Por su rol ({ROLES_LABEL.get(u['rol'], u['rol'])})"}
+                for k in paginas_base_actuales
+            ] + [
+                {"Pestaña": etiquetas_paginas_acceso.get(k, k), "Cómo lo obtiene": "Acceso extra"}
+                for k in paginas_extra_actuales_vista
+            ]
+            st.caption(
+                f"{len(filas_acceso_actual)} pestaña(s) en total: "
+                f"{len(paginas_base_actuales)} por su rol y {len(paginas_extra_actuales_vista)} de acceso extra."
+            )
+            df_acceso_actual = pd.DataFrame(filas_acceso_actual)
+            st.dataframe(df_acceso_actual, use_container_width=True, hide_index=True)
 
         col1, col2 = st.columns(2)
         with col1:
