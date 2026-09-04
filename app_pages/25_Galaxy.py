@@ -258,34 +258,11 @@ vencidos = [p for p in pedidos if _es_vencido(p)]
 if vencidos:
     st.warning(f"⚠️ Hay {len(vencidos)} orden(es) con la fecha de entrega ya vencida (resaltadas abajo en rojo).")
 
-if not pedidos:
-    st.info("Todavía no hay órdenes registradas para Galaxy.")
-else:
-    pedidos_cronograma = sorted(pedidos, key=lambda p: p.get("fecha_entrega") or "9999-99-99")
-    df_cron = pd.DataFrame([{
-        "Solicita": p.get("quien_solicita") or "—",
-        "Cliente": p.get("cliente_nombre") or "—",
-        "Tipo de pieza": p.get("tipo_pieza") or "—",
-        "Cantidad": p.get("cantidad_unidades") if p.get("cantidad_unidades") not in (None, "") else "—",
-        "Total": money(_total_pedido(p)) if _total_pedido(p) is not None else "—",
-        "Fecha de entrega": p.get("fecha_entrega") or "Sin definir",
-        "Etapa": f"{COLUMN_EMOJI.get(p.get('estado'), '')} {p.get('estado') or '—'}",
-        "_vencido": _es_vencido(p),
-    } for p in pedidos_cronograma])
-    styler = df_cron.drop(columns=["_vencido"]).style.apply(
-        lambda _: [f"background-color: {VENCIDO_BG}" if v else "" for v in df_cron["_vencido"]], axis=0,
-    )
-    st.dataframe(styler, use_container_width=True, hide_index=True)
-
-    total_monto_cron = sum(_total_pedido(p) or 0 for p in pedidos_cronograma)
-    kpi_cron1, kpi_cron2 = st.columns(2)
-    kpi_cron1.metric("📦 Órdenes en el cronograma", len(pedidos_cronograma))
-    kpi_cron2.metric("💲 Monto total", money(total_monto_cron))
-
-    # Cantidad de unidades por mes (según la fecha de entrega), en vez de un
-    # solo total general — así se ve cuánto hay programado mes a mes.
+def _tabla_cantidad_por_mes(lista_pedidos):
+    """Muestra la cantidad total de unidades agrupada por mes de entrega
+    para la lista de pedidos dada (pendientes o finalizados)."""
     cantidad_por_mes = {}
-    for p in pedidos_cronograma:
+    for p in lista_pedidos:
         cant = p.get("cantidad_unidades")
         if cant in (None, ""):
             continue
@@ -300,6 +277,69 @@ else:
             for clave, cant in sorted(cantidad_por_mes.items())
         ])
         st.dataframe(df_cant_mes, use_container_width=True, hide_index=True)
+
+
+if not pedidos:
+    st.info("Todavía no hay órdenes registradas para Galaxy.")
+else:
+    # Las órdenes ya entregadas se pasan al cuadro de "Órdenes finalizadas"
+    # de abajo; aquí solo quedan las que todavía están en proceso.
+    pendientes_cronograma = sorted(
+        [p for p in pedidos if p.get("estado") != "Entregado"],
+        key=lambda p: p.get("fecha_entrega") or "9999-99-99",
+    )
+    entregados_cronograma = sorted(
+        [p for p in pedidos if p.get("estado") == "Entregado"],
+        key=lambda p: p.get("fecha_entrega") or "9999-99-99",
+    )
+
+    if not pendientes_cronograma:
+        st.info("No hay órdenes pendientes en el cronograma — todas están finalizadas.")
+    else:
+        df_cron = pd.DataFrame([{
+            "Solicita": p.get("quien_solicita") or "—",
+            "Cliente": p.get("cliente_nombre") or "—",
+            "Tipo de pieza": p.get("tipo_pieza") or "—",
+            "Cantidad": p.get("cantidad_unidades") if p.get("cantidad_unidades") not in (None, "") else "—",
+            "Total": money(_total_pedido(p)) if _total_pedido(p) is not None else "—",
+            "Fecha de entrega": p.get("fecha_entrega") or "Sin definir",
+            "Etapa": f"{COLUMN_EMOJI.get(p.get('estado'), '')} {p.get('estado') or '—'}",
+            "_vencido": _es_vencido(p),
+        } for p in pendientes_cronograma])
+        styler = df_cron.drop(columns=["_vencido"]).style.apply(
+            lambda _: [f"background-color: {VENCIDO_BG}" if v else "" for v in df_cron["_vencido"]], axis=0,
+        )
+        st.dataframe(styler, use_container_width=True, hide_index=True)
+
+        total_monto_cron = sum(_total_pedido(p) or 0 for p in pendientes_cronograma)
+        kpi_cron1, kpi_cron2 = st.columns(2)
+        kpi_cron1.metric("📦 Órdenes pendientes en el cronograma", len(pendientes_cronograma))
+        kpi_cron2.metric("💲 Monto total", money(total_monto_cron))
+
+        # Cantidad de unidades por mes (según la fecha de entrega), en vez de un
+        # solo total general — así se ve cuánto hay programado mes a mes.
+        _tabla_cantidad_por_mes(pendientes_cronograma)
+
+    st.markdown("#### ✅ Órdenes finalizadas")
+    if not entregados_cronograma:
+        st.info("Todavía no hay órdenes finalizadas.")
+    else:
+        df_fin = pd.DataFrame([{
+            "Solicita": p.get("quien_solicita") or "—",
+            "Cliente": p.get("cliente_nombre") or "—",
+            "Tipo de pieza": p.get("tipo_pieza") or "—",
+            "Cantidad": p.get("cantidad_unidades") if p.get("cantidad_unidades") not in (None, "") else "—",
+            "Total": money(_total_pedido(p)) if _total_pedido(p) is not None else "—",
+            "Fecha de entrega": p.get("fecha_entrega") or "Sin definir",
+        } for p in entregados_cronograma])
+        st.dataframe(df_fin, use_container_width=True, hide_index=True)
+
+        total_monto_fin = sum(_total_pedido(p) or 0 for p in entregados_cronograma)
+        kpi_fin1, kpi_fin2 = st.columns(2)
+        kpi_fin1.metric("✅ Órdenes finalizadas", len(entregados_cronograma))
+        kpi_fin2.metric("💲 Monto total finalizado", money(total_monto_fin))
+
+        _tabla_cantidad_por_mes(entregados_cronograma)
 
 if puede_editar:
     with st.expander("➕ Agregar orden nueva"):
