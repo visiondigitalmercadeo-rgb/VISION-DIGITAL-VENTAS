@@ -149,6 +149,57 @@ PAGINAS_REGISTRO = [
 PAGINAS_ASIGNABLES_EXTRA = [p["key"] for p in PAGINAS_REGISTRO if p["key"] != "administracion"]
 
 # ---------------------------------------------------------------------------
+# Pestañas que cada rol ve POR DEFECTO, antes de sumarle el "acceso extra"
+# por usuario (ver PAGINAS_ASIGNABLES_EXTRA arriba) — es la ÚNICA fuente de
+# verdad para esto: la usa app.py para armar la navegación real de cada
+# usuario al iniciar sesión, y Administración de usuarios para mostrarle al
+# admin, al editar a alguien, qué accesos tiene actualmente (los de su rol +
+# los extra). Si el acceso de un rol cambia, se cambia aquí — no hace falta
+# tocar nada más.
+# ---------------------------------------------------------------------------
+_PAGINAS_BASE_COMUN = [
+    "inicio", "prospectos", "llamadas", "citas", "mercadeo", "cotizaciones", "reclamos",
+    "diseno", "diseno_alvaro", "logistica", "ventas", "ventas_mes", "capacitacion", "tickets_tienda",
+    "mantenimiento", "litografia", "mant_tiendas", "documentos", "colorado", "galaxy", "generales", "kpis",
+]
+PAGINAS_BASE_POR_ROL = {
+    # admin, vendedor y vista comparten el mismo paquete amplio de pestañas;
+    # admin además tiene Administración de usuarios, Drive, Phara y NPS
+    # (exclusivas de administrador).
+    "admin": _PAGINAS_BASE_COMUN + ["administracion", "drive", "phara", "nps"],
+    "vendedor": _PAGINAS_BASE_COMUN,
+    "vista": _PAGINAS_BASE_COMUN,
+    # Visitas de mercadeo y, además, Tickets — Tiendas (solo para configurar
+    # tiempos meta / KPIs, no gestiona tickets), control total de Mant.
+    # Tiendas, Drive (solo consulta) y Documentos (solo consulta/descarga).
+    "mercadeo": ["mercadeo", "tickets_tienda", "mant_tiendas", "drive", "documentos"],
+    # Reclamos (cambia el estado), Mantenimiento de Maquinaria, y Mant.
+    # Tiendas (solo sube el PDF de cotización mientras está en 'En cotización').
+    "jefe_planta": ["reclamos", "mantenimiento", "mant_tiendas"],
+    "disenador": ["diseno"],
+    "disenador_alvaro": ["diseno_alvaro"],
+    "jefe_logistica": ["logistica"],
+    # Solo puede actualizar el estado de sus pedidos asignados en Logística.
+    "repartidor": ["logistica"],
+    "jefe_capacitacion": ["capacitacion"],
+    "asistente_capacitacion": ["capacitacion"],
+    # Tickets — Tiendas (solo su tienda), control total de Mant. Tiendas (su
+    # sucursal), Drive (solo consulta), y Colorado/Galaxy para dar
+    # seguimiento a órdenes de producción.
+    "jefe_tienda": ["tickets_tienda", "mant_tiendas", "drive", "colorado", "galaxy"],
+    "subjefe_tienda": ["tickets_tienda", "mant_tiendas", "drive", "colorado", "galaxy"],
+    # Solo Tickets — Tiendas, y solo ven la tienda asignada a su usuario.
+    "anfitriona": ["tickets_tienda"],
+    "asesor_ventas": ["tickets_tienda"],
+    "cajero": ["tickets_tienda"],
+    # Control total de Litografía (cotizaciones y catálogos de máquinas/papel).
+    "cotizadora": ["litografia"],
+    "jefe_mantenimiento": ["mant_tiendas"],
+    # Cliente externo: solo consulta en Phara.
+    "cliente_phara": ["phara"],
+}
+
+# ---------------------------------------------------------------------------
 # Personal inicial de cada tienda, proporcionado por Steven, para la carga
 # masiva desde 'Administración de usuarios' → 'Carga inicial de personal'.
 # TODAS estas personas quedan como nombre asignado a su tienda (colección
