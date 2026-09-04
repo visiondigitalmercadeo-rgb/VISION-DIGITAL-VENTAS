@@ -2761,15 +2761,20 @@ def set_nps_preguntas(preguntas):
     })
 
 
-def create_nps_respuesta(tienda, respuestas):
+def create_nps_respuesta(tienda, respuestas, nombre_contacto=None, telefono_contacto=None):
     """Guarda una respuesta de la encuesta pública. 'respuestas' es un dict
     {pregunta_id: valor} — para una pregunta 'carita', valor es uno de
     'malo'/'regular'/'excelente' (ver config.NPS_CARITAS); para 'opcion', el
     texto de la opción elegida; para 'texto', el comentario libre (puede
-    venir vacío/None, esa pregunta es opcional)."""
+    venir vacío/None, esa pregunta es opcional). 'nombre_contacto' y
+    'telefono_contacto' son del formulario opcional al final de la encuesta
+    ("¿quieres que te contactemos?") — no son parte de las preguntas, van
+    aparte porque no siempre se llenan."""
     client = get_client()
     client.collection("nps_respuestas").document().set({
         "tienda": tienda, "respuestas": respuestas,
+        "nombre_contacto": (nombre_contacto or "").strip() or None,
+        "telefono_contacto": (telefono_contacto or "").strip() or None,
         # Hora de Guatemala (no la del servidor, que corre en UTC) — así la
         # columna "Fecha" de los comentarios en la pestaña NPS sale correcta.
         "creado_en": ahora_guatemala().isoformat(timespec="seconds"),
