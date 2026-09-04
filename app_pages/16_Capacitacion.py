@@ -741,6 +741,45 @@ with tab_calificaciones:
             opciones_persona = {f"{p['nombre']} ({p['tienda']})": p["id"] for p in personal_filtrado}
             persona_nombre_sel = c2.selectbox("Persona", list(opciones_persona.keys()), key="cap_calif_persona")
             persona_id_sel = opciones_persona[persona_nombre_sel]
+            persona_solo_nombre_sel = persona_nombre_sel.rsplit(" (", 1)[0]
+
+            # -----------------------------------------------------------------
+            # Medición del empleado: todas sus calificaciones (en cualquier
+            # módulo), con la fecha y las horas de capacitación recibidas de
+            # cada una — es el reporte que se pide al "medir" a una persona.
+            # -----------------------------------------------------------------
+            st.markdown(f"##### 📊 Medición de {persona_solo_nombre_sel}")
+            calif_persona_medicion = db.list_calificaciones(persona_id=persona_id_sel)
+            if not calif_persona_medicion:
+                st.caption("Todavía no hay calificaciones registradas para esta persona.")
+            else:
+                modulos_lookup_medicion = {m["id"]: m for m in modulos_all}
+                submods_lookup_medicion = {sm["id"]: sm for sm in submodulos_all}
+                filas_medicion = []
+                for c in calif_persona_medicion:
+                    modulo_med = modulos_lookup_medicion.get(c.get("modulo_id"))
+                    submod_med = (
+                        submods_lookup_medicion.get(c.get("submodulo_id")) if c.get("submodulo_id") else None
+                    )
+                    filas_medicion.append({
+                        "Fecha": c.get("fecha") or "—",
+                        "Módulo": modulo_med["nombre"] if modulo_med else "—",
+                        "Sub-Módulo": submod_med["nombre"] if submod_med else "General",
+                        "Horas de capacitación recibidas": (
+                            c.get("horas") if c.get("horas") not in (None, "") else "—"
+                        ),
+                        "Nota de Examen": c.get("calificacion"),
+                    })
+                df_medicion = pd.DataFrame(filas_medicion).sort_values("Fecha", ascending=False)
+                st.dataframe(df_medicion, use_container_width=True, hide_index=True)
+                total_horas_medicion = sum(c.get("horas") or 0 for c in calif_persona_medicion)
+                st.caption(f"⏱️ Total de horas de capacitación recibidas: {total_horas_medicion:g}")
+                download_excel_button(
+                    df_medicion, f"medicion_{persona_solo_nombre_sel}.xlsx".replace(" ", "_"),
+                    key=f"cap_medicion_excel_{persona_id_sel}",
+                )
+
+            st.divider()
 
             opciones_modulo = {m["nombre"]: m["id"] for m in modulos_all}
             modulo_nombre_sel = st.selectbox("Módulo", list(opciones_modulo.keys()), key="cap_calif_modulo")
@@ -751,23 +790,62 @@ with tab_calificaciones:
             if puede_editar:
                 with st.form(f"calificar_form_{persona_id_sel}_{modulo_id_sel}"):
                     calif_general_actual = db.get_calificacion(persona_id_sel, modulo_id_sel, None)
-                    calif_general = st.number_input(
+                    fecha_calif_default = date.today()
+                    if calif_general_actual and calif_general_actual.get("fecha"):
+                        try:
+                            fecha_calif_default = date.fromisoformat(calif_general_actual["fecha"])
+                        except ValueError:
+                            pass
+                    fecha_calif = st.date_input(
+                        "Fecha de la capacitación / examen",
+                        value=fecha_calif_default, key=f"cap_calif_fecha_{persona_id_sel}_{modulo_id_sel}",
+                    )
+                    st.caption(
+                        "Esta fecha se guarda junto con cada calificación que marques abajo (general y/o "
+                        "de submódulos)."
+                    )
+                    colg1, colg2 = st.columns(2)
+                    calif_general = colg1.number_input(
                         f"Calificación general — {modulo_nombre_sel} (0-100)", min_value=0, max_value=100, step=5,
                         value=int(calif_general_actual["calificacion"]) if calif_general_actual else 0,
                         key=f"cap_calif_gen_{persona_id_sel}_{modulo_id_sel}",
                     )
+                    horas_general = colg2.number_input(
+                        "Horas de capacitación recibidas (general)", min_value=0.0, step=0.5, format="%.1f",
+                        value=(
+                            float(calif_general_actual["horas"])
+                            if calif_general_actual and calif_general_actual.get("horas") else 0.0
+                        ),
+                        key=f"cap_calif_horas_gen_{persona_id_sel}_{modulo_id_sel}",
+                    )
                     valores_sub = {}
+                    horas_sub = {}
                     for sm in submods_sel:
                         calif_sm_actual = db.get_calificacion(persona_id_sel, modulo_id_sel, sm["id"])
-                        valores_sub[sm["id"]] = st.number_input(
+                        cols1, cols2 = st.columns(2)
+                        valores_sub[sm["id"]] = cols1.number_input(
                             f"«{sm['nombre']}» (0-100)", min_value=0, max_value=100, step=5,
                             value=int(calif_sm_actual["calificacion"]) if calif_sm_actual else 0,
                             key=f"cap_calif_sm_{persona_id_sel}_{sm['id']}",
                         )
+                        horas_sub[sm["id"]] = cols2.number_input(
+                            f"Horas — «{sm['nombre']}»", min_value=0.0, step=0.5, format="%.1f",
+                            value=(
+                                float(calif_sm_actual["horas"])
+                                if calif_sm_actual and calif_sm_actual.get("horas") else 0.0
+                            ),
+                            key=f"cap_calif_horas_sm_{persona_id_sel}_{sm['id']}",
+                        )
                     if st.form_submit_button("💾 Guardar calificaciones", use_container_width=True):
-                        db.upsert_calificacion(persona_id_sel, modulo_id_sel, None, calif_general)
+                        db.upsert_calificacion(
+                            persona_id_sel, modulo_id_sel, None, calif_general,
+                            horas=horas_general or None, fecha=fecha_calif,
+                        )
                         for sm_id, val in valores_sub.items():
-                            db.upsert_calificacion(persona_id_sel, modulo_id_sel, sm_id, val)
+                            db.upsert_calificacion(
+                                persona_id_sel, modulo_id_sel, sm_id, val,
+                                horas=horas_sub.get(sm_id) or None, fecha=fecha_calif,
+                            )
                         st.success(
                             f"Calificaciones de {persona_nombre_sel} guardadas para el módulo '{modulo_nombre_sel}'.",
                         )
@@ -782,9 +860,11 @@ with tab_calificaciones:
                     f"Para calificar de una vez a todo el personal en el módulo «{modulo_nombre_sel}» "
                     + (f"de {tienda_calif_sel}" if tienda_calif_sel != "Todas" else "de todas las tiendas")
                     + ": descarga la plantilla de abajo, escribe las calificaciones (0 a 100) en las "
-                      "columnas 'General' y de cada submódulo — deja una celda vacía si no quieres "
-                      "cambiar esa nota — y vuelve a subir el mismo archivo aquí. No cambies la columna "
-                      "'ID', ni el filtro de Tienda/Módulo de arriba antes de subirlo."
+                      "columnas 'General' y de cada submódulo, y las horas de capacitación recibidas en "
+                      "sus columnas '- Horas' — deja una celda vacía si no quieres cambiar ese dato — y "
+                      "vuelve a subir el mismo archivo aquí. La columna 'Fecha' se aplica a todas las "
+                      "calificaciones que se guarden de esa fila. No cambies la columna 'ID', ni el "
+                      "filtro de Tienda/Módulo de arriba antes de subirlo."
                 )
 
                 columnas_sub_nombres = [sm["nombre"] for sm in submods_sel]
@@ -793,11 +873,14 @@ with tab_calificaciones:
                     calif_gen_p = db.get_calificacion(p["id"], modulo_id_sel, None)
                     fila_p = {
                         "ID": p["id"], "Nombre": p["nombre"], "Tienda": p["tienda"], "Módulo": modulo_nombre_sel,
+                        "Fecha": calif_gen_p.get("fecha") if calif_gen_p else None,
                         "General": calif_gen_p["calificacion"] if calif_gen_p else None,
+                        "General - Horas": calif_gen_p.get("horas") if calif_gen_p else None,
                     }
                     for sm in submods_sel:
                         calif_sm_p = db.get_calificacion(p["id"], modulo_id_sel, sm["id"])
                         fila_p[sm["nombre"]] = calif_sm_p["calificacion"] if calif_sm_p else None
+                        fila_p[f"{sm['nombre']} - Horas"] = calif_sm_p.get("horas") if calif_sm_p else None
                     filas_plantilla.append(fila_p)
                 df_plantilla_calif = pd.DataFrame(filas_plantilla)
 
@@ -848,6 +931,14 @@ with tab_calificaciones:
                                     filas_id_invalido += 1
                                     continue
                                 pid = str(pid)
+                                fecha_fila = None
+                                if "Fecha" in df_subido_calif.columns:
+                                    fecha_bruta = fila_subida.get("Fecha")
+                                    if not pd.isna(fecha_bruta):
+                                        try:
+                                            fecha_fila = pd.to_datetime(fecha_bruta).date()
+                                        except (ValueError, TypeError):
+                                            fecha_fila = None
                                 for columna in columnas_calif:
                                     if columna not in df_subido_calif.columns:
                                         continue
@@ -865,7 +956,33 @@ with tab_calificaciones:
                                     submod_id_col = None if columna == "General" else next(
                                         (sm["id"] for sm in submods_sel if sm["nombre"] == columna), None,
                                     )
-                                    db.upsert_calificacion(pid, modulo_id_sel, submod_id_col, round(valor_num))
+                                    horas_columna = f"{columna} - Horas"
+                                    horas_fila = None
+                                    if horas_columna in df_subido_calif.columns:
+                                        horas_bruta = fila_subida.get(horas_columna)
+                                        if not pd.isna(horas_bruta):
+                                            try:
+                                                horas_num = float(horas_bruta)
+                                                if horas_num >= 0:
+                                                    horas_fila = horas_num
+                                            except (TypeError, ValueError):
+                                                pass
+                                    # Si la celda de Horas o Fecha viene vacía, se conserva el valor que
+                                    # ya estuviera guardado (en vez de borrarlo) — igual que una celda de
+                                    # calificación vacía tampoco cambia la nota existente.
+                                    calif_previa_fila = db.get_calificacion(pid, modulo_id_sel, submod_id_col)
+                                    if horas_fila is None and calif_previa_fila:
+                                        horas_fila = calif_previa_fila.get("horas")
+                                    fecha_final_fila = fecha_fila
+                                    if fecha_final_fila is None and calif_previa_fila and calif_previa_fila.get("fecha"):
+                                        try:
+                                            fecha_final_fila = date.fromisoformat(calif_previa_fila["fecha"])
+                                        except ValueError:
+                                            fecha_final_fila = None
+                                    db.upsert_calificacion(
+                                        pid, modulo_id_sel, submod_id_col, round(valor_num),
+                                        horas=horas_fila, fecha=fecha_final_fila,
+                                    )
                                     guardadas += 1
                             mensaje_carga = f"Se guardaron {guardadas} calificación(es)."
                             if omitidas:
@@ -900,7 +1017,9 @@ with tab_calificaciones:
                     "Tienda": persona_c["tienda"] if persona_c else "—",
                     "Módulo": modulo_c["nombre"] if modulo_c else "—",
                     "Submódulo": submod_c["nombre"] if submod_c else "General",
-                    "Calificación": c.get("calificacion"),
+                    "Fecha": c.get("fecha") or "—",
+                    "Horas de capacitación recibidas": c.get("horas") if c.get("horas") not in (None, "") else "—",
+                    "Nota de Examen": c.get("calificacion"),
                     "Actualizado": c.get("actualizado_en"),
                 })
             df_calif = pd.DataFrame(filas_calif).sort_values(["Persona", "Módulo", "Submódulo"])
