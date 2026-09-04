@@ -224,6 +224,35 @@ with tab_kpis:
                         df_comentarios_tienda = pd.DataFrame(comentarios_tienda)[["Fecha", "Comentario"]]
                         st.dataframe(df_comentarios_tienda, use_container_width=True, hide_index=True)
 
+    # -----------------------------------------------------------------------
+    # Contactos para dar seguimiento: datos que el cliente dejó, de forma
+    # opcional, al final de la encuesta (ver public_nps.py) — para poder
+    # llamarle en caso de un problema o reclamo.
+    # -----------------------------------------------------------------------
+    st.divider()
+    st.markdown("###### 📞 Contactos para dar seguimiento")
+    st.caption(
+        "Datos que el cliente dejó de forma opcional al final de la encuesta para que lo "
+        "contactemos (por ejemplo, si tuvo un problema o reclamo)."
+    )
+    id_pregunta_texto = pregunta_texto["id"] if pregunta_texto else None
+    contactos = [
+        {
+            "Fecha": (r.get("creado_en") or "")[:16].replace("T", " "),
+            "Tienda": r.get("tienda") or "—",
+            "Nombre": r.get("nombre_contacto"),
+            "Teléfono": r.get("telefono_contacto"),
+            "Comentario": (
+                (r.get("respuestas") or {}).get(id_pregunta_texto) or "—"
+            ) if id_pregunta_texto else "—",
+        }
+        for r in respuestas if r.get("nombre_contacto") or r.get("telefono_contacto")
+    ]
+    if not contactos:
+        st.caption("Nadie ha dejado sus datos de contacto en este período.")
+    else:
+        st.dataframe(pd.DataFrame(contactos), use_container_width=True, hide_index=True)
+
 # ---------------------------------------------------------------------------
 # Código QR — uno por tienda, mismo concepto que Tickets — Tiendas.
 # ---------------------------------------------------------------------------
