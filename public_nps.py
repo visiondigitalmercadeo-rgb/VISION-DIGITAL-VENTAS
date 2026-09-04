@@ -77,6 +77,15 @@ def render_encuesta(slug):
                 elif p["tipo"] == "texto":
                     respuestas[p["id"]] = st.text_area(p["texto"], key=f"nps_q_{p['id']}")
 
+            st.divider()
+            st.caption(
+                "¿Tuviste algún problema o reclamo? Si quieres que te contactemos, déjanos tus "
+                "datos abajo (completamente opcional, no es necesario para enviar la encuesta):"
+            )
+            col_nombre, col_telefono = st.columns(2)
+            nombre_contacto = col_nombre.text_input("Nombre (opcional)", key="nps_contacto_nombre")
+            telefono_contacto = col_telefono.text_input("Teléfono (opcional)", key="nps_contacto_telefono")
+
             enviado = st.form_submit_button("✅ Enviar", use_container_width=True)
             if enviado:
                 faltantes = [
@@ -100,7 +109,10 @@ def render_encuesta(slug):
                     for pid, detalle in detalles_otro.items():
                         if (respuestas.get(pid) or "").strip().lower() == "otro" and (detalle or "").strip():
                             respuestas_limpias[f"{pid}_otro"] = detalle.strip()
-                    db.create_nps_respuesta(tienda, respuestas_limpias)
+                    db.create_nps_respuesta(
+                        tienda, respuestas_limpias,
+                        nombre_contacto=nombre_contacto, telefono_contacto=telefono_contacto,
+                    )
                     st.session_state["nps_encuesta_enviada_tienda"] = tienda
                     st.rerun()
     return True
