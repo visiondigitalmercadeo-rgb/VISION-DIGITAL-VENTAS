@@ -51,6 +51,12 @@ def render_encuesta(slug):
 
         with st.form("nps_encuesta_form"):
             respuestas = {}
+            # Para las preguntas de opción múltiple que incluyan "Otro" entre
+            # sus opciones, se pide especificar cuál — el campo se muestra
+            # siempre (no solo al elegir "Otro") porque, dentro de un
+            # st.form, los campos no se actualizan en vivo al cambiar otro
+            # campo, solo hasta que se presiona "Enviar".
+            detalles_otro = {}
             for p in preguntas:
                 if p["tipo"] == "carita":
                     elegido = st.radio(
@@ -59,10 +65,15 @@ def render_encuesta(slug):
                     )
                     respuestas[p["id"]] = opciones_carita.get(elegido)
                 elif p["tipo"] == "opcion":
+                    opciones_p = p.get("opciones") or []
                     respuestas[p["id"]] = st.radio(
-                        p["texto"], p.get("opciones") or [],
-                        index=None, key=f"nps_q_{p['id']}",
+                        p["texto"], opciones_p, index=None, key=f"nps_q_{p['id']}",
                     )
+                    if any((o or "").strip().lower() == "otro" for o in opciones_p):
+                        detalles_otro[p["id"]] = st.text_input(
+                            "Si elegiste 'Otro' arriba, especifica cuál (obligatorio en ese caso)",
+                            key=f"nps_q_{p['id']}_otro",
+                        )
                 elif p["tipo"] == "texto":
                     respuestas[p["id"]] = st.text_area(p["texto"], key=f"nps_q_{p['id']}")
 
@@ -72,13 +83,23 @@ def render_encuesta(slug):
                     p["texto"] for p in preguntas
                     if p["tipo"] in ("carita", "opcion") and not respuestas.get(p["id"])
                 ]
+                falta_detalle_otro = any(
+                    (respuestas.get(pid) or "").strip().lower() == "otro"
+                    and not (detalles_otro.get(pid) or "").strip()
+                    for pid in detalles_otro
+                )
                 if faltantes:
                     st.error("Por favor responde todas las preguntas antes de enviar.")
+                elif falta_detalle_otro:
+                    st.error("Elegiste 'Otro' — por favor especifica cuál antes de enviar.")
                 else:
                     respuestas_limpias = {
                         pid: (v.strip() if isinstance(v, str) else v) or None
                         for pid, v in respuestas.items()
                     }
+                    for pid, detalle in detalles_otro.items():
+                        if (respuestas.get(pid) or "").strip().lower() == "otro" and (detalle or "").strip():
+                            respuestas_limpias[f"{pid}_otro"] = detalle.strip()
                     db.create_nps_respuesta(tienda, respuestas_limpias)
                     st.session_state["nps_encuesta_enviada_tienda"] = tienda
                     st.rerun()
