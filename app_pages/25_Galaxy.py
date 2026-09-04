@@ -72,9 +72,21 @@ COLUMN_EMOJI = {
     "Nuevo": "🆕", "En producción": "🏭", "Acabados": "✂️", "Entregado": "✅",
 }
 VENCIDO_BG = "#fbe3e3"  # rojo leve — mismo estilo que el resaltado magenta de 'Ventas por mes'
+MESES_ABREV_CRON = {
+    "01": "Ene", "02": "Feb", "03": "Mar", "04": "Abr", "05": "May", "06": "Jun",
+    "07": "Jul", "08": "Ago", "09": "Sep", "10": "Oct", "11": "Nov", "12": "Dic",
+}
 
 pedidos = db.list_galaxy_pedidos()
 hoy = date.today()
+
+
+def _mes_label_cron(fecha_entrega):
+    """'2026-09-05' -> 'Sep 2026'; sin fecha o formato raro -> 'Sin fecha'."""
+    if not fecha_entrega or len(fecha_entrega) < 7 or fecha_entrega[4] != "-":
+        return "Sin fecha"
+    anio, mes = fecha_entrega[:4], fecha_entrega[5:7]
+    return f"{MESES_ABREV_CRON.get(mes, mes)} {anio}"
 
 
 def _es_vencido(p):
@@ -265,14 +277,29 @@ else:
     )
     st.dataframe(styler, use_container_width=True, hide_index=True)
 
-    total_cantidad_cron = sum(
-        p["cantidad_unidades"] for p in pedidos_cronograma if p.get("cantidad_unidades") not in (None, "")
-    )
     total_monto_cron = sum(_total_pedido(p) or 0 for p in pedidos_cronograma)
-    kpi_cron1, kpi_cron2, kpi_cron3 = st.columns(3)
+    kpi_cron1, kpi_cron2 = st.columns(2)
     kpi_cron1.metric("📦 Órdenes en el cronograma", len(pedidos_cronograma))
-    kpi_cron2.metric("🔢 Cantidad total de unidades", f"{total_cantidad_cron:,.0f}")
-    kpi_cron3.metric("💲 Monto total", money(total_monto_cron))
+    kpi_cron2.metric("💲 Monto total", money(total_monto_cron))
+
+    # Cantidad de unidades por mes (según la fecha de entrega), en vez de un
+    # solo total general — así se ve cuánto hay programado mes a mes.
+    cantidad_por_mes = {}
+    for p in pedidos_cronograma:
+        cant = p.get("cantidad_unidades")
+        if cant in (None, ""):
+            continue
+        fe = p.get("fecha_entrega")
+        clave_orden = fe[:7] if fe and len(fe) >= 7 and fe[4] == "-" else "9999-99"
+        cantidad_por_mes[clave_orden] = cantidad_por_mes.get(clave_orden, 0) + cant
+
+    if cantidad_por_mes:
+        st.caption("🔢 Cantidad total de unidades por mes (según fecha de entrega)")
+        df_cant_mes = pd.DataFrame([
+            {"Mes": _mes_label_cron(clave if clave != "9999-99" else None), "Cantidad total de unidades": cant}
+            for clave, cant in sorted(cantidad_por_mes.items())
+        ])
+        st.dataframe(df_cant_mes, use_container_width=True, hide_index=True)
 
 if puede_editar:
     with st.expander("➕ Agregar orden nueva"):
