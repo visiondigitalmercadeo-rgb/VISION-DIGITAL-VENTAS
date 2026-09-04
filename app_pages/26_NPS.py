@@ -181,10 +181,31 @@ with tab_kpis:
             }
             for r in respuestas if (r.get("respuestas") or {}).get(pregunta_texto["id"])
         ]
-        if comentarios:
-            st.dataframe(pd.DataFrame(comentarios), use_container_width=True, hide_index=True)
-        else:
+        if not comentarios:
             st.caption("No hay comentarios en este período.")
+        else:
+            # Divididos por tienda (una pestaña por cada una) para poder leerlos
+            # de un vistazo sin tener que buscarlos mezclados en una sola tabla.
+            # Si el filtro de 'Tienda' de arriba ya está en una tienda específica,
+            # las demás pestañas simplemente salen vacías.
+            otras_tiendas = sorted({c["Tienda"] for c in comentarios if c["Tienda"] not in NPS_TIENDAS})
+            etiquetas_tab_tienda = [
+                f"{t} ({sum(1 for c in comentarios if c['Tienda'] == t)})" for t in NPS_TIENDAS
+            ]
+            if otras_tiendas:
+                etiquetas_tab_tienda.append(f"Otras ({sum(1 for c in comentarios if c['Tienda'] in otras_tiendas)})")
+            tabs_comentarios = st.tabs(etiquetas_tab_tienda)
+            for tab_tienda, tienda_t in zip(tabs_comentarios, list(NPS_TIENDAS) + (["__otras__"] if otras_tiendas else [])):
+                with tab_tienda:
+                    if tienda_t == "__otras__":
+                        comentarios_tienda = [c for c in comentarios if c["Tienda"] in otras_tiendas]
+                    else:
+                        comentarios_tienda = [c for c in comentarios if c["Tienda"] == tienda_t]
+                    if not comentarios_tienda:
+                        st.caption("No hay comentarios de esta tienda en este período.")
+                    else:
+                        df_comentarios_tienda = pd.DataFrame(comentarios_tienda)[["Fecha", "Comentario"]]
+                        st.dataframe(df_comentarios_tienda, use_container_width=True, hide_index=True)
 
 # ---------------------------------------------------------------------------
 # Código QR — uno por tienda, mismo concepto que Tickets — Tiendas.
