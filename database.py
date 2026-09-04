@@ -2766,7 +2766,9 @@ def create_nps_respuesta(tienda, respuestas):
     client = get_client()
     client.collection("nps_respuestas").document().set({
         "tienda": tienda, "respuestas": respuestas,
-        "creado_en": datetime.now().isoformat(timespec="seconds"),
+        # Hora de Guatemala (no la del servidor, que corre en UTC) — así la
+        # columna "Fecha" de los comentarios en la pestaña NPS sale correcta.
+        "creado_en": ahora_guatemala().isoformat(timespec="seconds"),
     })
 
 
