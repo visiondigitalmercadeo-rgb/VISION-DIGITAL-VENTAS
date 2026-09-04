@@ -1388,14 +1388,18 @@ def get_calificacion(persona_id, modulo_id, submodulo_id=None):
     return coincidencias[0] if coincidencias else None
 
 
-def upsert_calificacion(persona_id, modulo_id, submodulo_id, calificacion, notas=None):
+def upsert_calificacion(persona_id, modulo_id, submodulo_id, calificacion, notas=None, horas=None, fecha=None):
     """submodulo_id=None significa que es la calificación general del módulo.
     Si ya existe una calificación para esta persona + módulo (+ submódulo),
-    la reemplaza; si no, la crea."""
+    la reemplaza; si no, la crea. 'horas' son las horas de capacitación que
+    recibió la persona para esta calificación, y 'fecha' es la fecha en que
+    se dio esa capacitación/examen (distinta de 'actualizado_en', que es
+    cuándo se guardó en el sistema)."""
     existente = get_calificacion(persona_id, modulo_id, submodulo_id)
     data = {
         "persona_id": persona_id, "modulo_id": modulo_id, "submodulo_id": submodulo_id,
         "calificacion": calificacion, "notas": notas,
+        "horas": horas, "fecha": str(fecha) if fecha else None,
         "actualizado_en": datetime.now().isoformat(timespec="seconds"),
     }
     client = get_client()
