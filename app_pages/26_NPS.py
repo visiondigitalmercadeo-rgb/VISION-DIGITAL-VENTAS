@@ -169,6 +169,23 @@ with tab_kpis:
             ))
             st.plotly_chart(base_layout(fig_opcion, height=320), use_container_width=True)
 
+            # Si esta pregunta tiene la opción "Otro", el cliente está obligado a
+            # especificar cuál al contestar la encuesta (ver public_nps.py) — aquí
+            # se listan esos detalles, para poder leer qué contestó cada quien.
+            if any((o or "").strip().lower() == "otro" for o in opciones):
+                detalles_otro_lista = [
+                    {
+                        "Fecha": (r.get("creado_en") or "")[:16].replace("T", " "),
+                        "Tienda": r.get("tienda") or "—",
+                        "¿Cuál?": (r.get("respuestas") or {}).get(f"{pregunta_opcion['id']}_otro"),
+                    }
+                    for r in respuestas
+                    if (r.get("respuestas") or {}).get(f"{pregunta_opcion['id']}_otro")
+                ]
+                if detalles_otro_lista:
+                    st.caption(f"📝 Detalle de las respuestas 'Otro' ({len(detalles_otro_lista)}):")
+                    st.dataframe(pd.DataFrame(detalles_otro_lista), use_container_width=True, hide_index=True)
+
     pregunta_texto = next((p for p in preguntas if p["tipo"] == "texto"), None)
     if pregunta_texto:
         st.divider()
