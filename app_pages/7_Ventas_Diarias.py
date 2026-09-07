@@ -52,7 +52,11 @@ with tab_lista:
     meses_disponibles = _opciones_mes_ventas(db.list_ventas(filtro_vendedor))
     etiquetas_mes = {(a, m): f"{MESES_ES[m]} {a}" for a, m in meses_disponibles}
 
-    col_espacio, col_boton_mes = st.columns([4, 1.8])
+    if user["rol"] == "admin":
+        col_espacio, col_boton_mes, col_boton_vendedor = st.columns([2.6, 1.8, 1.8])
+    else:
+        col_espacio, col_boton_mes = st.columns([4, 1.8])
+
     with col_boton_mes:
         with st.popover("📅 Ver meses anteriores", use_container_width=True):
             st.caption("Por defecto se muestra el mes en curso. Elige otro mes para consultarlo.")
@@ -66,6 +70,39 @@ with tab_lista:
     desde = date(anio_sel, mes_sel, 1)
     hasta = date(anio_sel, mes_sel, ultimo_dia_mes_sel)
     st.caption(f"Mostrando: **{etiquetas_mes[(anio_sel, mes_sel)]}**")
+
+    # ------------------------------------------------------------------
+    # Comparativo por vendedor: cuánto vendió cada quien en el mes elegido
+    # (solo visible para el administrador, igual que en Llamadas/Prospección).
+    # ------------------------------------------------------------------
+    if user["rol"] == "admin":
+        with col_boton_vendedor:
+            with st.popover("👥 Ver por vendedor", use_container_width=True):
+                st.caption(f"Comparativo de **{etiquetas_mes[(anio_sel, mes_sel)]}** — todos los vendedores.")
+                ventas_todos_mes = db.list_ventas(None, desde=desde, hasta=hasta)
+                vendedores_map = {v["id"]: v["nombre"] for v in db.list_usuarios()}
+                vendedor_ids_presentes = sorted(
+                    {v.get("vendedor_id") for v in ventas_todos_mes if v.get("vendedor_id")},
+                    key=lambda vid: vendedores_map.get(vid, ""),
+                )
+                if not vendedor_ids_presentes:
+                    st.caption("No hay ventas registradas este mes para comparar por vendedor.")
+                else:
+                    filas_vendedor = []
+                    for vid in vendedor_ids_presentes:
+                        ventas_v = [v for v in ventas_todos_mes if v.get("vendedor_id") == vid]
+                        filas_vendedor.append({
+                            "Vendedor": vendedores_map.get(vid, "—"),
+                            "Nº de ventas": len(ventas_v),
+                            "Nº de órdenes": int(sum(v.get("numero_ordenes") or 0 for v in ventas_v)),
+                            "Total vendido": sum(v.get("monto") or 0 for v in ventas_v),
+                        })
+                    df_vendedores_ventas = pd.DataFrame(filas_vendedor).sort_values(
+                        "Total vendido", ascending=False,
+                    )
+                    df_vendedores_ventas_display = df_vendedores_ventas.copy()
+                    df_vendedores_ventas_display["Total vendido"] = df_vendedores_ventas_display["Total vendido"].apply(money)
+                    st.dataframe(df_vendedores_ventas_display, use_container_width=True, hide_index=True)
 
     rows = db.list_ventas(filtro_vendedor, desde=desde, hasta=hasta)
     if not rows:
