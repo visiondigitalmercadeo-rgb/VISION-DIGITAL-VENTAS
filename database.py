@@ -629,10 +629,10 @@ def list_prospectos(vendedor_id=None):
     return rows
 
 
-def create_prospecto(nombre_cliente, nit, telefono, email, direccion, vendedor_id,
+def create_prospecto(nombre_cliente, telefono, email, direccion, vendedor_id,
                       fecha_seguimiento, recordatorio, notas, estado, productos=None):
     get_client().collection("prospectos").document().set({
-        "nombre_cliente": nombre_cliente, "nit": nit.strip(), "telefono": telefono, "email": email,
+        "nombre_cliente": nombre_cliente, "telefono": telefono, "email": email,
         "direccion": direccion, "vendedor_id": vendedor_id, "fecha_registro": str(date.today()),
         "fecha_seguimiento": str(fecha_seguimiento) if fecha_seguimiento else None,
         "recordatorio": recordatorio, "notas": notas, "estado": estado, "productos": productos or [],
@@ -715,10 +715,10 @@ def list_llamadas(vendedor_id=None):
     return rows
 
 
-def create_llamada(nombre_cliente, nit, telefono, email, direccion, vendedor_id,
+def create_llamada(nombre_cliente, telefono, email, direccion, vendedor_id,
                     fecha_seguimiento, recordatorio, notas, estado, tipo_llamada, productos=None):
     get_client().collection("llamadas").document().set({
-        "nombre_cliente": nombre_cliente, "nit": nit.strip(), "telefono": telefono, "email": email,
+        "nombre_cliente": nombre_cliente, "telefono": telefono, "email": email,
         "direccion": direccion, "vendedor_id": vendedor_id, "fecha_registro": str(date.today()),
         "fecha_seguimiento": str(fecha_seguimiento) if fecha_seguimiento else None,
         "recordatorio": recordatorio, "notas": notas, "estado": estado, "tipo_llamada": tipo_llamada,
@@ -752,7 +752,7 @@ def list_cotizaciones(vendedor_id=None):
     for r in rows:
         p = get_prospecto(r["prospecto_id"]) if r.get("prospecto_id") else None
         r["nombre_cliente"] = p["nombre_cliente"] if p else None
-        r["nit"] = p["nit"] if p else None
+        r["nit"] = p.get("nit") if p else None
     rows.sort(key=lambda r: r["fecha_cotizacion"] or "", reverse=True)
     return rows
 
