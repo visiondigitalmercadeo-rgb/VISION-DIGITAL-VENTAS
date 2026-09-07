@@ -183,7 +183,7 @@ with tab_tablero:
             "ID": r["id"], "Cliente": r["nombre_cliente"], "NIT": r["nit"], "Teléfono": r["telefono"],
             "Email": r.get("email"), "Vendedor": db.nombre_vendedor(r["vendedor_id"], vendedores),
             "Estado": r["estado"], "Registrado": r["fecha_registro"], "Seguimiento": r["fecha_seguimiento"],
-            "Recordatorio": r["recordatorio"],
+            "Recordatorio": r["recordatorio"], "Productos": ", ".join(r.get("productos") or []),
         } for r in rows])
         download_excel_button(df_export, "prospectos.xlsx", key="crm_descargar_excel")
 
@@ -238,6 +238,8 @@ with tab_tablero:
                             st.caption(badge)
                         if r.get("recordatorio"):
                             st.caption(f"📝 {r['recordatorio']}")
+                        if r.get("productos"):
+                            st.caption(f"🎯 Productos: {', '.join(r['productos'])}")
                         if r.get("motivo_perdida"):
                             st.caption(f"❌ Motivo: {r['motivo_perdida']}")
 
@@ -264,6 +266,11 @@ with tab_tablero:
                                     "Próxima fecha de seguimiento",
                                     value=date.fromisoformat(r["fecha_seguimiento"]) if r["fecha_seguimiento"] else date.today(),
                                 )
+                                productos_disponibles_ed = [p["nombre"] for p in db.list_productos_interes()]
+                                productos_ed = st.multiselect(
+                                    "Productos de interés", productos_disponibles_ed,
+                                    default=[p for p in (r.get("productos") or []) if p in productos_disponibles_ed],
+                                )
                                 recordatorio_ed = st.text_input("Recordatorio para el vendedor", value=r["recordatorio"] or "")
                                 notas_ed = st.text_area("Notas", value=r["notas"] or "")
                                 colg1, colg2 = st.columns(2)
@@ -277,7 +284,7 @@ with tab_tablero:
                                             pid, nombre_cliente=nombre_cliente_ed.strip(), nit=nit_ed.strip(),
                                             telefono=telefono_ed, email=email_ed, direccion=direccion_ed,
                                             estado=estado_ed, fecha_seguimiento=str(fecha_seg_ed),
-                                            recordatorio=recordatorio_ed, notas=notas_ed,
+                                            recordatorio=recordatorio_ed, notas=notas_ed, productos=productos_ed,
                                         )
                                         st.session_state.pop(editando_key, None)
                                         st.success("Prospecto actualizado.")
@@ -407,7 +414,7 @@ with tab_tablero:
                 "ID": r["id"], "Cliente": r["nombre_cliente"], "NIT": r["nit"], "Teléfono": r["telefono"],
                 "Vendedor": db.nombre_vendedor(r["vendedor_id"], vendedores), "Estado": r["estado"],
                 "Registrado": r["fecha_registro"], "Seguimiento": r["fecha_seguimiento"],
-                "Recordatorio": r["recordatorio"],
+                "Recordatorio": r["recordatorio"], "Productos": ", ".join(r.get("productos") or []),
             } for r in rows_tabla])
             st.dataframe(df, use_container_width=True, hide_index=True)
 
@@ -418,6 +425,21 @@ with tab_nueva:
     if not auth.can_edit():
         st.info("Tu rol es de solo vista y no puede crear prospectos nuevos.")
     else:
+        if user["rol"] == "admin":
+            with st.popover("➕ Agregar producto a la lista"):
+                st.caption(
+                    "El producto que agregues aquí queda disponible para elegir en 'Productos de "
+                    "interés', tanto en Prospección como en Llamadas."
+                )
+                nuevo_producto = st.text_input("Nombre del producto", key="crm_nuevo_producto_nombre")
+                if st.button("Agregar producto", key="crm_btn_agregar_producto", use_container_width=True):
+                    error_producto = db.create_producto_interes(nuevo_producto)
+                    if error_producto:
+                        st.error(error_producto)
+                    else:
+                        st.success(f"Producto '{nuevo_producto.strip()}' agregado.")
+                        st.rerun()
+
         st.markdown("Ingresa el **NIT** primero: si ya existe en la base de datos, se mostrará una alerta.")
         nit = st.text_input("NIT del cliente", key="nuevo_nit")
         if nit.strip():
@@ -452,6 +474,13 @@ with tab_nueva:
             c3, c4 = st.columns(2)
             estado = c3.selectbox("Estado inicial", ESTADOS_PROSPECTO)
             fecha_seguimiento = c4.date_input("Fecha de seguimiento", value=date.today() + timedelta(days=3))
+            productos_disponibles = [p["nombre"] for p in db.list_productos_interes()]
+            productos_sel = st.multiselect(
+                "Productos de interés",
+                productos_disponibles,
+                help="Si no ves el producto que buscas, un administrador lo puede agregar con el botón "
+                     "'➕ Agregar producto a la lista' de arriba." if user["rol"] != "admin" else None,
+            )
             recordatorio = st.text_input("Recordatorio para el vendedor (ej. 'Llamar para confirmar cotización')")
             notas = st.text_area("Notas adicionales")
 
@@ -474,6 +503,7 @@ with tab_nueva:
                     db.create_prospecto(
                         nombre_cliente.strip(), nit_final, telefono, email, direccion,
                         vendedor_id, fecha_seguimiento, recordatorio, notas, estado,
+                        productos=productos_sel,
                     )
                     st.success(f"Prospecto '{nombre_cliente}' guardado correctamente.")
                     st.rerun()
