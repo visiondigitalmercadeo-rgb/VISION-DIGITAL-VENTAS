@@ -455,16 +455,31 @@ with tab_nueva:
             with st.popover("➕ Agregar producto a la lista"):
                 st.caption(
                     "El producto que agregues aquí queda disponible para elegir en 'Productos de "
-                    "interés', tanto en Prospección como en Llamadas."
+                    "interés', tanto en Prospección como en Llamadas. Puedes agregar varios productos "
+                    "a la vez: escribe uno por línea."
                 )
-                nuevo_producto = st.text_input("Nombre del producto", key="crm_nuevo_producto_nombre")
-                if st.button("Agregar producto", key="crm_btn_agregar_producto", use_container_width=True):
-                    error_producto = db.create_producto_interes(nuevo_producto)
-                    if error_producto:
-                        st.error(error_producto)
+                nuevos_productos = st.text_area(
+                    "Nombre del producto (uno por línea)",
+                    key="crm_nuevo_producto_nombre", height=120,
+                )
+                if st.button("Agregar producto(s)", key="crm_btn_agregar_producto", use_container_width=True):
+                    nombres = [n.strip() for n in nuevos_productos.splitlines() if n.strip()]
+                    if not nombres:
+                        st.error("Escribe al menos un nombre de producto.")
                     else:
-                        st.success(f"Producto '{nuevo_producto.strip()}' agregado.")
-                        st.rerun()
+                        agregados, errores = [], []
+                        for nombre in nombres:
+                            error_producto = db.create_producto_interes(nombre)
+                            if error_producto:
+                                errores.append(f"{nombre} — {error_producto}")
+                            else:
+                                agregados.append(nombre)
+                        if agregados:
+                            st.success(f"Agregado(s): {', '.join(agregados)}")
+                        if errores:
+                            st.warning("No se pudieron agregar: " + " · ".join(errores))
+                        if agregados:
+                            st.rerun()
 
         with st.form("nuevo_prospecto_form", clear_on_submit=True):
             nombre_cliente = st.text_input("Nombre del cliente / empresa")
