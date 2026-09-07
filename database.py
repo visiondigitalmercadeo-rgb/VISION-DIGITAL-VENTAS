@@ -427,6 +427,39 @@ def list_vendedores(solo_activos=True):
     return rows
 
 
+def list_productos_interes(solo_activos=True):
+    """Catálogo de productos que un vendedor puede marcar como 'productos de
+    interés' al registrar un prospecto (Prospección) o una llamada
+    (Llamadas) — es la misma lista compartida entre las dos pestañas.
+    Cualquier administrador puede agregar productos nuevos desde ahí."""
+    client = get_client()
+    rows = [_doc_to_dict(s) for s in client.collection("productos_interes").stream()]
+    if solo_activos:
+        rows = [r for r in rows if r.get("activo", True)]
+    rows.sort(key=lambda r: r.get("nombre") or "")
+    return rows
+
+
+def create_producto_interes(nombre):
+    """Devuelve None si se creó bien, o un mensaje de error si el producto
+    ya existe en la lista (sin importar mayúsculas/minúsculas)."""
+    nombre = (nombre or "").strip()
+    if not nombre:
+        return "Escribe el nombre del producto."
+    existentes = {p["nombre"].strip().lower() for p in list_productos_interes(solo_activos=False)}
+    if nombre.lower() in existentes:
+        return "Ese producto ya está en la lista."
+    get_client().collection("productos_interes").document().set({
+        "nombre": nombre, "activo": True,
+        "creado_en": datetime.now().isoformat(timespec="seconds"),
+    })
+    return None
+
+
+def delete_producto_interes(producto_id):
+    get_client().collection("productos_interes").document(producto_id).delete()
+
+
 def list_logistica_vendedores(solo_activos=True):
     """Vendedores adicionales, sin usuario propio, que se pueden elegir como
     'vendedor que hizo la venta' en un pedido de Logística (ver
@@ -597,12 +630,12 @@ def list_prospectos(vendedor_id=None):
 
 
 def create_prospecto(nombre_cliente, nit, telefono, email, direccion, vendedor_id,
-                      fecha_seguimiento, recordatorio, notas, estado):
+                      fecha_seguimiento, recordatorio, notas, estado, productos=None):
     get_client().collection("prospectos").document().set({
         "nombre_cliente": nombre_cliente, "nit": nit.strip(), "telefono": telefono, "email": email,
         "direccion": direccion, "vendedor_id": vendedor_id, "fecha_registro": str(date.today()),
         "fecha_seguimiento": str(fecha_seguimiento) if fecha_seguimiento else None,
-        "recordatorio": recordatorio, "notas": notas, "estado": estado,
+        "recordatorio": recordatorio, "notas": notas, "estado": estado, "productos": productos or [],
     })
 
 
@@ -683,12 +716,13 @@ def list_llamadas(vendedor_id=None):
 
 
 def create_llamada(nombre_cliente, nit, telefono, email, direccion, vendedor_id,
-                    fecha_seguimiento, recordatorio, notas, estado, tipo_llamada):
+                    fecha_seguimiento, recordatorio, notas, estado, tipo_llamada, productos=None):
     get_client().collection("llamadas").document().set({
         "nombre_cliente": nombre_cliente, "nit": nit.strip(), "telefono": telefono, "email": email,
         "direccion": direccion, "vendedor_id": vendedor_id, "fecha_registro": str(date.today()),
         "fecha_seguimiento": str(fecha_seguimiento) if fecha_seguimiento else None,
         "recordatorio": recordatorio, "notas": notas, "estado": estado, "tipo_llamada": tipo_llamada,
+        "productos": productos or [],
     })
 
 
