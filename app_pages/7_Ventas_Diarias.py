@@ -1,4 +1,5 @@
-from datetime import date, timedelta
+import calendar
+from datetime import date
 
 import pandas as pd
 import streamlit as st
@@ -17,13 +18,54 @@ sidebar_user_box()
 st.title("🧮 Venta del día por vendedor")
 st.caption("Registra la venta diaria por planta (Offset, Digital, Valloy, Colorado) y por línea de venta.")
 
+MESES_ES = {
+    1: "Enero", 2: "Febrero", 3: "Marzo", 4: "Abril", 5: "Mayo", 6: "Junio",
+    7: "Julio", 8: "Agosto", 9: "Septiembre", 10: "Octubre", 11: "Noviembre", 12: "Diciembre",
+}
+
+
+def _opciones_mes_ventas(rows):
+    """Meses disponibles (año, mes) a partir de la fecha de cada venta, más
+    el mes actual — ordenados del más reciente al más antiguo (así el mes
+    en curso siempre queda primero/seleccionado por defecto)."""
+    meses = set()
+    for r in rows:
+        f = r.get("fecha")
+        if f:
+            try:
+                d = date.fromisoformat(f)
+                meses.add((d.year, d.month))
+            except ValueError:
+                pass
+    hoy = date.today()
+    meses.add((hoy.year, hoy.month))
+    return sorted(meses, reverse=True)
+
+
 tab_lista, tab_nueva = st.tabs(["📋 Ventas registradas", "➕ Registrar venta del día"])
 
 with tab_lista:
     filtro_vendedor = vendedor_filter_selector(key="vta_filtro_vendedor")
-    c1, c2 = st.columns(2)
-    desde = c1.date_input("Desde", value=date.today() - timedelta(days=30), key="vta_desde")
-    hasta = c2.date_input("Hasta", value=date.today(), key="vta_hasta")
+
+    # Por defecto se muestra solo el mes en curso; el botón de arriba deja
+    # elegir cualquier mes anterior con ventas registradas.
+    meses_disponibles = _opciones_mes_ventas(db.list_ventas(filtro_vendedor))
+    etiquetas_mes = {(a, m): f"{MESES_ES[m]} {a}" for a, m in meses_disponibles}
+
+    col_espacio, col_boton_mes = st.columns([4, 1.8])
+    with col_boton_mes:
+        with st.popover("📅 Ver meses anteriores", use_container_width=True):
+            st.caption("Por defecto se muestra el mes en curso. Elige otro mes para consultarlo.")
+            mes_elegido = st.selectbox(
+                "Mes a consultar", meses_disponibles, format_func=lambda om: etiquetas_mes[om],
+                key="vta_mes_elegido",
+            )
+
+    anio_sel, mes_sel = mes_elegido
+    ultimo_dia_mes_sel = calendar.monthrange(anio_sel, mes_sel)[1]
+    desde = date(anio_sel, mes_sel, 1)
+    hasta = date(anio_sel, mes_sel, ultimo_dia_mes_sel)
+    st.caption(f"Mostrando: **{etiquetas_mes[(anio_sel, mes_sel)]}**")
 
     rows = db.list_ventas(filtro_vendedor, desde=desde, hasta=hasta)
     if not rows:
