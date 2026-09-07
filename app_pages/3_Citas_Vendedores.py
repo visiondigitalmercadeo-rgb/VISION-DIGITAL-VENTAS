@@ -217,7 +217,10 @@ with tab_nueva:
 
             prospectos = db.list_prospectos(vendedor_id if user["rol"] != "admin" else None)
             opciones_p = {"(cliente libre — escribir abajo)": None}
-            opciones_p.update({f"{p['nombre_cliente']} (NIT {p['nit']})": p["id"] for p in prospectos})
+            opciones_p.update({
+                (f"{p['nombre_cliente']} (NIT {p['nit']})" if p.get("nit") else p["nombre_cliente"]): p["id"]
+                for p in prospectos
+            })
             prospecto_sel = st.selectbox("Prospecto/cliente (opcional)", list(opciones_p.keys()))
             prospecto_id = opciones_p[prospecto_sel]
             cliente_nombre = st.text_input(
