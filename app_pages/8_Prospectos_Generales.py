@@ -98,7 +98,6 @@ else:
     vendedores = db.list_usuarios()
     df = pd.DataFrame([{
         "Cliente": r["nombre_cliente"],
-        "NIT": r["nit"],
         "Vendedor": db.nombre_vendedor(r["vendedor_id"], vendedores),
         "Estado": r["estado"],
         "Registrado": r["fecha_registro"],
