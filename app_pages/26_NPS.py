@@ -78,9 +78,43 @@ def _calificacion_tienda_promedio(tienda):
     return {"promedio": promedio, "carita": carita, "total": len(puntos)}
 
 
+def _leyenda_escala_nps():
+    """Franja visual explicando qué significa cada carita en la clasificación
+    NPS (Detractor / Neutro / Promotor) — mismo estilo de círculos de colores
+    que la imagen de referencia de 'Net Promoter Score', adaptado a las 3
+    caritas que usa la encuesta (Malo / Regular / Excelente)."""
+    grupos = [
+        ("detractor", "DETRACTORES"),
+        ("neutro", "NEUTROS"),
+        ("promotor", "PROMOTORES"),
+    ]
+    piezas = []
+    for categoria, etiqueta in grupos:
+        color = COLOR_POR_CATEGORIA[categoria]
+        caritas_grupo = [c for c in NPS_CARITAS if c["categoria_nps"] == categoria]
+        circulos = "".join(
+            f"<div style='display:inline-flex;align-items:center;justify-content:center;"
+            f"width:34px;height:34px;border-radius:50%;background:{color};font-size:1.1rem;"
+            f"margin:0 2px;'>{c['emoji']}</div>"
+            for c in caritas_grupo
+        )
+        piezas.append(
+            f"<div style='text-align:center;'>"
+            f"<div style='display:flex;'>{circulos}</div>"
+            f"<div style='color:{color};font-weight:700;font-size:0.65rem;margin-top:4px;"
+            f"letter-spacing:0.03em;'>{etiqueta}</div></div>"
+        )
+    st.markdown(
+        "<div style='display:flex;justify-content:center;align-items:flex-start;gap:20px;"
+        "margin:4px 0 12px;'>" + "".join(piezas) + "</div>",
+        unsafe_allow_html=True,
+    )
+
+
 def _seccion_carita(respuestas, pregunta_id, titulo_seccion, titulo_score):
     conteo, total = _breakdown_carita(respuestas, pregunta_id)
     st.markdown(f"###### {titulo_seccion}")
+    _leyenda_escala_nps()
     if not total:
         st.info("No hay respuestas todavía para este filtro.")
         return
