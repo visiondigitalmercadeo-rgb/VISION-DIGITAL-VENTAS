@@ -97,11 +97,17 @@ with tab_lista:
                             "Nº de órdenes": int(sum(v.get("numero_ordenes") or 0 for v in ventas_v)),
                             "Total vendido": sum(v.get("monto") or 0 for v in ventas_v),
                         })
+                    total_mes_todos = sum(f["Total vendido"] for f in filas_vendedor)
+                    for f in filas_vendedor:
+                        f["% del total"] = (f["Total vendido"] / total_mes_todos * 100) if total_mes_todos else 0.0
                     df_vendedores_ventas = pd.DataFrame(filas_vendedor).sort_values(
                         "Total vendido", ascending=False,
                     )
                     df_vendedores_ventas_display = df_vendedores_ventas.copy()
                     df_vendedores_ventas_display["Total vendido"] = df_vendedores_ventas_display["Total vendido"].apply(money)
+                    df_vendedores_ventas_display["% del total"] = df_vendedores_ventas_display["% del total"].apply(
+                        lambda p: f"{p:.1f}%",
+                    )
                     st.dataframe(df_vendedores_ventas_display, use_container_width=True, hide_index=True)
 
     rows = db.list_ventas(filtro_vendedor, desde=desde, hasta=hasta)
