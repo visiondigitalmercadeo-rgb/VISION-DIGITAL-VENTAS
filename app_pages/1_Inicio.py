@@ -64,7 +64,6 @@ with col_a:
         for p in seguimientos:
             rows.append({
                 "Cliente": p["nombre_cliente"],
-                "NIT": p["nit"],
                 "Fecha de seguimiento": p["fecha_seguimiento"],
                 "Recordatorio": p["recordatorio"] or "—",
                 **({"Vendedor": db.nombre_vendedor(p["vendedor_id"], vendedores)} if user["rol"] != "vendedor" else {}),
