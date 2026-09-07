@@ -1,3 +1,4 @@
+import calendar
 from datetime import date, timedelta
 
 import pandas as pd
@@ -20,6 +21,98 @@ ESTADO_EMOJI = {
     "Prospecto": "🔵", "En negociación": "🟠", "Cliente (Ganado)": "🟢", "Perdido": "🔴",
 }
 
+MESES_ES = {
+    1: "Enero", 2: "Febrero", 3: "Marzo", 4: "Abril", 5: "Mayo", 6: "Junio",
+    7: "Julio", 8: "Agosto", 9: "Septiembre", 10: "Octubre", 11: "Noviembre", 12: "Diciembre",
+}
+
+
+def _opciones_mes(rows):
+    """Meses disponibles (año, mes) a partir de las fechas de registro de
+    los prospectos, más el mes actual — ordenados del más reciente al más
+    antiguo."""
+    meses = set()
+    for r in rows:
+        fr = r.get("fecha_registro")
+        if fr:
+            try:
+                d = date.fromisoformat(fr)
+                meses.add((d.year, d.month))
+            except ValueError:
+                pass
+    hoy = date.today()
+    meses.add((hoy.year, hoy.month))
+    return sorted(meses, reverse=True)
+
+
+def _semanas_del_mes(anio, mes):
+    """Divide el mes en semanas de 7 días: 1-7, 8-14, 15-21, 22-28, 29-fin."""
+    ultimo_dia = calendar.monthrange(anio, mes)[1]
+    semanas = []
+    inicio = 1
+    n = 1
+    while inicio <= ultimo_dia:
+        fin = min(inicio + 6, ultimo_dia)
+        semanas.append((n, date(anio, mes, inicio), date(anio, mes, fin)))
+        inicio = fin + 1
+        n += 1
+    return semanas
+
+
+def _render_reporte_semanal():
+    """Panel del botón '📅 Ver por semana': elige un mes y muestra, para
+    cada semana de ese mes, cuántos prospectos se registraron y cuántos
+    quedaron en negociación, cerrados (perdidos) o ganados."""
+    vendedor_id_reporte = user["id"] if user["rol"] == "vendedor" else None
+    todos = db.list_prospectos(vendedor_id_reporte)
+
+    opciones = _opciones_mes(todos)
+    etiquetas = {(a, m): f"{MESES_ES[m]} {a}" for a, m in opciones}
+    elegido = st.selectbox(
+        "Mes", opciones, format_func=lambda om: etiquetas[om], key="crm_reporte_semana_mes",
+    )
+    anio_sel, mes_sel = elegido
+
+    semanas = _semanas_del_mes(anio_sel, mes_sel)
+    filas = []
+    for n, ini, fin in semanas:
+        en_semana = [
+            r for r in todos
+            if r.get("fecha_registro") and ini <= date.fromisoformat(r["fecha_registro"]) <= fin
+        ]
+        filas.append({
+            "Semana": f"Semana {n} ({ini.strftime('%d/%m')}–{fin.strftime('%d/%m')})",
+            "Prospectos": len(en_semana),
+            "En negociación": sum(1 for r in en_semana if r.get("estado") == "En negociación"),
+            "Cerrados": sum(1 for r in en_semana if r.get("estado") == "Perdido"),
+            "Clientes ganados": sum(1 for r in en_semana if r.get("estado") == "Cliente (Ganado)"),
+        })
+
+    df_semanas = pd.DataFrame(filas)
+    st.dataframe(df_semanas, use_container_width=True, hide_index=True)
+
+    total = {
+        "Prospectos": df_semanas["Prospectos"].sum(),
+        "En negociación": df_semanas["En negociación"].sum(),
+        "Cerrados": df_semanas["Cerrados"].sum(),
+        "Clientes ganados": df_semanas["Clientes ganados"].sum(),
+    }
+    st.caption(
+        f"Total del mes — Prospectos: **{total['Prospectos']}** · "
+        f"En negociación: **{total['En negociación']}** · "
+        f"Cerrados: **{total['Cerrados']}** · "
+        f"Clientes ganados: **{total['Clientes ganados']}**"
+    )
+
+    if df_semanas["Prospectos"].sum() > 0:
+        st.bar_chart(
+            df_semanas.set_index("Semana")[
+                ["Prospectos", "En negociación", "Cerrados", "Clientes ganados"]
+            ],
+        )
+    else:
+        st.info("No hay prospectos registrados en este mes.")
+
 
 def _badge_seguimiento(fecha_str):
     """Etiqueta corta con semáforo según qué tan próxima (o vencida) está la
@@ -39,6 +132,11 @@ def _badge_seguimiento(fecha_str):
         return f"🟡 Seguimiento: {fecha_str}"
     return f"🟢 Seguimiento: {fecha_str}"
 
+
+col_espacio, col_boton_semana = st.columns([4, 1.3])
+with col_boton_semana:
+    with st.popover("📅 Ver por semana", use_container_width=True):
+        _render_reporte_semanal()
 
 tab_tablero, tab_nueva = st.tabs(["🗂️ Tablero", "➕ Nuevo prospecto"])
 
