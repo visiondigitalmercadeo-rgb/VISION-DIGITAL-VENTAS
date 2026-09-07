@@ -15,7 +15,7 @@ user = auth.current_user()
 sidebar_user_box()
 
 st.title("📞 Llamadas")
-st.caption("Registro de llamadas a clientes/prospectos: nombre, datos de contacto, NIT, recordatorio, "
+st.caption("Registro de llamadas a clientes/prospectos: nombre, datos de contacto, recordatorio, "
            "fecha de seguimiento y si es llamada inicial o de seguimiento.")
 
 ESTADO_EMOJI = {
@@ -114,6 +114,35 @@ def _render_reporte_semanal():
     else:
         st.info("No hay llamadas registradas en este mes.")
 
+    # ------------------------------------------------------------------
+    # Comparativo por vendedor: cuántas llamadas registró cada quien en
+    # cada semana del mes elegido (solo visible para el administrador).
+    # ------------------------------------------------------------------
+    if user["rol"] == "admin":
+        st.divider()
+        st.markdown("###### 👤 Por vendedor")
+        vendedores_map = {v["id"]: v["nombre"] for v in db.list_usuarios()}
+        vendedor_ids_presentes = sorted(
+            {r.get("vendedor_id") for r in todos if r.get("vendedor_id")},
+            key=lambda vid: vendedores_map.get(vid, ""),
+        )
+        if not vendedor_ids_presentes:
+            st.caption("No hay llamadas registradas este mes para comparar por vendedor.")
+        else:
+            filas_vendedor = []
+            for vid in vendedor_ids_presentes:
+                fila_v = {"Vendedor": vendedores_map.get(vid, "—")}
+                for n, ini, fin in semanas:
+                    fila_v[f"Semana {n}"] = sum(
+                        1 for r in todos
+                        if r.get("vendedor_id") == vid and r.get("fecha_registro")
+                        and ini <= date.fromisoformat(r["fecha_registro"]) <= fin
+                    )
+                fila_v["Total mes"] = sum(fila_v[f"Semana {n}"] for n, _, _ in semanas)
+                filas_vendedor.append(fila_v)
+            df_vendedores = pd.DataFrame(filas_vendedor).sort_values("Total mes", ascending=False)
+            st.dataframe(df_vendedores, use_container_width=True, hide_index=True)
+
 
 def _badge_seguimiento(fecha_str):
     """Etiqueta corta con semáforo según qué tan próxima (o vencida) está la
@@ -147,7 +176,7 @@ tab_tablero, tab_nueva = st.tabs(["🗂️ Tablero", "➕ Nueva llamada"])
 with tab_tablero:
     filtro_vendedor = vendedor_filter_selector(key="lla_filtro_vendedor")
     fb1, fb2 = st.columns([2, 1])
-    busqueda = fb1.text_input("🔎 Buscar por cliente, NIT o teléfono (opcional)", key="lla_busqueda")
+    busqueda = fb1.text_input("🔎 Buscar por cliente o teléfono (opcional)", key="lla_busqueda")
     filtro_tipo = fb2.multiselect("Tipo de llamada", TIPOS_LLAMADA, default=[], key="lla_filtro_tipo")
 
     rows = db.list_llamadas(filtro_vendedor)
@@ -156,7 +185,6 @@ with tab_tablero:
         rows = [
             r for r in rows
             if q in (r.get("nombre_cliente") or "").lower()
-            or q in (r.get("nit") or "").lower()
             or q in (r.get("telefono") or "").lower()
         ]
     if filtro_tipo:
@@ -185,7 +213,7 @@ with tab_tablero:
 
     if rows:
         df_export = pd.DataFrame([{
-            "ID": r["id"], "Cliente": r["nombre_cliente"], "NIT": r["nit"], "Teléfono": r["telefono"],
+            "ID": r["id"], "Cliente": r["nombre_cliente"], "Teléfono": r["telefono"],
             "Email": r.get("email"), "Tipo de llamada": r.get("tipo_llamada") or "—",
             "Vendedor": db.nombre_vendedor(r["vendedor_id"], vendedores),
             "Estado": r["estado"], "Registrada": r["fecha_registro"], "Seguimiento": r["fecha_seguimiento"],
@@ -256,11 +284,9 @@ with tab_tablero:
                             # Edición en línea (se abrió con el lápiz ✏️)
                             # ------------------------------------------------
                             with st.form(f"editar_llamada_{lid}"):
-                                c0a, c0b = st.columns(2)
-                                nombre_cliente_ed = c0a.text_input(
+                                nombre_cliente_ed = st.text_input(
                                     "Nombre del cliente / empresa", value=r["nombre_cliente"] or "",
                                 )
-                                nit_ed = c0b.text_input("NIT", value=r["nit"] or "")
                                 c1, c2 = st.columns(2)
                                 telefono_ed = c1.text_input("Teléfono", value=r["telefono"] or "")
                                 email_ed = c2.text_input("Email", value=r["email"] or "")
@@ -289,11 +315,11 @@ with tab_tablero:
                                 guardar = colg1.form_submit_button("💾 Guardar", use_container_width=True)
                                 cancelar = colg2.form_submit_button("Cancelar", use_container_width=True)
                                 if guardar:
-                                    if not nombre_cliente_ed.strip() or not nit_ed.strip():
-                                        st.error("Nombre del cliente y NIT son obligatorios.")
+                                    if not nombre_cliente_ed.strip():
+                                        st.error("El nombre del cliente es obligatorio.")
                                     else:
                                         db.update_llamada(
-                                            lid, nombre_cliente=nombre_cliente_ed.strip(), nit=nit_ed.strip(),
+                                            lid, nombre_cliente=nombre_cliente_ed.strip(),
                                             telefono=telefono_ed, email=email_ed, direccion=direccion_ed,
                                             tipo_llamada=tipo_llamada_ed, estado=estado_ed,
                                             fecha_seguimiento=str(fecha_seg_ed),
@@ -371,7 +397,7 @@ with tab_tablero:
             st.info("No hay llamadas registradas con estos filtros.")
         else:
             df = pd.DataFrame([{
-                "ID": r["id"], "Cliente": r["nombre_cliente"], "NIT": r["nit"], "Teléfono": r["telefono"],
+                "ID": r["id"], "Cliente": r["nombre_cliente"], "Teléfono": r["telefono"],
                 "Tipo de llamada": r.get("tipo_llamada") or "—",
                 "Vendedor": db.nombre_vendedor(r["vendedor_id"], vendedores), "Estado": r["estado"],
                 "Registrada": r["fecha_registro"], "Seguimiento": r["fecha_seguimiento"],
@@ -400,21 +426,6 @@ with tab_nueva:
                     else:
                         st.success(f"Producto '{nuevo_producto.strip()}' agregado.")
                         st.rerun()
-
-        st.markdown("Ingresa el **NIT** primero: si ya existe en la base de datos, se mostrará una alerta.")
-        nit = st.text_input("NIT del cliente", key="nueva_llamada_nit")
-        if nit.strip():
-            duplicados = db.find_llamadas_by_nit(nit)
-            if duplicados:
-                vendedores = db.list_usuarios()
-                st.info(
-                    f"ℹ️ Ya existen {len(duplicados)} llamada(s) registradas con este NIT:"
-                )
-                for d in duplicados:
-                    st.write(
-                        f"- **{d['nombre_cliente']}** — {d.get('tipo_llamada') or ''} — estado *{d['estado']}* — "
-                        f"vendedor: {db.nombre_vendedor(d['vendedor_id'], vendedores)}"
-                    )
 
         with st.form("nueva_llamada_form", clear_on_submit=True):
             nombre_cliente = st.text_input("Nombre del cliente / empresa")
@@ -448,12 +459,11 @@ with tab_nueva:
 
             enviado = st.form_submit_button("Guardar llamada", use_container_width=True)
             if enviado:
-                nit_final = st.session_state.get("nueva_llamada_nit", "").strip()
-                if not nombre_cliente.strip() or not nit_final:
-                    st.error("Nombre del cliente y NIT son obligatorios.")
+                if not nombre_cliente.strip():
+                    st.error("El nombre del cliente es obligatorio.")
                 else:
                     db.create_llamada(
-                        nombre_cliente.strip(), nit_final, telefono, email, direccion,
+                        nombre_cliente.strip(), telefono, email, direccion,
                         vendedor_id, fecha_seguimiento, recordatorio, notas, estado, tipo_llamada,
                         productos=productos_sel,
                     )
