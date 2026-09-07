@@ -375,6 +375,32 @@ def _render_ruta_extra_tab(tipo):
         st.caption(f"No hay rutas de {tipo.lower()} registradas con este filtro.")
         return
 
+    # Compras y Trámites: por defecto solo se muestran los de HOY. Los de
+    # otros días se resumen aparte (fecha + cuántos hay), en vez de listar
+    # cada tarjeta completa, para no saturar la pestaña.
+    if tipo in ("Compras", "Trámites"):
+        rutas_otros_dias = [r for r in rutas if r.get("fecha") != str(hoy)]
+        rutas = [r for r in rutas if r.get("fecha") == str(hoy)]
+
+        if rutas_otros_dias:
+            conteo_por_fecha = {}
+            for r in rutas_otros_dias:
+                f = r.get("fecha") or "Sin fecha"
+                bucket = conteo_por_fecha.setdefault(f, {"Pendientes": 0, "Hechos": 0})
+                bucket["Pendientes" if r.get("estado") != "Hecho" else "Hechos"] += 1
+            filas_resumen = [
+                {"Fecha": f, "Pendientes": c["Pendientes"], "Hechos": c["Hechos"], "Total": c["Pendientes"] + c["Hechos"]}
+                for f, c in conteo_por_fecha.items()
+            ]
+            filas_resumen.sort(key=lambda x: x["Fecha"], reverse=True)
+            with st.expander(f"📦 {tipo} de otros días ({len(rutas_otros_dias)} en total)"):
+                st.caption("Cuántos registros hay por fecha, y cuántos siguen pendientes.")
+                st.dataframe(pd.DataFrame(filas_resumen), use_container_width=True, hide_index=True)
+
+        if not rutas:
+            st.caption(f"No hay {tipo.lower()} registrados hoy ({hoy.strftime('%d/%m/%Y')}).")
+            return
+
     for r in rutas:
         with st.container(border=True):
             estado_txt = "✅ Hecho" if r.get("estado") == "Hecho" else "⚪ Pendiente"
