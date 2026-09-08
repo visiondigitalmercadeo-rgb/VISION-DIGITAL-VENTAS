@@ -497,15 +497,46 @@ def list_repartidores(solo_activos=True):
     return rows
 
 
-def create_usuario(nombre, username, password, rol, tienda=None, paginas_extra=None):
+_PAGINAS_ROL_CONFIG_DOC_ID = "por_rol"
+
+
+def get_paginas_por_rol():
+    """Devuelve qué pestañas ve CADA ROL por defecto — dict {rol: [keys]} —
+    editable desde Administración de usuarios → '🧩 Accesos por rol', sin
+    tocar código. Si todavía no se ha guardado nada ahí (o solo se guardó
+    para algunos roles), completa con el valor de fábrica
+    (config.PAGINAS_BASE_POR_ROL) — mismo patrón que get_nps_preguntas /
+    get_margenes_cotizador_digital."""
+    from config import PAGINAS_BASE_POR_ROL
+    client = get_client()
+    snap = client.collection("config_paginas").document(_PAGINAS_ROL_CONFIG_DOC_ID).get()
+    data = _doc_to_dict(snap) if snap.exists else None
+    guardado = (data or {}).get("por_rol") or {}
+    return {**PAGINAS_BASE_POR_ROL, **guardado}
+
+
+def set_paginas_rol(rol, paginas):
+    """Guarda la lista completa de pestañas por defecto para UN rol
+    (reemplaza solo lo de ese rol — el resto de roles no se toca)."""
+    client = get_client()
+    doc_ref = client.collection("config_paginas").document(_PAGINAS_ROL_CONFIG_DOC_ID)
+    snap = doc_ref.get()
+    actual = dict((_doc_to_dict(snap) or {}).get("por_rol") or {}) if snap.exists else {}
+    actual[rol] = list(paginas)
+    doc_ref.set({"por_rol": actual, "actualizado_en": datetime.now().isoformat(timespec="seconds")})
+
+
+def create_usuario(nombre, username, password, rol, tienda=None, paginas_extra=None, paginas_removidas=None):
     """'paginas_extra': claves de config.PAGINAS_REGISTRO a las que este
-    usuario tiene acceso ADEMÁS de lo que ya le da su rol — ver
-    Administración de usuarios → 'Acceso extra a otras pestañas'."""
+    usuario tiene acceso ADEMÁS de lo que le da su rol. 'paginas_removidas':
+    claves que se le QUITAN aunque su rol normalmente las incluya. Ambas se
+    gestionan juntas desde Administración de usuarios → '🔐 Accesos de este
+    usuario' (ver también get_paginas_por_rol para los valores por rol)."""
     client = get_client()
     client.collection("usuarios").document().set({
         "nombre": nombre, "username": username, "password_hash": hash_password(password),
         "rol": rol, "activo": True, "fecha_creacion": str(date.today()), "tienda": tienda,
-        "paginas_extra": paginas_extra or [],
+        "paginas_extra": paginas_extra or [], "paginas_removidas": paginas_removidas or [],
     })
 
 
