@@ -1890,6 +1890,195 @@ def delete_mantenimiento(mantenimiento_id):
 
 
 # ---------------------------------------------------------------------------
+# Cotizador Técnico: catálogo de máquinas y papel (con costos reales, que
+# carga el propio Steven — el catálogo empieza vacío, sin datos de ejemplo) y
+# cotizaciones técnicas — la ficha de especificación de un trabajo (formato
+# de la pieza, tintas, papel, máquina, cantidad) con cálculo automático de
+# pliegos, planchas, pasadas de máquina y costo total. Inspirado en el
+# enfoque de estimación de sistemas MIS de impresión (ej. Optimus), pero
+# construido a la medida de Visión Digital — ver app_pages/19_Cotizador_Tecnico.py.
+# ---------------------------------------------------------------------------
+def list_tecnico_maquinas(solo_activos=True):
+    client = get_client()
+    rows = [_doc_to_dict(s) for s in client.collection("tecnico_maquinas").stream()]
+    if solo_activos:
+        rows = [r for r in rows if r.get("activo", True)]
+    rows.sort(key=lambda r: r.get("nombre") or "")
+    return rows
+
+
+def get_tecnico_maquina(maquina_id):
+    if not maquina_id:
+        return None
+    snap = get_client().collection("tecnico_maquinas").document(maquina_id).get()
+    return _doc_to_dict(snap) if snap.exists else None
+
+
+def create_tecnico_maquina(nombre, ancho_max, alto_max, costo_millar_pasadas, costo_plancha):
+    get_client().collection("tecnico_maquinas").document().set({
+        "nombre": nombre.strip(), "ancho_max": float(ancho_max), "alto_max": float(alto_max),
+        "costo_millar_pasadas": float(costo_millar_pasadas), "costo_plancha": float(costo_plancha),
+        "activo": True, "creado_en": datetime.now().isoformat(timespec="seconds"),
+    })
+
+
+def update_tecnico_maquina(maquina_id, **kwargs):
+    if kwargs:
+        get_client().collection("tecnico_maquinas").document(maquina_id).update(kwargs)
+
+
+def delete_tecnico_maquina(maquina_id):
+    get_client().collection("tecnico_maquinas").document(maquina_id).delete()
+
+
+def bulk_upsert_tecnico_maquinas(filas):
+    """Carga masiva desde la plantilla de Excel — 'filas' es una lista de
+    dicts con nombre/ancho_max/alto_max/costo_millar_pasadas/costo_plancha.
+    Si ya existe una máquina con el mismo nombre (sin distinguir mayúsculas),
+    se ACTUALIZA en vez de duplicarla — así es seguro volver a subir el mismo
+    archivo más adelante para agregar máquinas nuevas. Retorna
+    (creadas, actualizadas)."""
+    client = get_client()
+    existentes = list_tecnico_maquinas(solo_activos=False)
+    por_nombre = {(e.get("nombre") or "").strip().lower(): e for e in existentes}
+    creadas = actualizadas = 0
+    for fila in filas:
+        nombre = (fila.get("nombre") or "").strip()
+        if not nombre:
+            continue
+        datos = {
+            "nombre": nombre, "ancho_max": float(fila["ancho_max"]), "alto_max": float(fila["alto_max"]),
+            "costo_millar_pasadas": float(fila["costo_millar_pasadas"]), "costo_plancha": float(fila["costo_plancha"]),
+        }
+        existente = por_nombre.get(nombre.lower())
+        if existente:
+            client.collection("tecnico_maquinas").document(existente["id"]).update(datos)
+            actualizadas += 1
+        else:
+            datos.update({"activo": True, "creado_en": datetime.now().isoformat(timespec="seconds")})
+            client.collection("tecnico_maquinas").document().set(datos)
+            creadas += 1
+    return creadas, actualizadas
+
+
+def list_tecnico_papeles(solo_activos=True):
+    client = get_client()
+    rows = [_doc_to_dict(s) for s in client.collection("tecnico_papeles").stream()]
+    if solo_activos:
+        rows = [r for r in rows if r.get("activo", True)]
+    rows.sort(key=lambda r: r.get("tipo") or "")
+    return rows
+
+
+def get_tecnico_papel(papel_id):
+    if not papel_id:
+        return None
+    snap = get_client().collection("tecnico_papeles").document(papel_id).get()
+    return _doc_to_dict(snap) if snap.exists else None
+
+
+def create_tecnico_papel(tipo, fabricante, gramaje, ancho, alto, costo_pliego):
+    get_client().collection("tecnico_papeles").document().set({
+        "tipo": tipo.strip(), "fabricante": fabricante.strip(), "gramaje": float(gramaje),
+        "ancho": float(ancho), "alto": float(alto), "costo_pliego": float(costo_pliego),
+        "activo": True, "creado_en": datetime.now().isoformat(timespec="seconds"),
+    })
+
+
+def update_tecnico_papel(papel_id, **kwargs):
+    if kwargs:
+        get_client().collection("tecnico_papeles").document(papel_id).update(kwargs)
+
+
+def delete_tecnico_papel(papel_id):
+    get_client().collection("tecnico_papeles").document(papel_id).delete()
+
+
+def bulk_upsert_tecnico_papeles(filas):
+    """Igual que bulk_upsert_tecnico_maquinas, pero para el catálogo de
+    papel. Se identifica cada papel por tipo + fabricante + gramaje (sin
+    distinguir mayúsculas) — permite tener varios gramajes del mismo tipo y
+    fabricante como productos distintos. Retorna (creados, actualizados)."""
+    client = get_client()
+    existentes = list_tecnico_papeles(solo_activos=False)
+
+    def _llave(tipo, fabricante, gramaje):
+        return ((tipo or "").strip().lower(), (fabricante or "").strip().lower(), round(float(gramaje), 2))
+
+    por_llave = {_llave(e.get("tipo"), e.get("fabricante"), e.get("gramaje") or 0): e for e in existentes}
+    creados = actualizados = 0
+    for fila in filas:
+        tipo = (fila.get("tipo") or "").strip()
+        if not tipo:
+            continue
+        datos = {
+            "tipo": tipo, "fabricante": (fila.get("fabricante") or "").strip(),
+            "gramaje": float(fila["gramaje"]), "ancho": float(fila["ancho"]), "alto": float(fila["alto"]),
+            "costo_pliego": float(fila["costo_pliego"]),
+        }
+        llave = _llave(tipo, fila.get("fabricante"), fila["gramaje"])
+        existente = por_llave.get(llave)
+        if existente:
+            client.collection("tecnico_papeles").document(existente["id"]).update(datos)
+            actualizados += 1
+        else:
+            datos.update({"activo": True, "creado_en": datetime.now().isoformat(timespec="seconds")})
+            client.collection("tecnico_papeles").document().set(datos)
+            creados += 1
+    return creados, actualizados
+
+
+def _siguiente_numero_tecnico():
+    """Numeración corrida (no reinicia por día) para las cotizaciones del
+    Cotizador Técnico — ej. TEC-0001, TEC-0002, ..."""
+    rows = [_doc_to_dict(s) for s in get_client().collection("tecnico_cotizaciones").stream()]
+    numeros = [r.get("numero") for r in rows if isinstance(r.get("numero"), int)]
+    return (max(numeros, default=0)) + 1
+
+
+def list_tecnico_cotizaciones():
+    client = get_client()
+    rows = [_doc_to_dict(s) for s in client.collection("tecnico_cotizaciones").stream()]
+    rows.sort(key=lambda r: r.get("numero") or 0, reverse=True)
+    return rows
+
+
+def get_tecnico_cotizacion(cotizacion_id):
+    if not cotizacion_id:
+        return None
+    snap = get_client().collection("tecnico_cotizaciones").document(cotizacion_id).get()
+    return _doc_to_dict(snap) if snap.exists else None
+
+
+def create_tecnico_cotizacion(**campos):
+    """Crea una cotización técnica. 'campos' admite: cliente, maquina_id,
+    maquina_nombre, papel_id, papel_nombre, ancho_pieza, alto_pieza,
+    cantidad, tintas_frente, tintas_dorso, merma_pct, piezas_por_pliego,
+    pliegos_necesarios, planchas_necesarias, pasadas_maquina, costo_papel,
+    costo_planchas, costo_pasadas, acabados (lista de {descripcion, costo}),
+    costo_total, margen_pct, precio_venta, utilidad, margen_real_pct,
+    estado, notas, creado_por."""
+    numero = _siguiente_numero_tecnico()
+    doc_ref = get_client().collection("tecnico_cotizaciones").document()
+    data = {
+        "numero": numero,
+        "creado_en": datetime.now().isoformat(timespec="seconds"),
+    }
+    data.update(campos)
+    doc_ref.set(data)
+    return {"id": doc_ref.id, "numero": numero}
+
+
+def update_tecnico_cotizacion(cotizacion_id, **kwargs):
+    if kwargs:
+        get_client().collection("tecnico_cotizaciones").document(cotizacion_id).update(kwargs)
+
+
+def delete_tecnico_cotizacion(cotizacion_id):
+    get_client().collection("tecnico_cotizaciones").document(cotizacion_id).delete()
+
+
+# ---------------------------------------------------------------------------
 # Cotizador Digital: convierte el catálogo de precios LPM Digital en un
 # formulario de cotización (ver app_pages/27_Cotizador_Digital.py y
 # pricing_data.py). Al crear una cotización aquí también se crea
