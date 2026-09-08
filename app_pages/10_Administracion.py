@@ -32,7 +32,8 @@ with tab_lista:
         "ID": u["id"],
         "Nombre": ("👑 " if u["username"] == MASTER_ADMIN_USERNAME else "") + u["nombre"],
         "Usuario": u["username"],
-        "Rol": ROLES_LABEL.get(u["rol"], u["rol"]), "Tienda": u.get("tienda") or "—",
+        "Rol": "Dueño" if u["username"] == MASTER_ADMIN_USERNAME else ROLES_LABEL.get(u["rol"], u["rol"]),
+        "Tienda": u.get("tienda") or "—",
         "Activo": "Sí" if u["activo"] else "No",
     } for u in usuarios])
     st.dataframe(df, use_container_width=True, hide_index=True)
