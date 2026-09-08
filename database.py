@@ -631,12 +631,17 @@ def list_prospectos(vendedor_id=None):
 
 def create_prospecto(nombre_cliente, telefono, email, direccion, vendedor_id,
                       fecha_seguimiento, recordatorio, notas, estado, productos=None):
-    get_client().collection("prospectos").document().set({
+    """Devuelve el id del prospecto recién creado (por ejemplo, lo usa el
+    Cotizador Digital para poder ligar automáticamente una cotización a un
+    cliente escrito a mano que todavía no existía en Prospección)."""
+    doc_ref = get_client().collection("prospectos").document()
+    doc_ref.set({
         "nombre_cliente": nombre_cliente, "telefono": telefono, "email": email,
         "direccion": direccion, "vendedor_id": vendedor_id, "fecha_registro": str(date.today()),
         "fecha_seguimiento": str(fecha_seguimiento) if fecha_seguimiento else None,
         "recordatorio": recordatorio, "notas": notas, "estado": estado, "productos": productos or [],
     })
+    return doc_ref.id
 
 
 def update_prospecto(prospecto_id, **kwargs):
