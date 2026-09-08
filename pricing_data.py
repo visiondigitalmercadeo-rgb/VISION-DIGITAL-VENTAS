@@ -432,3 +432,18 @@ MARGEN_CORTE_PULGADAS = 0.5
 # importar cuántos pliegos son — fórmula tomada del mismo ejemplo de Steven:
 # precio de impresión por pliego (tiro) x 0.4 x 5.
 VENTAJA_FACTOR = 0.4 * 5
+
+# ---------------------------------------------------------------------------
+# Márgenes de utilidad por tarifa: el "costo" que calcula el Cotizador
+# Digital (impresión + laminado/foil/troquel + merma + envío, todo a precio
+# de catálogo LPM) es la base sobre la que se aplica este % para llegar al
+# precio de venta final — precio_venta = costo x (1 + % / 100). Valor de
+# fábrica definido por Steven; se pueden editar desde la pestaña "⚙️
+# Márgenes" del Cotizador Digital sin tocar código (ver
+# database.get_margenes_cotizador_digital / set_margenes_cotizador_digital
+# — este diccionario solo se usa si todavía no se ha guardado nada ahí). La
+# tarifa "urgencia" usa el mismo % que "normal" (ambas son venta externa al
+# cliente final) y "Papel bond / inkjet" (que no tiene tarifas LPM) también
+# usa el margen de "normal".
+# ---------------------------------------------------------------------------
+MARGENES_INICIAL = {"normal": 45.0, "urgencia": 45.0, "tienda": 85.0, "gerencial": 35.0}
