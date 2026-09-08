@@ -754,6 +754,116 @@ def pedido_pdf_bytes(p: dict) -> bytes:
     return bytes(pdf.output())
 
 
+def cotizador_digital_pdf_bytes(cot: dict, prospecto: dict | None, vendedor_nombre: str) -> bytes:
+    """PDF limpio, con marca Visión Digital, de una cotización generada desde
+    el Cotizador Digital — pensado para descargarse y enviarse directo al
+    cliente (no replica el layout del Excel B01 original, solo sus datos)."""
+    resultado = cot.get("resultado") or {}
+    detalle = cot.get("detalle") or {}
+    numero_txt = f"CD-{cot.get('numero', 0):04d}"
+
+    pdf = FPDF(format="Letter")
+    pdf.add_page()
+    pdf.set_auto_page_break(auto=True, margin=15)
+
+    try:
+        pdf.image(LOGO_PATH, x=10, y=10, w=42)
+    except Exception:
+        pdf.set_font("Helvetica", "B", 16)
+        pdf.set_xy(10, 12)
+        pdf.cell(60, 8, _pdf_safe(EMPRESA_NOMBRE))
+
+    pdf.set_font("Helvetica", "B", 16)
+    pdf.set_xy(120, 12)
+    pdf.cell(80, 8, _pdf_safe("COTIZACIÓN"), align="R")
+    pdf.set_font("Helvetica", "", 11)
+    pdf.set_xy(120, 21)
+    pdf.cell(80, 6, _pdf_safe(numero_txt), align="R")
+    fecha_txt = (cot.get("creado_en") or "")[:10] or str(date.today())
+    pdf.set_xy(120, 27)
+    pdf.cell(80, 6, _pdf_safe(f"Fecha: {fecha_txt}"), align="R")
+
+    pdf.set_y(38)
+    pdf.set_draw_color(200, 200, 200)
+    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+    pdf.ln(6)
+
+    pdf.set_font("Helvetica", "B", 11)
+    pdf.cell(0, 6, _pdf_safe("Cliente"), new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("Helvetica", "", 11)
+    pdf.cell(0, 6, _pdf_safe(prospecto["nombre_cliente"] if prospecto else "—"), new_x="LMARGIN", new_y="NEXT")
+    if prospecto and prospecto.get("direccion"):
+        pdf.cell(0, 6, _pdf_safe(prospecto["direccion"]), new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(2)
+    pdf.set_font("Helvetica", "", 10)
+    pdf.cell(0, 6, _pdf_safe(f"Vendedor: {vendedor_nombre or '—'}"), new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(4)
+
+    pdf.set_font("Helvetica", "B", 13)
+    pdf.cell(0, 8, _pdf_safe(cot.get("nombre_producto") or "Producto"), new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(1)
+
+    campos = [
+        ("Material", detalle.get("material")),
+        ("Impresión", detalle.get("impresion")),
+        ("Tamaño", detalle.get("tamano")),
+        ("Cantidad", detalle.get("cantidad")),
+        ("Procesos incluidos", detalle.get("procesos")),
+    ]
+    for etiqueta, valor in campos:
+        if valor in (None, "", "—"):
+            continue
+        pdf.set_font("Helvetica", "B", 10)
+        pdf.set_x(10)
+        pdf.cell(45, 6, _pdf_safe(f"{etiqueta}:"))
+        pdf.set_font("Helvetica", "", 10)
+        pdf.cell(0, 6, _pdf_safe(str(valor)), new_x="LMARGIN", new_y="NEXT")
+
+    if cot.get("notas"):
+        pdf.ln(2)
+        pdf.set_font("Helvetica", "B", 10)
+        pdf.cell(0, 6, _pdf_safe("Notas:"), new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font("Helvetica", "", 10)
+        pdf.multi_cell(0, 6, _pdf_safe(cot["notas"]))
+
+    pdf.ln(6)
+    pdf.set_draw_color(200, 200, 200)
+    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+    pdf.ln(6)
+
+    precio_unitario = resultado.get("precio_unitario") or 0.0
+    total = resultado.get("total") or 0.0
+    cantidad = detalle.get("cantidad") or 1
+
+    box_y = pdf.get_y()
+    pdf.set_fill_color(245, 245, 245)
+    pdf.rect(120, box_y, 80, 26, style="F")
+    pdf.set_font("Helvetica", "", 10)
+    pdf.set_xy(124, box_y + 3)
+    pdf.cell(72, 6, _pdf_safe(f"Precio unitario: {money(precio_unitario)}"))
+    pdf.set_xy(124, box_y + 10)
+    pdf.set_font("Helvetica", "B", 13)
+    pdf.cell(72, 8, _pdf_safe(f"Total: {money(total)}"))
+    pdf.set_xy(124, box_y + 19)
+    pdf.set_font("Helvetica", "", 9)
+    pdf.set_text_color(90, 90, 90)
+    pdf.cell(72, 5, _pdf_safe(f"Cantidad: {cantidad}"))
+    pdf.set_text_color(0, 0, 0)
+    pdf.ln(32)
+
+    pdf.set_font("Helvetica", "I", 9)
+    pdf.set_text_color(120, 120, 120)
+    pdf.multi_cell(
+        0, 5,
+        _pdf_safe(
+            "Cotización válida por 15 días a partir de la fecha de emisión. Precios sujetos a cambio sin previo "
+            "aviso. Documento generado automáticamente por la Plataforma Comercial - Visión Digital."
+        ),
+    )
+
+    return bytes(pdf.output())
+
+
 def mant_tienda_pdf_bytes(r: dict) -> bytes:
     """Genera el PDF de 'ORDEN DE TRABAJO No. ____' de una solicitud de
     Mantenimiento de Tiendas — mismo diseño que el PDF de 'ENVÍO No.' de
