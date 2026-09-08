@@ -1998,6 +1998,68 @@ def delete_lito_cotizacion(cotizacion_id):
 
 
 # ---------------------------------------------------------------------------
+# Cotizador Digital: convierte el catálogo de precios LPM Digital en un
+# formulario de cotización (ver app_pages/27_Cotizador_Digital.py y
+# pricing_data.py). Al crear una cotización aquí también se crea
+# automáticamente la fila correspondiente en "Cotizaciones" (colección
+# "cotizaciones"), para que quede en el mismo seguimiento comercial que el
+# resto — ver create_cotizacion_digital.
+# ---------------------------------------------------------------------------
+def _siguiente_numero_cotizacion_digital():
+    """Numeración corrida (no reinicia por día) — CD-0001, CD-0002, ..."""
+    rows = [_doc_to_dict(s) for s in get_client().collection("cotizaciones_digital").stream()]
+    numeros = [r.get("numero") for r in rows if isinstance(r.get("numero"), int)]
+    return (max(numeros, default=0)) + 1
+
+
+def list_cotizaciones_digital():
+    client = get_client()
+    rows = [_doc_to_dict(s) for s in client.collection("cotizaciones_digital").stream()]
+    rows.sort(key=lambda r: r.get("numero") or 0, reverse=True)
+    return rows
+
+
+def get_cotizacion_digital(cotizacion_id):
+    if not cotizacion_id:
+        return None
+    snap = get_client().collection("cotizaciones_digital").document(cotizacion_id).get()
+    return _doc_to_dict(snap) if snap.exists else None
+
+
+def create_cotizacion_digital(prospecto_id, vendedor_id, nombre_producto, tipo_trabajo,
+                               detalle, resultado, notas, creado_por):
+    """Crea la cotización del Cotizador Digital y, además, una fila en
+    'Cotizaciones' (misma cotización, para el seguimiento comercial general)
+    con el número CD-XXXX como número de cotización y el total calculado
+    como monto — así el vendedor no tiene que registrarla dos veces."""
+    numero = _siguiente_numero_cotizacion_digital()
+    numero_txt = f"CD-{numero:04d}"
+    doc_ref = get_client().collection("cotizaciones_digital").document()
+    doc_ref.set({
+        "numero": numero, "prospecto_id": prospecto_id, "vendedor_id": vendedor_id,
+        "nombre_producto": nombre_producto, "tipo_trabajo": tipo_trabajo,
+        "detalle": detalle, "resultado": resultado, "notas": notas, "creado_por": creado_por,
+        "creado_en": datetime.now().isoformat(timespec="seconds"),
+    })
+    create_cotizacion(
+        prospecto_id=prospecto_id, vendedor_id=vendedor_id,
+        fecha_contacto=date.today(), fecha_cotizacion=date.today(),
+        numero_cotizacion=numero_txt, monto=(resultado or {}).get("total") or 0.0,
+        estado="Enviada", notas=f"Generado automáticamente desde Cotizador Digital ({nombre_producto}).",
+    )
+    return {"id": doc_ref.id, "numero": numero}
+
+
+def update_cotizacion_digital(cotizacion_id, **kwargs):
+    if kwargs:
+        get_client().collection("cotizaciones_digital").document(cotizacion_id).update(kwargs)
+
+
+def delete_cotizacion_digital(cotizacion_id):
+    get_client().collection("cotizaciones_digital").document(cotizacion_id).delete()
+
+
+# ---------------------------------------------------------------------------
 # Mantenimiento de Tiendas: tablero de solicitudes estilo Trello, mismo
 # concepto que el tablero de Diseño Gráfico ("disenos") — el jefe de tienda
 # (o admin) reporta qué hay que arreglar, y el 'Jefe de Mantenimiento' la va
