@@ -91,6 +91,14 @@ ROLES_LABEL = {
 # la colección "personal_tiendas"), sin acceso al sistema.
 ROLES_DE_TIENDA = ["anfitriona", "jefe_tienda", "subjefe_tienda", "asesor_ventas", "cajero"]
 
+# Administrador maestro: el ÚNICO usuario protegido de forma permanente en
+# "Administración de usuarios" — ningún otro administrador puede eliminarlo
+# ni cambiarle el rol para quitarle el acceso de administrador (ver
+# 10_Administracion.py). Al estar amarrado a un solo nombre de usuario, por
+# definición solo puede existir un administrador maestro a la vez. Para
+# cambiar quién es el administrador maestro, hay que actualizar este valor.
+MASTER_ADMIN_USERNAME = "sgabriel"
+
 # ---------------------------------------------------------------------------
 # Registro central de todas las pestañas de la plataforma — usado por app.py
 # para construir la navegación (st.Page) y por Administración de usuarios
