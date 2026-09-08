@@ -28,6 +28,7 @@ def _sincronizar_usuario_sesion(user):
         "rol": user["rol"],
         "tienda": user.get("tienda"),
         "paginas_extra": user.get("paginas_extra") or [],
+        "paginas_removidas": user.get("paginas_removidas") or [],
     }
 
 
