@@ -58,7 +58,7 @@ SURFACE = "#fcfcfb"
 ROLES = [
     "admin", "vendedor", "vista", "mercadeo", "jefe_planta", "disenador", "disenador_alvaro",
     "jefe_logistica", "repartidor", "jefe_capacitacion", "asistente_capacitacion",
-    "anfitriona", "jefe_tienda", "subjefe_tienda", "asesor_ventas", "cajero", "cotizadora",
+    "anfitriona", "jefe_tienda", "subjefe_tienda", "asesor_ventas", "cajero",
     "jefe_mantenimiento", "cliente_phara",
 ]
 ROLES_LABEL = {
@@ -78,7 +78,6 @@ ROLES_LABEL = {
     "subjefe_tienda": "Sub jefe de tienda",
     "asesor_ventas": "Asesor de ventas",
     "cajero": "Cajero",
-    "cotizadora": "Cotizadora (Litografía)",
     "jefe_mantenimiento": "Jefe de Mantenimiento",
     "cliente_phara": "Cliente Phara",
 }
@@ -135,7 +134,6 @@ PAGINAS_REGISTRO = [
         "key": "mantenimiento", "path": "app_pages/18_Mantenimiento_Maquinaria.py",
         "title": "Mantenimiento de Maquinaria", "icon": "🔧",
     },
-    {"key": "litografia", "path": "app_pages/19_Litografia.py", "title": "Litografía", "icon": "🖨️"},
     {"key": "mant_tiendas", "path": "app_pages/20_Mant_Tiendas.py", "title": "Mant. Tiendas", "icon": "🏬"},
     {"key": "drive", "path": "app_pages/21_Drive.py", "title": "Drive", "icon": "📁"},
     {"key": "phara", "path": "app_pages/22_Phara.py", "title": "Phara", "icon": "📦"},
@@ -169,7 +167,7 @@ PAGINAS_ASIGNABLES_EXTRA = [p["key"] for p in PAGINAS_REGISTRO if p["key"] != "a
 _PAGINAS_BASE_COMUN = [
     "inicio", "prospectos", "llamadas", "citas", "mercadeo", "cotizaciones", "cotizador_digital", "reclamos",
     "diseno", "diseno_alvaro", "logistica", "ventas", "ventas_mes", "capacitacion", "tickets_tienda",
-    "mantenimiento", "litografia", "mant_tiendas", "documentos", "colorado", "galaxy", "generales", "kpis",
+    "mantenimiento", "mant_tiendas", "documentos", "colorado", "galaxy", "generales", "kpis",
 ]
 PAGINAS_BASE_POR_ROL = {
     # admin, vendedor y vista comparten el mismo paquete amplio de pestañas;
@@ -201,8 +199,6 @@ PAGINAS_BASE_POR_ROL = {
     "anfitriona": ["tickets_tienda"],
     "asesor_ventas": ["tickets_tienda"],
     "cajero": ["tickets_tienda"],
-    # Control total de Litografía (cotizaciones y catálogos de máquinas/papel).
-    "cotizadora": ["litografia"],
     "jefe_mantenimiento": ["mant_tiendas"],
     # Cliente externo: solo consulta en Phara.
     "cliente_phara": ["phara"],
@@ -552,46 +548,6 @@ MANT_TIENDAS_FOTOS_MAX = 5
 # la columna "En cotización" — solo el admin puede autorizarla.
 MANT_TIENDAS_COTIZACION_MAX_BYTES = 900_000  # ~900 KB por PDF — mismo límite práctico que el resto
 MANT_TIENDAS_COTIZACION_MAX_ARCHIVOS = 3
-
-# ---------------------------------------------------------------------------
-# Litografía: cotizador técnico (ficha del trabajo + cálculo automático de
-# costo en pliegos, planchas y pasadas de máquina), inspirado en Logic Print.
-# ---------------------------------------------------------------------------
-# Máquinas y tipos de papel de ejemplo — se cargan solos la primera vez que
-# arranca la app (igual que LOGISTICA_VENDEDORES_INICIAL) para que el
-# cotizador no empiece vacío. SON DATOS DE EJEMPLO: hay que entrar a
-# Litografía → "🖨️ Máquinas" / "📄 Papel" y corregir los precios y medidas
-# reales antes de cotizar un trabajo de verdad.
-LITO_MAQUINAS_INICIAL = [
-    # nombre, ancho_max (cm), alto_max (cm), costo por millar de pasadas (Q), costo por plancha (Q)
-    {"nombre": "Offset 65x90 (ejemplo)", "ancho_max": 65, "alto_max": 90,
-     "costo_millar_pasadas": 350.0, "costo_plancha": 45.0},
-    {"nombre": "Offset 52x72 (ejemplo)", "ancho_max": 52, "alto_max": 72,
-     "costo_millar_pasadas": 280.0, "costo_plancha": 35.0},
-    {"nombre": "Digital carta/oficio (ejemplo)", "ancho_max": 32, "alto_max": 45,
-     "costo_millar_pasadas": 180.0, "costo_plancha": 0.0},
-]
-LITO_PAPELES_INICIAL = [
-    # tipo, fabricante, gramaje (g/m²), ancho (cm), alto (cm), costo por pliego (Q)
-    {"tipo": "Bond", "fabricante": "Genérico", "gramaje": 80, "ancho": 65, "alto": 90, "costo_pliego": 1.20},
-    {"tipo": "Couché brillante", "fabricante": "Genérico", "gramaje": 115, "ancho": 65, "alto": 90, "costo_pliego": 2.10},
-    {"tipo": "Cartulina SBS", "fabricante": "Genérico", "gramaje": 250, "ancho": 65, "alto": 90, "costo_pliego": 3.50},
-]
-
-# Combinaciones comunes de tintas (frente + dorso), para que el usuario elija
-# rápido en vez de escribir números — "Personalizado" permite cualquier otra.
-LITO_TINTAS_PRESETS = {
-    "4+4 (full color ambos lados)": (4, 4),
-    "4+0 (full color un lado)": (4, 0),
-    "4+1": (4, 1),
-    "2+2": (2, 2),
-    "1+1 (un color ambos lados)": (1, 1),
-    "1+0 (un color un lado)": (1, 0),
-    "Personalizado": None,
-}
-
-# Estados de una cotización técnica de litografía.
-ESTADOS_LITO_COTIZACION = ["Borrador", "Cotizado", "Aprobado", "Rechazado"]
 
 # ---------------------------------------------------------------------------
 # Historial (pestaña "Historial" dentro de "Ventas por mes"): serie
