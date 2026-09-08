@@ -2005,6 +2005,39 @@ def delete_lito_cotizacion(cotizacion_id):
 # "cotizaciones"), para que quede en el mismo seguimiento comercial que el
 # resto — ver create_cotizacion_digital.
 # ---------------------------------------------------------------------------
+_CD_CONFIG_DOC_ID = "margenes"
+
+
+def get_margenes_cotizador_digital():
+    """Retorna el % de margen de utilidad configurado por tarifa —
+    {"normal": .., "urgencia": .., "tienda": .., "gerencial": ..}. Si todavía
+    no se ha guardado nada (nunca se tocó la pestaña '⚙️ Márgenes'), retorna
+    el valor de fábrica (pricing_data.MARGENES_INICIAL, definido por Steven)
+    sin necesidad de sembrarlo antes en la base de datos — mismo patrón que
+    get_nps_preguntas."""
+    from pricing_data import MARGENES_INICIAL
+    client = get_client()
+    snap = client.collection("cotizador_digital_config").document(_CD_CONFIG_DOC_ID).get()
+    data = _doc_to_dict(snap) if snap.exists else None
+    if data and data.get("margenes"):
+        # Por si en el futuro se agrega una tarifa nueva a TARIFAS_DIGITAL sin
+        # que todavía se haya guardado un valor para ella — se completa con
+        # el valor de fábrica en vez de quedar en 0.
+        return {**MARGENES_INICIAL, **data["margenes"]}
+    return dict(MARGENES_INICIAL)
+
+
+def set_margenes_cotizador_digital(margenes):
+    """Guarda el % de margen de utilidad por tarifa (reemplaza todo lo que
+    hubiera guardado antes) — margenes: dict {"normal": .., "urgencia": ..,
+    "tienda": .., "gerencial": ..}."""
+    client = get_client()
+    client.collection("cotizador_digital_config").document(_CD_CONFIG_DOC_ID).set({
+        "margenes": {k: float(v) for k, v in margenes.items()},
+        "actualizado_en": datetime.now().isoformat(timespec="seconds"),
+    })
+
+
 def _siguiente_numero_cotizacion_digital():
     """Numeración corrida (no reinicia por día) — CD-0001, CD-0002, ..."""
     rows = [_doc_to_dict(s) for s in get_client().collection("cotizaciones_digital").stream()]
