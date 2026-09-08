@@ -47,7 +47,7 @@ with tab_lista:
 
         if es_master_admin:
             st.info(
-                "👑 Este es el **administrador maestro** de la plataforma: ningún otro administrador "
+                "👑 Este es el **Dueño** de la plataforma: ningún otro administrador "
                 "puede eliminarlo ni cambiarle el rol para quitarle el acceso de administrador."
             )
 
@@ -97,7 +97,7 @@ with tab_lista:
             username_ed = st.text_input("Usuario (para iniciar sesión)", value=u["username"] or "")
             es_unico_admin = u["rol"] == "admin" and sum(1 for x in usuarios if x["rol"] == "admin") <= 1
             if es_master_admin:
-                st.caption("👑 Es el administrador maestro: su rol siempre queda como Administrador.")
+                st.caption("👑 Es el Dueño: su rol siempre queda como Administrador.")
                 rol_ed = "admin"
             elif es_unico_admin:
                 st.caption("Este es el único administrador, así que su rol no se puede cambiar aquí.")
@@ -176,7 +176,7 @@ with tab_lista:
             "el interruptor de 'Usuario activo' de arriba."
         )
         if es_master_admin:
-            st.info("👑 Este es el administrador maestro de la plataforma, no se puede eliminar.")
+            st.info("👑 Este es el Dueño de la plataforma, no se puede eliminar.")
         elif uid == user["id"]:
             st.info("No puedes eliminar tu propio usuario mientras tienes la sesión iniciada con él.")
         elif u["rol"] == "admin" and sum(1 for x in usuarios if x["rol"] == "admin") <= 1:
