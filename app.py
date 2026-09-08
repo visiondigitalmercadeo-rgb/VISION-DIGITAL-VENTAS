@@ -5,7 +5,7 @@ import database as db
 import public_capacitacion
 import public_nps
 import public_tickets
-from config import EMPRESA_NOMBRE, FAVICON_PATH, LOGO_PATH, PAGINAS_BASE_POR_ROL, PAGINAS_REGISTRO
+from config import EMPRESA_NOMBRE, FAVICON_PATH, LOGO_PATH, PAGINAS_REGISTRO
 
 st.set_page_config(page_title=f"{EMPRESA_NOMBRE} — Plataforma Comercial", page_icon=FAVICON_PATH, layout="wide")
 
@@ -77,27 +77,33 @@ paginas_por_key = {
 }
 
 # Qué pestañas ve cada rol por defecto: se arma a partir de
-# config.PAGINAS_BASE_POR_ROL (única fuente de verdad, con el detalle de qué
-# incluye cada rol y por qué — ver los comentarios ahí). Un rol que no
-# aparezca en ese diccionario no ve ninguna pestaña por defecto (no debería
-# pasar, todos los roles de config.ROLES están cubiertos ahí).
+# db.get_paginas_por_rol() (única fuente de verdad en tiempo real — editable
+# desde Administración de usuarios → '🧩 Accesos por rol' sin tocar código;
+# si nunca se ha guardado nada ahí, cae al valor de fábrica de
+# config.PAGINAS_BASE_POR_ROL). Un rol que no aparezca no ve ninguna pestaña
+# por defecto (no debería pasar, todos los roles de config.ROLES están
+# cubiertos ahí).
+paginas_por_rol_actual = db.get_paginas_por_rol()
+
+# Accesos individuales de este usuario en particular, por encima de lo que le
+# da su rol — 'paginas_extra' agrega pestañas puntuales que su rol no incluye
+# por defecto, y 'paginas_removidas' le quita pestañas que su rol sí incluiría
+# (ver Administración de usuarios → '🔐 Accesos de este usuario'). Dentro de
+# cada pestaña extra el usuario sigue viendo solo lo que su rol normalmente le
+# permite hacer — esto solo abre o cierra la puerta para entrar a verla.
+# 'administracion' nunca se puede tocar por esta vía (ni agregar ni quitar),
+# para que nunca se use para dar -o accidentalmente quitar- acceso de
+# administrador completo.
+paginas_removidas_usuario = set(user.get("paginas_removidas") or []) - {"administracion"}
+
 pages = [
-    paginas_por_key[key] for key in PAGINAS_BASE_POR_ROL.get(rol, []) if key in paginas_por_key
+    paginas_por_key[key] for key in paginas_por_rol_actual.get(rol, [])
+    if key in paginas_por_key and key not in paginas_removidas_usuario
 ]
 
-# ---------------------------------------------------------------------------
-# Acceso extra por usuario (independiente del rol) — un admin puede darle a
-# un usuario en particular acceso a pestañas puntuales que su rol no incluye
-# por defecto, sin tener que crear un rol nuevo (ver Administración de
-# usuarios → 'Acceso extra a otras pestañas'). Dentro de cada pestaña extra
-# el usuario sigue viendo solo lo que su rol normalmente le permite hacer —
-# esto solo le abre la puerta para entrar a verla. 'administracion' se
-# excluye explícitamente aquí (además de no ofrecerse en la UI) para que
-# esta vía nunca pueda usarse para dar acceso de administrador completo.
-# ---------------------------------------------------------------------------
 paginas_ya_incluidas = set(pages)
 for key_extra in (user.get("paginas_extra") or []):
-    if key_extra == "administracion":
+    if key_extra == "administracion" or key_extra in paginas_removidas_usuario:
         continue
     pagina_extra = paginas_por_key.get(key_extra)
     if pagina_extra and pagina_extra not in paginas_ya_incluidas:
