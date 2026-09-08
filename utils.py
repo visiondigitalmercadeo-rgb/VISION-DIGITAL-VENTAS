@@ -308,6 +308,65 @@ def download_excel_button(df: pd.DataFrame, filename: str, key: str,
     )
 
 
+def plantilla_catalogo_tecnico_bytes() -> bytes:
+    """Genera en memoria la plantilla de Excel para la carga masiva del
+    catálogo de máquinas y papel del Cotizador Técnico — dos hojas
+    ('Máquinas' y 'Papel'), con encabezados, una fila de ejemplo y filas en
+    blanco. Las mismas columnas que espera db.bulk_upsert_tecnico_maquinas /
+    bulk_upsert_tecnico_papeles."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Font, PatternFill
+    from openpyxl.utils import get_column_letter
+
+    wb = Workbook()
+    header_font = Font(name="Arial", size=11, bold=True, color="FFFFFF")
+    header_fill = PatternFill("solid", fgColor="0B0B2B")
+    example_font = Font(name="Arial", size=11, italic=True, color="7A6A4A")
+    example_fill = PatternFill("solid", fgColor="FFF6E5")
+    normal_font = Font(name="Arial", size=11)
+
+    def _hoja(ws, encabezados, ejemplo, anchos, filas_vacias=60):
+        ws.sheet_view.showGridLines = False
+        for c, titulo in enumerate(encabezados, start=1):
+            celda = ws.cell(row=1, column=c, value=titulo)
+            celda.font = header_font
+            celda.fill = header_fill
+            celda.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        ws.row_dimensions[1].height = 32
+        for c, valor in enumerate(ejemplo, start=1):
+            celda = ws.cell(row=2, column=c, value=valor)
+            celda.font = example_font
+            celda.fill = example_fill
+        ws.cell(row=2, column=len(encabezados) + 1, value="← EJEMPLO: bórralo antes de subir").font = example_font
+        for r in range(3, 3 + filas_vacias):
+            for c in range(1, len(encabezados) + 1):
+                ws.cell(row=r, column=c).font = normal_font
+        for c, ancho in enumerate(anchos, start=1):
+            ws.column_dimensions[get_column_letter(c)].width = ancho
+        ws.freeze_panes = "A3"
+
+    ws_maq = wb.active
+    ws_maq.title = "Máquinas"
+    _hoja(
+        ws_maq,
+        ["Nombre de la máquina", "Ancho máximo del pliego (cm)", "Alto máximo del pliego (cm)",
+         "Costo por millar de pasadas (Q)", "Costo por plancha (Q)"],
+        ["Offset 65x90 - Máquina 1", 65, 90, 350.00, 45.00],
+        [28, 24, 22, 26, 20],
+    )
+    ws_pap = wb.create_sheet("Papel")
+    _hoja(
+        ws_pap,
+        ["Tipo de papel", "Fabricante", "Gramaje (g/m²)", "Ancho del pliego (cm)",
+         "Alto del pliego (cm)", "Costo por pliego (Q)"],
+        ["Couché brillante", "Genérico", 115, 65, 90, 2.10],
+        [22, 20, 16, 20, 20, 20],
+    )
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    return buffer.getvalue()
+
+
 def archivo_a_b64(archivo_subido, max_bytes):
     """Convierte un archivo subido con st.file_uploader a (nombre, tipo, base64).
     Retorna (None, None, None) si no hay archivo. Lanza ValueError si excede
