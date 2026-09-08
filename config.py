@@ -116,6 +116,7 @@ PAGINAS_REGISTRO = [
     {"key": "citas", "path": "app_pages/3_Citas_Vendedores.py", "title": "Citas y visitas de vendedores", "icon": "📅"},
     {"key": "mercadeo", "path": "app_pages/4_Visitas_Mercadeo.py", "title": "Visitas de mercadeo", "icon": "🏪"},
     {"key": "cotizaciones", "path": "app_pages/5_Cotizaciones.py", "title": "Cotizaciones", "icon": "💰"},
+    {"key": "cotizador_digital", "path": "app_pages/27_Cotizador_Digital.py", "title": "Cotizador Digital", "icon": "🖨️"},
     {"key": "reclamos", "path": "app_pages/6_Reclamos.py", "title": "Reclamos", "icon": "⚠️"},
     {"key": "diseno", "path": "app_pages/12_Diseno_Grafico.py", "title": "Diseño Gráfico - Nicolás", "icon": "🎨"},
     {
@@ -166,7 +167,7 @@ PAGINAS_ASIGNABLES_EXTRA = [p["key"] for p in PAGINAS_REGISTRO if p["key"] != "a
 # tocar nada más.
 # ---------------------------------------------------------------------------
 _PAGINAS_BASE_COMUN = [
-    "inicio", "prospectos", "llamadas", "citas", "mercadeo", "cotizaciones", "reclamos",
+    "inicio", "prospectos", "llamadas", "citas", "mercadeo", "cotizaciones", "cotizador_digital", "reclamos",
     "diseno", "diseno_alvaro", "logistica", "ventas", "ventas_mes", "capacitacion", "tickets_tienda",
     "mantenimiento", "litografia", "mant_tiendas", "documentos", "colorado", "galaxy", "generales", "kpis",
 ]
