@@ -185,13 +185,23 @@ with tab_nueva:
             st.caption(f"Vendedor: **{user['nombre']}**")
 
         prospectos = db.list_prospectos(vendedor_id)
-        if not prospectos:
-            st.warning("Este vendedor no tiene prospectos registrados. Crea uno primero en 'Prospección (CRM)'.")
-            st.stop()
-
         opciones_p = {p["nombre_cliente"]: p["id"] for p in prospectos}
-        prospecto_sel = st.selectbox("Prospecto/cliente", list(opciones_p.keys()), key="cd_prospecto")
-        prospecto_id = opciones_p[prospecto_sel]
+        ESCRIBIR_CLIENTE_NUEVO = "✍️ Escribir un cliente nuevo"
+        opciones_cliente = [ESCRIBIR_CLIENTE_NUEVO] + list(opciones_p.keys())
+        cliente_sel = st.selectbox("Cliente", opciones_cliente, key="cd_cliente_sel")
+
+        if cliente_sel == ESCRIBIR_CLIENTE_NUEVO:
+            nombre_cliente_nuevo = st.text_input(
+                "Nombre del cliente", key="cd_cliente_nuevo", placeholder="Ej. Banco Industrial",
+            )
+            prospecto_id = None
+            st.caption(
+                "Si el nombre ya existe entre tus prospectos, se usa ese mismo; si no, se crea uno nuevo "
+                "en 'Prospección (CRM)' al generar la cotización."
+            )
+        else:
+            nombre_cliente_nuevo = None
+            prospecto_id = opciones_p[cliente_sel]
 
         st.divider()
         tipo_trabajo = st.radio(
@@ -337,12 +347,30 @@ with tab_nueva:
             placeholder="Ej. Distribución de datos variables, forma de empaque, instrucciones especiales...",
         )
 
+        falta_cliente = prospecto_id is None and not (nombre_cliente_nuevo or "").strip()
         if st.button(
             "💾 Generar cotización", type="primary", use_container_width=True,
-            disabled=resultado is None or not nombre_producto.strip(),
+            disabled=resultado is None or not nombre_producto.strip() or falta_cliente,
         ):
+            prospecto_id_final = prospecto_id
+            if prospecto_id_final is None:
+                nombre_final = nombre_cliente_nuevo.strip()
+                existente = next(
+                    (p for p in prospectos if (p.get("nombre_cliente") or "").strip().lower() == nombre_final.lower()),
+                    None,
+                )
+                if existente:
+                    prospecto_id_final = existente["id"]
+                else:
+                    prospecto_id_final = db.create_prospecto(
+                        nombre_cliente=nombre_final, telefono="", email="", direccion="",
+                        vendedor_id=vendedor_id, fecha_seguimiento=None, recordatorio="",
+                        notas="Creado automáticamente desde Cotizador Digital.",
+                        estado="Prospecto", productos=[],
+                    )
+
             r = db.create_cotizacion_digital(
-                prospecto_id=prospecto_id, vendedor_id=vendedor_id,
+                prospecto_id=prospecto_id_final, vendedor_id=vendedor_id,
                 nombre_producto=nombre_producto.strip(), tipo_trabajo=detalle_pdf.get("tipo"),
                 detalle=detalle_pdf, resultado=resultado, notas=notas.strip() or None,
                 creado_por=user["nombre"],
