@@ -7,7 +7,7 @@ import streamlit as st
 import auth
 import database as db
 from config import (
-    MASTER_ADMIN_USERNAME, PAGINAS_ASIGNABLES_EXTRA, PAGINAS_BASE_POR_ROL, PAGINAS_REGISTRO,
+    MASTER_ADMIN_USERNAME, PAGINAS_ASIGNABLES_EXTRA, PAGINAS_REGISTRO,
     PERSONAL_TIENDA_INICIAL, ROLES, ROLES_DE_TIENDA, ROLES_LABEL, TICKET_TIENDA_SLUG, TICKET_TIENDAS,
 )
 from utils import download_excel_button, sidebar_user_box
@@ -22,12 +22,14 @@ if not auth.is_admin():
 st.title("👥 Administración de usuarios")
 st.caption("Crear vendedores y usuarios de solo vista, activar/desactivar accesos y restablecer contraseñas.")
 
-tab_lista, tab_nueva, tab_carga = st.tabs(
-    ["📋 Usuarios", "➕ Nuevo usuario", "📥 Carga inicial de personal"]
+usuarios = db.list_usuarios()
+etiquetas_paginas = {p["key"]: f"{p['icon']} {p['title']}" for p in PAGINAS_REGISTRO}
+
+tab_lista, tab_nueva, tab_roles, tab_carga = st.tabs(
+    ["📋 Usuarios", "➕ Nuevo usuario", "🧩 Accesos por rol", "📥 Carga inicial de personal"]
 )
 
 with tab_lista:
-    usuarios = db.list_usuarios()
     df = pd.DataFrame([{
         "ID": u["id"],
         "Nombre": ("👑 " if u["username"] == MASTER_ADMIN_USERNAME else "") + u["nombre"],
@@ -53,25 +55,30 @@ with tab_lista:
             )
 
         st.markdown("#### 🔎 Accesos actuales de este usuario")
-        etiquetas_paginas_acceso = {p["key"]: f"{p['icon']} {p['title']}" for p in PAGINAS_REGISTRO}
-        paginas_base_actuales = PAGINAS_BASE_POR_ROL.get(u["rol"], [])
+        paginas_base_actuales = db.get_paginas_por_rol().get(u["rol"], [])
+        paginas_removidas_actuales_vista = set(u.get("paginas_removidas") or []) - {"administracion"}
         paginas_extra_actuales_vista = [
-            k for k in (u.get("paginas_extra") or []) if k in PAGINAS_ASIGNABLES_EXTRA
+            k for k in (u.get("paginas_extra") or [])
+            if k in PAGINAS_ASIGNABLES_EXTRA and k not in paginas_removidas_actuales_vista
         ]
-        if not paginas_base_actuales and not paginas_extra_actuales_vista:
+        paginas_base_efectivas_vista = [k for k in paginas_base_actuales if k not in paginas_removidas_actuales_vista]
+        if not paginas_base_efectivas_vista and not paginas_extra_actuales_vista:
             st.caption("Este usuario todavía no tiene acceso a ninguna pestaña.")
         else:
             filas_acceso_actual = [
-                {"Pestaña": etiquetas_paginas_acceso.get(k, k), "Cómo lo obtiene": f"Por su rol ({ROLES_LABEL.get(u['rol'], u['rol'])})"}
-                for k in paginas_base_actuales
+                {"Pestaña": etiquetas_paginas.get(k, k), "Cómo lo obtiene": f"Por su rol ({ROLES_LABEL.get(u['rol'], u['rol'])})"}
+                for k in paginas_base_efectivas_vista
             ] + [
-                {"Pestaña": etiquetas_paginas_acceso.get(k, k), "Cómo lo obtiene": "Acceso extra"}
+                {"Pestaña": etiquetas_paginas.get(k, k), "Cómo lo obtiene": "Acceso extra"}
                 for k in paginas_extra_actuales_vista
             ]
             st.caption(
                 f"{len(filas_acceso_actual)} pestaña(s) en total: "
-                f"{len(paginas_base_actuales)} por su rol y {len(paginas_extra_actuales_vista)} de acceso extra."
+                f"{len(paginas_base_efectivas_vista)} por su rol y {len(paginas_extra_actuales_vista)} de acceso extra."
             )
+            if paginas_removidas_actuales_vista:
+                nombres_quitadas = ", ".join(etiquetas_paginas.get(k, k) for k in sorted(paginas_removidas_actuales_vista))
+                st.caption(f"🚫 Se le quitaron {len(paginas_removidas_actuales_vista)} pestaña(s) que su rol sí incluye: {nombres_quitadas}.")
             df_acceso_actual = pd.DataFrame(filas_acceso_actual)
             st.dataframe(df_acceso_actual, use_container_width=True, hide_index=True)
 
@@ -148,26 +155,33 @@ with tab_lista:
                 st.success("Visibilidad en 'Ventas por mes' actualizada.")
                 st.rerun()
 
-        st.markdown("#### 🔓 Acceso extra a otras pestañas")
-        st.caption(
-            "Además de las pestañas que ya le da su rol, puedes darle a este usuario acceso a otras "
-            "pestañas específicas — por ejemplo, si necesita consultar o usar algo puntual sin tener "
-            "que crear un rol nuevo o cambiarle el suyo. Dentro de cada pestaña extra, el usuario sigue "
-            "viendo y pudiendo hacer solo lo que su rol normalmente permite ahí — esto únicamente le "
-            "abre la puerta para entrar a verla. El usuario debe cerrar sesión y volver a entrar para "
-            "que el cambio se vea reflejado."
-        )
-        etiquetas_paginas = {p["key"]: f"{p['icon']} {p['title']}" for p in PAGINAS_REGISTRO}
-        paginas_extra_actuales = [k for k in (u.get("paginas_extra") or []) if k in PAGINAS_ASIGNABLES_EXTRA]
-        with st.form(f"paginas_extra_{uid}"):
-            seleccion_paginas_extra = st.multiselect(
-                "Pestañas adicionales", PAGINAS_ASIGNABLES_EXTRA, default=paginas_extra_actuales,
-                format_func=lambda k: etiquetas_paginas.get(k, k),
+        st.markdown("#### 🔐 Accesos de este usuario")
+        if es_master_admin:
+            st.caption("👑 El Dueño siempre tiene acceso a todas las pestañas — no se puede limitar aquí.")
+        else:
+            st.caption(
+                "Marca exactamente qué pestañas debe ver este usuario — puedes agregar pestañas que su "
+                "rol no le da por defecto, o QUITAR pestañas que su rol sí le daría. Ya vienen marcadas "
+                "las que tiene ahora mismo. El usuario debe cerrar sesión y volver a entrar para que el "
+                "cambio se vea reflejado."
             )
-            if st.form_submit_button("💾 Guardar acceso extra", use_container_width=True):
-                db.update_usuario(uid, paginas_extra=seleccion_paginas_extra)
-                st.success("Acceso extra actualizado.")
-                st.rerun()
+            base_rol_usuario = db.get_paginas_por_rol().get(u["rol"], [])
+            removidas_actuales = set(u.get("paginas_removidas") or [])
+            efectivas_actuales = [
+                k for k in PAGINAS_ASIGNABLES_EXTRA
+                if (k in base_rol_usuario or k in (u.get("paginas_extra") or [])) and k not in removidas_actuales
+            ]
+            with st.form(f"accesos_usuario_{uid}"):
+                seleccion_accesos = st.multiselect(
+                    "Pestañas que debe tener este usuario", PAGINAS_ASIGNABLES_EXTRA, default=efectivas_actuales,
+                    format_func=lambda k: etiquetas_paginas.get(k, k),
+                )
+                if st.form_submit_button("💾 Guardar accesos", use_container_width=True):
+                    nuevas_extra = [k for k in seleccion_accesos if k not in base_rol_usuario]
+                    nuevas_removidas = [k for k in base_rol_usuario if k not in seleccion_accesos]
+                    db.update_usuario(uid, paginas_extra=nuevas_extra, paginas_removidas=nuevas_removidas)
+                    st.success("Accesos actualizados.")
+                    st.rerun()
 
         st.markdown("#### 🗑️ Eliminar usuario")
         st.caption(
@@ -205,10 +219,9 @@ with tab_nueva:
             "Tienda (solo aplica a Anfitriona, Jefe de tienda o Asesor de ventas)",
             ["—"] + TICKET_TIENDAS,
         )
-        etiquetas_paginas_nuevo = {p["key"]: f"{p['icon']} {p['title']}" for p in PAGINAS_REGISTRO}
         paginas_extra_nuevo = st.multiselect(
             "Acceso extra a otras pestañas (opcional, además de lo que ya da el rol elegido)",
-            PAGINAS_ASIGNABLES_EXTRA, format_func=lambda k: etiquetas_paginas_nuevo.get(k, k),
+            PAGINAS_ASIGNABLES_EXTRA, format_func=lambda k: etiquetas_paginas.get(k, k),
         )
 
         if st.form_submit_button("Crear usuario", use_container_width=True):
@@ -226,6 +239,36 @@ with tab_nueva:
                 )
                 st.success(f"Usuario '{username}' creado como {ROLES_LABEL.get(rol, rol)}.")
                 st.rerun()
+
+with tab_roles:
+    st.caption(
+        "Define qué pestañas ve **cada rol por defecto** — el cambio aplica de inmediato a todos los "
+        "usuarios de ese rol (excepto a quien ya tenga un acceso individual distinto guardado en "
+        "'🔐 Accesos de este usuario', dentro de la pestaña '📋 Usuarios'). 'Administración de usuarios' "
+        "es exclusiva del rol Administrador y no se puede quitar ni asignar a otro rol desde aquí."
+    )
+    paginas_por_rol_actual = db.get_paginas_por_rol()
+    rol_elegido = st.selectbox(
+        "Rol", ROLES, format_func=lambda r: ROLES_LABEL.get(r, r), key="admin_rol_paginas_sel",
+    )
+    cantidad_usuarios_rol = sum(1 for x in usuarios if x["rol"] == rol_elegido)
+    st.caption(
+        f"{cantidad_usuarios_rol} usuario(s) tienen actualmente el rol "
+        f"'{ROLES_LABEL.get(rol_elegido, rol_elegido)}'."
+    )
+    if rol_elegido == "admin":
+        st.caption("🔒 El rol Administrador siempre incluye 'Administración de usuarios', aunque no aparezca abajo.")
+    paginas_actuales_rol = [k for k in paginas_por_rol_actual.get(rol_elegido, []) if k in PAGINAS_ASIGNABLES_EXTRA]
+    with st.form(f"form_paginas_rol_{rol_elegido}"):
+        seleccion_rol = st.multiselect(
+            "Pestañas por defecto para este rol", PAGINAS_ASIGNABLES_EXTRA, default=paginas_actuales_rol,
+            format_func=lambda k: etiquetas_paginas.get(k, k), key=f"ms_paginas_rol_{rol_elegido}",
+        )
+        if st.form_submit_button("💾 Guardar para este rol", use_container_width=True):
+            paginas_a_guardar = seleccion_rol + (["administracion"] if rol_elegido == "admin" else [])
+            db.set_paginas_rol(rol_elegido, paginas_a_guardar)
+            st.success(f"Pestañas por defecto de '{ROLES_LABEL.get(rol_elegido, rol_elegido)}' actualizadas.")
+            st.rerun()
 
 
 def _slug_simple(texto):
