@@ -134,6 +134,10 @@ PAGINAS_REGISTRO = [
         "key": "mantenimiento", "path": "app_pages/18_Mantenimiento_Maquinaria.py",
         "title": "Mantenimiento de Maquinaria", "icon": "🔧",
     },
+    {
+        "key": "cotizador_tecnico", "path": "app_pages/19_Cotizador_Tecnico.py",
+        "title": "Cotizador Técnico", "icon": "🖨️",
+    },
     {"key": "mant_tiendas", "path": "app_pages/20_Mant_Tiendas.py", "title": "Mant. Tiendas", "icon": "🏬"},
     {"key": "drive", "path": "app_pages/21_Drive.py", "title": "Drive", "icon": "📁"},
     {"key": "phara", "path": "app_pages/22_Phara.py", "title": "Phara", "icon": "📦"},
@@ -167,7 +171,7 @@ PAGINAS_ASIGNABLES_EXTRA = [p["key"] for p in PAGINAS_REGISTRO if p["key"] != "a
 _PAGINAS_BASE_COMUN = [
     "inicio", "prospectos", "llamadas", "citas", "mercadeo", "cotizaciones", "cotizador_digital", "reclamos",
     "diseno", "diseno_alvaro", "logistica", "ventas", "ventas_mes", "capacitacion", "tickets_tienda",
-    "mantenimiento", "mant_tiendas", "documentos", "colorado", "galaxy", "generales", "kpis",
+    "mantenimiento", "cotizador_tecnico", "mant_tiendas", "documentos", "colorado", "galaxy", "generales", "kpis",
 ]
 PAGINAS_BASE_POR_ROL = {
     # admin, vendedor y vista comparten el mismo paquete amplio de pestañas;
@@ -548,6 +552,29 @@ MANT_TIENDAS_FOTOS_MAX = 5
 # la columna "En cotización" — solo el admin puede autorizarla.
 MANT_TIENDAS_COTIZACION_MAX_BYTES = 900_000  # ~900 KB por PDF — mismo límite práctico que el resto
 MANT_TIENDAS_COTIZACION_MAX_ARCHIVOS = 3
+
+# ---------------------------------------------------------------------------
+# Cotizador Técnico: ficha de cotización con cálculo automático de pliegos,
+# planchas y pasadas de máquina, a partir del catálogo de máquinas y papel
+# (ver database.py, sección "Cotizador Técnico"). El catálogo empieza VACÍO
+# a propósito — Steven lo carga con sus costos reales, uno por uno desde la
+# pestaña o en bloque con la plantilla de Excel (ver
+# app_pages/19_Cotizador_Tecnico.py → "⚙️ Catálogo").
+# ---------------------------------------------------------------------------
+# Combinaciones comunes de tintas (frente + dorso), para que el usuario elija
+# rápido en vez de escribir números — "Personalizado" permite cualquier otra.
+TECNICO_TINTAS_PRESETS = {
+    "4+4 (full color ambos lados)": (4, 4),
+    "4+0 (full color un lado)": (4, 0),
+    "4+1": (4, 1),
+    "2+2": (2, 2),
+    "1+1 (un color ambos lados)": (1, 1),
+    "1+0 (un color un lado)": (1, 0),
+    "Personalizado": None,
+}
+
+# Estados de una cotización técnica.
+ESTADOS_TECNICO_COTIZACION = ["Borrador", "Cotizado", "Aprobado", "Rechazado"]
 
 # ---------------------------------------------------------------------------
 # Historial (pestaña "Historial" dentro de "Ventas por mes"): serie
