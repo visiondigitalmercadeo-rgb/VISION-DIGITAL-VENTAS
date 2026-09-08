@@ -256,6 +256,23 @@ def puede_gestionar_mantenimiento():
     return u is not None and u["rol"] in ("admin", "jefe_planta")
 
 
+def puede_gestionar_tecnico():
+    """Quién puede crear, editar y eliminar cotizaciones en el Cotizador
+    Técnico — admin y vendedor, que son quienes cotizan trabajos con
+    clientes. El rol 'vista' solo puede consultar."""
+    u = current_user()
+    return u is not None and u["rol"] in ("admin", "vendedor")
+
+
+def puede_administrar_catalogo_tecnico():
+    """Quién puede agregar, editar, desactivar o cargar en bloque las
+    máquinas y tipos de papel del catálogo del Cotizador Técnico — ahí viven
+    los costos reales que usa el cálculo, así que se restringe más que la
+    creación de cotizaciones: solo el administrador."""
+    u = current_user()
+    return u is not None and u["rol"] == "admin"
+
+
 def puede_configurar_kpis_tienda():
     """Admin y mercadeo son los únicos que pueden establecer los tiempos meta
     (KPIs) del Sistema de Tickets — Tiendas; el resto de roles de tienda
