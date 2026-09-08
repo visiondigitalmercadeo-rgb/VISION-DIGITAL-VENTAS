@@ -116,10 +116,7 @@ with tab_nueva:
         if not prospectos:
             st.warning("Este vendedor no tiene prospectos registrados. Crea uno primero en 'Prospección (CRM)'.")
         else:
-            opciones_p = {
-                (f"{p['nombre_cliente']} (NIT {p['nit']})" if p.get("nit") else p["nombre_cliente"]): p["id"]
-                for p in prospectos
-            }
+            opciones_p = {p["nombre_cliente"]: p["id"] for p in prospectos}
             nombres_p = list(opciones_p.keys())
             idx_prospecto = 0
             if prospecto_prefill:
