@@ -10,11 +10,19 @@ muy distintas:
     imprime un pliego completo del material elegido y se corta a la medida
     final del producto — el cálculo es cuántas piezas caben por pliego (en
     las dos orientaciones, como se haría a mano), cuántos pliegos hacen
-    falta para la cantidad pedida, y el costo de cada pliego (impresión +
+    falta para la cantidad pedida, y el COSTO de cada pliego (impresión +
     laminado/foil/troquel si aplican) + una "ventaja" de merma de producción
     + envío.
   - "Papel bond / inkjet": formularios, manuales, hojas sueltas — el precio
     ya es por hoja al tamaño final, sin necesidad de calcular pliegos.
+
+Margen de utilidad: el catálogo LPM (columnas "VENTA... C/IVA") se trata como
+la base de COSTO del cotizador, no como el precio final al cliente. Sobre ese
+costo se aplica un % de margen de utilidad, configurable por tarifa desde la
+pestaña "⚙️ Márgenes" (solo admin) sin tocar código — ver
+db.get_margenes_cotizador_digital / set_margenes_cotizador_digital y el valor
+de fábrica en pricing_data.MARGENES_INICIAL. "Papel bond / inkjet" no tiene
+tarifas LPM, así que usa el margen de la tarifa "normal".
 
 Los precios NO se leen de un Excel en vivo: están cargados como datos fijos
 en pricing_data.py (a partir del Excel "LPM_DIGITAL_ABRIL2025" que compartió
@@ -23,12 +31,13 @@ priciario cambia, hay que actualizar ese archivo.
 
 Al generar una cotización aquí, además de guardarse en este cotizador
 también se crea automáticamente una fila en la pestaña "Cotizaciones" (con
-el mismo monto y cliente), para no duplicar el trabajo de registro — ver
-db.create_cotizacion_digital.
+el mismo monto de VENTA y cliente), para no duplicar el trabajo de registro
+— ver db.create_cotizacion_digital. El desglose de costo/margen/utilidad es
+información interna: NO aparece en el PDF que se descarga para el cliente
+(ver utils.cotizador_digital_pdf_bytes), solo el precio de venta final.
 """
 
 import math
-from datetime import date
 
 import pandas as pd
 import streamlit as st
@@ -55,6 +64,7 @@ st.caption(
 )
 
 puede_gestionar = auth.can_edit()
+margenes = db.get_margenes_cotizador_digital()
 
 # Los dos códigos "BOND DIGITAL ... 80 GRS BASE 20" del catálogo ya están a
 # precio POR HOJA (no por pliego, como el resto) — se excluyen de "Impresión
@@ -84,6 +94,23 @@ def _piezas_por_pliego(pieza_w, pieza_h, sheet_w, sheet_h, margen):
     return max(caben(pieza_w, pieza_h), caben(pieza_h, pieza_w))
 
 
+def _con_margen(costo_total, margen_pct, cantidad):
+    """A partir del costo total calculado y el % de margen de utilidad de la
+    tarifa correspondiente, arma el precio de venta final — precio_venta =
+    costo x (1 + %/100) — y el resto de campos de la utilidad/margen real
+    que se muestran como KPI (nunca en el PDF del cliente)."""
+    precio_venta = costo_total * (1 + margen_pct / 100)
+    utilidad = precio_venta - costo_total
+    margen_real_pct = (utilidad / precio_venta * 100) if precio_venta else 0.0
+    return {
+        "costo_total": costo_total, "margen_pct": margen_pct, "precio_venta": precio_venta,
+        "utilidad": utilidad, "margen_real_pct": margen_real_pct,
+        # "total" queda como el precio de VENTA (compatibilidad con la fila que se
+        # crea en 'Cotizaciones' y con el PDF, que muestran precio al cliente).
+        "total": precio_venta, "precio_unitario": precio_venta / cantidad if cantidad else 0.0,
+    }
+
+
 def _calcular_pliego(material, tarifa, modo, pieza_w, pieza_h, cantidad, laminado, foil, troquel, envio):
     if pieza_w <= 0 or pieza_h <= 0 or cantidad <= 0:
         return None
@@ -105,12 +132,12 @@ def _calcular_pliego(material, tarifa, modo, pieza_w, pieza_h, cantidad, laminad
     ventaja = precio_impresion * VENTAJA_FACTOR
     envio = envio or 0.0
 
-    total = costo_impresion + costo_laminado + costo_foil + costo_troquel + ventaja + envio
+    costo_total = costo_impresion + costo_laminado + costo_foil + costo_troquel + ventaja + envio
     return {
         "piezas_por_pliego": piezas, "pliegos": pliegos, "precio_impresion_pliego": precio_impresion,
         "costo_impresion": costo_impresion, "costo_laminado": costo_laminado, "costo_foil": costo_foil,
-        "costo_troquel": costo_troquel, "ventaja": ventaja, "envio": envio, "total": total,
-        "precio_unitario": total / cantidad,
+        "costo_troquel": costo_troquel, "ventaja": ventaja, "envio": envio,
+        **_con_margen(costo_total, margenes.get(tarifa, 0.0), cantidad),
     }
 
 
@@ -122,12 +149,21 @@ def _calcular_papel_bond(bloque, idx_tamano, modo, cantidad, envio):
         return None
     subtotal = precio_hoja * cantidad
     envio = envio or 0.0
-    total = subtotal + envio
-    return {"precio_hoja": precio_hoja, "subtotal": subtotal, "envio": envio, "total": total,
-            "precio_unitario": total / cantidad}
+    costo_total = subtotal + envio
+    # No hay tarifas LPM para papel bond/inkjet — se usa el margen de "normal".
+    return {
+        "precio_hoja": precio_hoja, "subtotal": subtotal, "envio": envio,
+        **_con_margen(costo_total, margenes.get("normal", 0.0), cantidad),
+    }
 
 
-tab_nueva, tab_lista = st.tabs(["🧮 Nueva cotización", "📋 Cotizaciones guardadas"])
+if user["rol"] == "admin":
+    tab_nueva, tab_lista, tab_margenes = st.tabs(
+        ["🧮 Nueva cotización", "📋 Cotizaciones guardadas", "⚙️ Márgenes"]
+    )
+else:
+    tab_nueva, tab_lista = st.tabs(["🧮 Nueva cotización", "📋 Cotizaciones guardadas"])
+    tab_margenes = None
 
 # ---------------------------------------------------------------------------
 # Nueva cotización
@@ -236,7 +272,12 @@ with tab_nueva:
                         f"Impresión: {money(resultado['costo_impresion'])} · Laminado: {money(resultado['costo_laminado'])} · "
                         f"Foil: {money(resultado['costo_foil'])} · Troquelado: {money(resultado['costo_troquel'])} · "
                         f"Merma de producción: {money(resultado['ventaja'])} · Envío: {money(resultado['envio'])}  \n"
-                        f"**Total: {money(resultado['total'])} · Precio unitario: {money(resultado['precio_unitario'])}**"
+                        f"**Costo total: {money(resultado['costo_total'])}**"
+                    )
+                    st.success(
+                        f"Margen ({TARIFA_LABEL[tarifa]}): **{resultado['margen_pct']:.0f}%** · "
+                        f"Utilidad: {money(resultado['utilidad'])} (margen real {resultado['margen_real_pct']:.1f}%)  \n"
+                        f"**Precio de venta: {money(resultado['total'])} · Precio unitario: {money(resultado['precio_unitario'])}**"
                     )
                     detalle_pdf = {
                         "tipo": "Impresión en pliego",
@@ -264,6 +305,7 @@ with tab_nueva:
             )
             cantidad = c4.number_input("Cantidad de hojas", min_value=1, value=100, step=1, key="cd_pb_cantidad")
             envio = st.number_input("Costo de envío (Q, opcional)", min_value=0.0, value=0.0, step=10.0, key="cd_pb_envio")
+            st.caption(f"Se usa el margen de utilidad de la tarifa '{TARIFA_LABEL['normal']}' ({margenes.get('normal', 0):.0f}%).")
 
             resultado = _calcular_papel_bond(bloque, idx_tamano, modo, cantidad, envio)
             if resultado is None:
@@ -272,7 +314,12 @@ with tab_nueva:
                 st.info(
                     f"Precio por hoja: {money(resultado['precio_hoja'])} · Subtotal: {money(resultado['subtotal'])} · "
                     f"Envío: {money(resultado['envio'])}  \n"
-                    f"**Total: {money(resultado['total'])} · Precio unitario: {money(resultado['precio_unitario'])}**"
+                    f"**Costo total: {money(resultado['costo_total'])}**"
+                )
+                st.success(
+                    f"Margen: **{resultado['margen_pct']:.0f}%** · Utilidad: {money(resultado['utilidad'])} "
+                    f"(margen real {resultado['margen_real_pct']:.1f}%)  \n"
+                    f"**Precio de venta: {money(resultado['total'])} · Precio unitario: {money(resultado['precio_unitario'])}**"
                 )
                 detalle_pdf = {
                     "tipo": "Papel bond / inkjet",
@@ -320,12 +367,26 @@ with tab_lista:
     if not cotizaciones:
         st.info("No hay cotizaciones del Cotizador Digital registradas todavía.")
     else:
+        resultados = [c.get("resultado") or {} for c in cotizaciones]
+        utilidad_total = sum(r.get("utilidad") or 0 for r in resultados)
+        ventas_total = sum(r.get("total") or 0 for r in resultados)
+        margen_prom = (utilidad_total / ventas_total * 100) if ventas_total else 0.0
+
+        st.markdown("#### 📊 KPIs")
+        k1, k2, k3 = st.columns(3)
+        k1.metric("Cotizaciones generadas", len(cotizaciones))
+        k2.metric("Utilidad total", money(utilidad_total))
+        k3.metric("Margen real promedio", f"{margen_prom:.1f}%")
+
         vendedores_map = {v["id"]: v["nombre"] for v in db.list_usuarios()}
         df = pd.DataFrame([{
             "Número": f"CD-{c.get('numero', 0):04d}", "Fecha": (c.get("creado_en") or "")[:10],
             "Cliente": db.get_prospecto(c.get("prospecto_id"))["nombre_cliente"] if c.get("prospecto_id") and db.get_prospecto(c.get("prospecto_id")) else "—",
             "Producto": c.get("nombre_producto") or "—", "Tipo": c.get("tipo_trabajo") or "—",
-            "Total": money((c.get("resultado") or {}).get("total")),
+            "Costo": money((c.get("resultado") or {}).get("costo_total")),
+            "Precio de venta": money((c.get("resultado") or {}).get("total")),
+            "Utilidad": money((c.get("resultado") or {}).get("utilidad")),
+            "Margen %": f"{(c.get('resultado') or {}).get('margen_real_pct', 0):.1f}%",
             "Vendedor": vendedores_map.get(c.get("vendedor_id"), "—"),
         } for c in cotizaciones])
         st.dataframe(df, use_container_width=True, hide_index=True)
@@ -352,9 +413,14 @@ with tab_lista:
                 if cot.get("notas"):
                     st.caption(f"📝 {cot['notas']}")
                 st.markdown(
-                    f"**Total: {money(resultado_cot.get('total'))} · Precio unitario: "
+                    f"**Costo: {money(resultado_cot.get('costo_total'))} · Margen: {resultado_cot.get('margen_pct', 0):.0f}% "
+                    f"· Utilidad: {money(resultado_cot.get('utilidad'))} (margen real {resultado_cot.get('margen_real_pct', 0):.1f}%)**"
+                )
+                st.markdown(
+                    f"**Precio de venta: {money(resultado_cot.get('total'))} · Precio unitario: "
                     f"{money(resultado_cot.get('precio_unitario'))}**"
                 )
+                st.caption("El desglose de costo/margen/utilidad es información interna — no aparece en el PDF descargable.")
 
                 pdf_bytes = cotizador_digital_pdf_bytes(cot, prospecto, vendedores_map.get(cot.get("vendedor_id"), "—"))
                 st.download_button(
@@ -371,3 +437,28 @@ with tab_lista:
                             db.delete_cotizacion_digital(cid)
                             st.success("Cotización eliminada.")
                             st.rerun()
+
+# ---------------------------------------------------------------------------
+# Márgenes (solo admin)
+# ---------------------------------------------------------------------------
+if tab_margenes is not None:
+    with tab_margenes:
+        st.caption(
+            "Define el % de margen de utilidad que se aplica automáticamente sobre el costo calculado, "
+            "según la tarifa del catálogo LPM elegida en cada cotización — precio de venta = costo x "
+            "(1 + %/100). Los cambios solo afectan a las cotizaciones nuevas; las que ya se generaron no "
+            "cambian."
+        )
+        with st.form("cd_form_margenes"):
+            cols = st.columns(4)
+            nuevos_margenes = {}
+            for i, tarifa_key in enumerate(TARIFAS_DIGITAL):
+                nuevos_margenes[tarifa_key] = cols[i].number_input(
+                    TARIFA_LABEL[tarifa_key], min_value=0.0, max_value=1000.0,
+                    value=float(margenes.get(tarifa_key, 0.0)), step=1.0, key=f"cd_margen_form_{tarifa_key}",
+                )
+            st.caption("'Papel bond / inkjet' (no tiene tarifas LPM) usa el mismo % que la tarifa 'Normal'.")
+            if st.form_submit_button("💾 Guardar márgenes", use_container_width=True):
+                db.set_margenes_cotizador_digital(nuevos_margenes)
+                st.success("Márgenes actualizados.")
+                st.rerun()
