@@ -110,5 +110,12 @@ for key_extra in (user.get("paginas_extra") or []):
         pages.append(pagina_extra)
         paginas_ya_incluidas.add(pagina_extra)
 
+# Red de seguridad: si por un rol eliminado, mal escrito o sin pestañas
+# configuradas el usuario se quedara sin ninguna página, st.navigation()
+# truena con una pantalla de error en vez de dejarlo entrar. Mejor mostrarle
+# al menos "Inicio" y que un admin le revise sus accesos.
+if not pages and "inicio" in paginas_por_key:
+    pages = [paginas_por_key["inicio"]]
+
 nav = st.navigation(pages)
 nav.run()
