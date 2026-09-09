@@ -97,6 +97,17 @@ ROLES_LABEL = {
 # la colección "personal_tiendas"), sin acceso al sistema.
 ROLES_DE_TIENDA = ["anfitriona", "jefe_tienda", "subjefe_tienda", "asesor_ventas", "cajero"]
 
+# La colección "personal_tiendas" NO guarda un campo "rol" — solo "puesto"
+# (texto libre, ver 16_Capacitacion.py y 10_Administracion.py → 'Carga
+# inicial de personal'). Para identificar quién es "asesor de ventas" y
+# debe aparecer en la pestaña 🎯 Metas de Minutas de Tienda (ver
+# 28_Minutas_Tiendas.py) se compara el "puesto" (sin importar mayúsculas
+# ni acentos) contra esta lista. En la carga inicial, quien tiene el rol
+# 'asesor_ventas' del sistema siempre queda con puesto "Diseñador" — no
+# confundir con los diseñadores del tablero de Diseño Gráfico, que es
+# otra cosa aparte.
+PUESTOS_ASESOR_VENTAS = ["Diseñador", "Disenador", "Asesor de ventas", "Asesor"]
+
 # Dueño de la plataforma: el ÚNICO usuario protegido de forma permanente en
 # "Administración de usuarios" — ningún otro administrador puede eliminarlo
 # ni cambiarle el rol para quitarle el acceso de administrador (ver
