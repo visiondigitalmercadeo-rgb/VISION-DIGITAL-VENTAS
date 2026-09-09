@@ -22,6 +22,7 @@ ESCRIBIR_RESPONSABLE_NUEVO = "✍️ Escribir otro nombre"
 
 puede_crear = auth.puede_crear_minuta_tienda()
 puede_seguimiento = auth.puede_gestionar_pendientes_minuta()
+puede_administrar_temas = auth.puede_administrar_temas_minuta()
 tienda_usuario = auth.current_user_tienda()
 
 
@@ -141,16 +142,16 @@ with tab_minutas:
             )
             with st.expander(f"🗒️ {numero_txt} — {m.get('tienda') or '—'} · {m.get('fecha_reunion') or '—'}"):
                 st.caption(f"Elaborada por: {m.get('creado_por_nombre') or '—'}")
+                if m.get("notas_generales"):
+                    st.caption(f"📝 Notas generales: {m['notas_generales']}")
 
                 checklist = m.get("checklist") or []
                 if checklist:
-                    st.markdown("**Temas tratados:**")
+                    st.markdown("**Temas del checklist:**")
                     for item in checklist:
-                        marca = "✅" if item.get("tratado", True) else "⏳"
-                        linea = f"{marca} {item.get('tema')}"
-                        if item.get("notas"):
-                            linea += f" — _{item['notas']}_"
-                        st.markdown(f"- {linea}")
+                        marca = "✅" if item.get("tratado") else "⬜"
+                        etiqueta_extra = " _(agregado, no estaba en la lista)_" if item.get("extra") else ""
+                        st.markdown(f"- {marca} {item.get('tema')}{etiqueta_extra}")
                 else:
                     st.caption("Sin temas registrados.")
 
@@ -176,10 +177,26 @@ with tab_minutas:
 # Nueva minuta
 # --------------------------------------------------------------------------
 with tab_nueva:
+    if puede_administrar_temas:
+        with st.expander("⚙️ Temas predeterminados del checklist"):
+            st.caption(
+                "Esta lista es la misma para todas las tiendas — cada jefe de tienda solo la marca al "
+                "crear su minuta. Escribe un tema por línea."
+            )
+            temas_actuales_admin = db.get_temas_predeterminados_minuta()
+            temas_texto_admin = st.text_area(
+                "Temas predeterminados", value="\n".join(temas_actuales_admin),
+                key="mn_temas_admin_texto", height=200,
+            )
+            if st.button("💾 Guardar temas predeterminados", key="mn_temas_admin_guardar"):
+                nuevos_temas_admin = [t.strip() for t in temas_texto_admin.split("\n") if t.strip()]
+                db.set_temas_predeterminados_minuta(nuevos_temas_admin)
+                st.success("Temas predeterminados actualizados.")
+                st.rerun()
+
     if not puede_crear:
         st.info("Solo el jefe de tienda, sub jefe de tienda, jefe de línea y los administradores pueden crear minutas.")
     else:
-        st.session_state.setdefault("mn_checklist_borrador", [])
         st.session_state.setdefault("mn_pendientes_borrador", [])
 
         if tienda_usuario:
@@ -191,37 +208,28 @@ with tab_nueva:
 
         st.divider()
         st.markdown("#### ✅ Temas tratados en la reunión")
-        # No se usa st.form aquí a propósito (ver nota más abajo, en
-        # Pendientes, sobre por qué un campo condicionado por otro widget no
-        # puede ir dentro de un form) — widgets sueltos + botón normal, y se
-        # limpian del session_state después de agregar para que el campo
-        # quede en blanco listo para el siguiente tema.
-        colt1, colt2, colt3 = st.columns([3, 3, 1])
-        tema_nuevo = colt1.text_input("Tema", key="mn_tema_input")
-        notas_nuevo = colt2.text_input("Notas (opcional)", key="mn_notas_input")
-        tratado_nuevo = colt3.checkbox("Tratado", value=True, key="mn_tratado_input")
-        if st.button("➕ Agregar tema", key="mn_btn_agregar_tema", use_container_width=True):
-            if not tema_nuevo.strip():
-                st.error("Escribe el tema antes de agregarlo.")
-            else:
-                st.session_state["mn_checklist_borrador"].append(
-                    {"tema": tema_nuevo.strip(), "notas": notas_nuevo.strip(), "tratado": tratado_nuevo}
-                )
-                st.session_state.pop("mn_tema_input", None)
-                st.session_state.pop("mn_notas_input", None)
-                st.rerun()
+        temas_predeterminados = db.get_temas_predeterminados_minuta()
+        if not temas_predeterminados:
+            st.caption(
+                "Todavía no hay temas predeterminados configurados"
+                + (" — ábrelo arriba en '⚙️ Temas predeterminados del checklist' para agregarlos."
+                   if puede_administrar_temas else
+                   " — pide a un administrador o al jefe de línea que los configure.")
+            )
+        temas_marcados = {}
+        for idx, tema in enumerate(temas_predeterminados):
+            temas_marcados[tema] = st.checkbox(tema, key=f"mn_tema_pred_{idx}")
 
-        if st.session_state["mn_checklist_borrador"]:
-            for idx, item in enumerate(st.session_state["mn_checklist_borrador"]):
-                c1, c2 = st.columns([6, 1])
-                marca = "✅" if item.get("tratado", True) else "⏳"
-                texto_item = f"{marca} {item['tema']}" + (f" — _{item['notas']}_" if item.get("notas") else "")
-                c1.markdown(texto_item)
-                if c2.button("🗑️", key=f"mn_quitar_tema_{idx}"):
-                    st.session_state["mn_checklist_borrador"].pop(idx)
-                    st.rerun()
-        else:
-            st.caption("Todavía no has agregado ningún tema.")
+        agregar_extra = st.checkbox(
+            "➕ Se tocó un tema que no está en la lista", key="mn_tema_extra_toggle",
+        )
+        temas_extra_texto = ""
+        if agregar_extra:
+            temas_extra_texto = st.text_area(
+                "Escribe el/los tema(s) extra (uno por línea)", key="mn_temas_extra_texto",
+            )
+
+        notas_generales = st.text_area("Notas generales de la reunión (opcional)", key="mn_notas_generales")
 
         st.divider()
         st.markdown("#### 📌 Pendientes que quedaron de la reunión")
@@ -267,14 +275,25 @@ with tab_nueva:
 
         st.divider()
         if st.button("💾 Guardar minuta", key="mn_guardar_minuta", use_container_width=True):
-            if not st.session_state["mn_checklist_borrador"] and not st.session_state["mn_pendientes_borrador"]:
-                st.error("Agrega al menos un tema o un pendiente antes de guardar la minuta.")
-            else:
-                db.create_minuta_tienda(
-                    user["id"], user["nombre"], tienda_nueva, fecha_reunion,
-                    st.session_state["mn_checklist_borrador"], st.session_state["mn_pendientes_borrador"],
-                )
-                st.session_state["mn_checklist_borrador"] = []
-                st.session_state["mn_pendientes_borrador"] = []
-                st.success("Minuta guardada.")
-                st.rerun()
+            checklist_final = [
+                {"tema": tema, "tratado": bool(marcado), "extra": False}
+                for tema, marcado in temas_marcados.items()
+            ]
+            if agregar_extra:
+                for linea in temas_extra_texto.splitlines():
+                    if linea.strip():
+                        checklist_final.append({"tema": linea.strip(), "tratado": True, "extra": True})
+
+            db.create_minuta_tienda(
+                user["id"], user["nombre"], tienda_nueva, fecha_reunion,
+                checklist_final, st.session_state["mn_pendientes_borrador"],
+                notas_generales=notas_generales,
+            )
+            st.session_state["mn_pendientes_borrador"] = []
+            for idx in range(len(temas_predeterminados)):
+                st.session_state.pop(f"mn_tema_pred_{idx}", None)
+            st.session_state.pop("mn_tema_extra_toggle", None)
+            st.session_state.pop("mn_temas_extra_texto", None)
+            st.session_state.pop("mn_notas_generales", None)
+            st.success("Minuta guardada.")
+            st.rerun()
