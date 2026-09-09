@@ -3133,3 +3133,75 @@ def update_pendiente_minuta(minuta_id, indice_pendiente, estado=None, comentario
             "creado_en": datetime.now().isoformat(timespec="seconds"),
         })
     get_client().collection("minutas_tiendas").document(minuta_id).update({"pendientes": pendientes})
+
+
+# ---------------------------------------------------------------------------
+# Metas de Ventas por Tienda: el jefe (o sub jefe) de tienda le pone una
+# meta mensual en quetzales a cada asesor de ventas de su sucursal (los
+# mismos nombres de la colección "personal_tiendas", con rol
+# "asesor_ventas" — ver PERSONAL_TIENDA_INICIAL en config.py) y va
+# actualizando su venta del mes conforme avanza. La clave de cada registro
+# es tienda + asesor + mes ("YYYY-MM") — dentro del MISMO mes se puede
+# corregir/actualizar la venta las veces que haga falta (upsert), pero al
+# entrar a un mes nuevo se crea un documento aparte, así queda el
+# historial completo mes a mes sin perder los anteriores.
+# ---------------------------------------------------------------------------
+def mes_actual() -> str:
+    """Mes actual en formato 'YYYY-MM', hora de Guatemala."""
+    return str(hoy_guatemala())[:7]
+
+
+def list_metas_tienda(tienda=None, mes=None):
+    """Todos los registros de metas, más reciente primero. Filtra por
+    tienda y/o por mes ('YYYY-MM') si se dan."""
+    client = get_client()
+    query = client.collection("metas_tienda")
+    if tienda:
+        query = query.where("tienda", "==", tienda)
+    if mes:
+        query = query.where("mes", "==", mes)
+    rows = [_doc_to_dict(s) for s in query.stream()]
+    rows.sort(key=lambda r: (r.get("mes") or "", r.get("asesor_nombre") or ""), reverse=True)
+    return rows
+
+
+def get_meta_tienda(tienda, asesor_nombre, mes):
+    """El registro puntual de un asesor en un mes en particular, o None si
+    todavía no se ha guardado nada para ese mes (para saber si hay que
+    crear uno nuevo o actualizar el existente — ver upsert_meta_tienda)."""
+    client = get_client()
+    rows = [
+        _doc_to_dict(s) for s in client.collection("metas_tienda")
+        .where("tienda", "==", tienda).where("asesor_nombre", "==", asesor_nombre).where("mes", "==", mes)
+        .limit(1).stream()
+    ]
+    return rows[0] if rows else None
+
+
+def upsert_meta_tienda(tienda, asesor_nombre, mes, meta=None, venta_actual=None, actualizado_por_id=None):
+    """Crea o actualiza el registro de meta/venta de un asesor para un mes
+    dado — mismo tienda+asesor+mes se actualiza en el mismo documento (para
+    ir corrigiendo la venta del mes en curso); un mes nuevo siempre crea un
+    documento nuevo, dejando los meses anteriores intactos como historial."""
+    existente = get_meta_tienda(tienda, asesor_nombre, mes)
+    cambios = {"actualizado_en": datetime.now().isoformat(timespec="seconds"), "actualizado_por_id": actualizado_por_id}
+    if meta is not None:
+        cambios["meta"] = float(meta)
+    if venta_actual is not None:
+        cambios["venta_actual"] = float(venta_actual)
+    if existente:
+        get_client().collection("metas_tienda").document(existente["id"]).update(cambios)
+        return existente["id"]
+    cambios.update({
+        "tienda": tienda, "asesor_nombre": asesor_nombre, "mes": mes,
+        "meta": float(meta) if meta is not None else 0.0,
+        "venta_actual": float(venta_actual) if venta_actual is not None else 0.0,
+        "creado_en": datetime.now().isoformat(timespec="seconds"),
+    })
+    doc_ref = get_client().collection("metas_tienda").document()
+    doc_ref.set(cambios)
+    return doc_ref.id
+
+
+def delete_meta_tienda(meta_id):
+    get_client().collection("metas_tienda").document(meta_id).delete()
