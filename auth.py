@@ -427,3 +427,11 @@ def puede_gestionar_pendientes_minuta():
     exactamente a esto (pedido explícito de Steven), además de admin."""
     u = current_user()
     return u is not None and u["rol"] in ("admin", "jefe_linea")
+
+
+def puede_administrar_temas_minuta():
+    """Quién puede editar la lista de temas predeterminados que aparecen
+    como checklist al crear una Minuta de Tienda — admin y jefe_linea
+    (los jefes de tienda solo los marcan, no los configuran)."""
+    u = current_user()
+    return u is not None and u["rol"] in ("admin", "jefe_linea")
