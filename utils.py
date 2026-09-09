@@ -1102,6 +1102,230 @@ def mant_tienda_pdf_bytes(r: dict) -> bytes:
     return bytes(pdf.output())
 
 
+def minuta_tienda_pdf_bytes(m: dict, metas: list | None = None) -> bytes:
+    """Genera el PDF profesional (con logo de Visión Digital) de una Minuta
+    de Tienda — ver 28_Minutas_Tiendas.py. Trae las 3 secciones que pidió
+    Steven: (1) el checklist de temas tratados en la reunión, (2) los
+    pendientes solicitados y (3) metas vs. ventas por asesor de ventas del
+    mes de la reunión. 'metas' es la lista que retorna
+    database.list_metas_tienda(tienda=m['tienda'], mes=...) ya filtrada al
+    mes correcto — se recibe aparte porque 'm' (la minuta) no guarda esos
+    datos. Se genera siempre al vuelo a partir de lo que ya está guardado
+    en Firestore — no se guarda el PDF en ningún lado, así que tanto el
+    botón de 'Ver PDF' dentro de la plataforma como el correo automático
+    al crear la minuta simplemente lo vuelven a generar cuando se
+    necesita (mismo patrón que mant_tienda_pdf_bytes)."""
+    metas = metas or []
+    pdf = FPDF(format="Letter")
+    pdf.add_page()
+    pdf.set_auto_page_break(auto=True, margin=15)
+    box_w = 190
+
+    # -- Encabezado: logo a la izquierda, caja "MINUTA DE TIENDA No." a la derecha --
+    try:
+        pdf.image(LOGO_PATH, x=10, y=10, w=42)
+    except Exception:
+        pdf.set_font("Helvetica", "B", 16)
+        pdf.set_xy(10, 12)
+        pdf.cell(60, 8, _pdf_safe(EMPRESA_NOMBRE))
+
+    caja_x, caja_w = 122, 80
+    pdf.set_fill_color(20, 20, 20)
+    pdf.set_text_color(255, 255, 255)
+    pdf.set_font("Helvetica", "B", 11)
+    pdf.set_xy(caja_x, 12)
+    pdf.cell(caja_w, 8, _pdf_safe("MINUTA DE TIENDA No."), border=0, align="C", fill=True)
+
+    numero = m.get("numero")
+    texto_numero = f"MIN-{numero:04d}" if isinstance(numero, int) else "MIN-____"
+    pdf.set_text_color(0, 0, 0)
+    pdf.set_draw_color(0, 0, 0)
+    pdf.set_font("Helvetica", "B", 13)
+    pdf.set_xy(caja_x, 20)
+    pdf.cell(caja_w, 10, _pdf_safe(texto_numero), border=1, align="C")
+
+    pdf.set_font("Helvetica", "", 9)
+    pdf.set_text_color(60, 60, 60)
+    pdf.set_xy(caja_x, 32)
+    pdf.cell(caja_w, 5, _pdf_safe(EMPRESA_DIRECCION_LINEA1), align="C")
+    pdf.set_xy(caja_x, 37)
+    pdf.cell(caja_w, 5, _pdf_safe(EMPRESA_DIRECCION_LINEA2), align="C")
+    pdf.set_text_color(0, 0, 0)
+
+    # -- Datos de la reunión: FECHA / TIENDA / ELABORADA POR ------------------
+    fecha_txt = m.get("fecha_reunion") or ""
+    if len(fecha_txt) == 10 and fecha_txt[4] == "-":
+        fecha_txt = f"{fecha_txt[8:10]}/{fecha_txt[5:7]}/{fecha_txt[0:4]}"
+
+    campos = [
+        ("FECHA DE REUNIÓN:", fecha_txt or "—"),
+        ("TIENDA:", m.get("tienda") or "—"),
+        ("ELABORADA POR:", m.get("creado_por_nombre") or "—"),
+    ]
+    box_y0, fila_h = 52, 9
+    pdf.set_draw_color(150, 150, 150)
+    pdf.rect(10, box_y0, box_w, fila_h * len(campos))
+    for i, (etiqueta, valor) in enumerate(campos):
+        fila_y = box_y0 + i * fila_h
+        if i > 0:
+            pdf.line(10, fila_y, 10 + box_w, fila_y)
+        pdf.set_font("Helvetica", "B", 10)
+        pdf.set_xy(13, fila_y + 2.3)
+        pdf.cell(45, 5, _pdf_safe(etiqueta))
+        pdf.set_font("Helvetica", "", 10)
+        pdf.set_xy(58, fila_y + 2.3)
+        pdf.cell(box_w - 48, 5, _pdf_safe(valor))
+
+    y = box_y0 + fila_h * len(campos) + 8
+
+    def _titulo_seccion(texto, y0):
+        pdf.set_xy(10, y0)
+        pdf.set_fill_color(20, 20, 20)
+        pdf.set_text_color(255, 255, 255)
+        pdf.set_font("Helvetica", "B", 10)
+        pdf.cell(box_w, 7, _pdf_safe(texto), border=0, align="L", fill=True)
+        pdf.set_text_color(0, 0, 0)
+        return y0 + 7
+
+    def _salto_pagina_si_necesario(y_actual, espacio_necesario=20):
+        if y_actual + espacio_necesario > 270:
+            pdf.add_page()
+            return 15
+        return y_actual
+
+    # -- 1) Checklist de temas tratados --------------------------------------
+    y = _salto_pagina_si_necesario(y, 20)
+    y = _titulo_seccion(" 1. CHECKLIST DE TEMAS TRATADOS", y)
+    checklist = m.get("checklist") or []
+    col_marca_w = 22
+    pdf.set_draw_color(150, 150, 150)
+    if not checklist:
+        pdf.set_font("Helvetica", "I", 9)
+        pdf.set_xy(10, y + 2)
+        pdf.cell(box_w, 6, _pdf_safe("Sin temas registrados."))
+        y += 10
+    else:
+        for item in checklist:
+            texto_tema = item.get("tema") or ""
+            if item.get("extra"):
+                texto_tema += "  (agregado, no estaba en la lista)"
+            texto_tema = _pdf_safe(texto_tema)
+            y = _salto_pagina_si_necesario(y, 8)
+            lineas = pdf.multi_cell(box_w - col_marca_w, 5.5, texto_tema, dry_run=True, output="LINES")
+            alto_fila = max(7, len(lineas) * 5.5 + 2)
+            pdf.set_font("Helvetica", "B", 10)
+            pdf.set_xy(10, y)
+            marca = "SI" if item.get("tratado") else "NO"
+            pdf.cell(col_marca_w, alto_fila, _pdf_safe(marca), border=1, align="C")
+            pdf.set_font("Helvetica", "", 10)
+            pdf.set_xy(10 + col_marca_w, y)
+            pdf.multi_cell(box_w - col_marca_w, 5.5, texto_tema, border=1)
+            y += alto_fila
+    y += 6
+
+    # -- 2) Pendientes solicitados --------------------------------------------
+    y = _salto_pagina_si_necesario(y, 20)
+    y = _titulo_seccion(" 2. PENDIENTES SOLICITADOS", y)
+    pendientes = m.get("pendientes") or []
+    if not pendientes:
+        pdf.set_font("Helvetica", "I", 9)
+        pdf.set_xy(10, y + 2)
+        pdf.cell(box_w, 6, _pdf_safe("Sin pendientes registrados."))
+        y += 10
+    else:
+        col_desc_w, col_resp_w, col_edo_w = 92, 58, 40
+        pdf.set_font("Helvetica", "B", 9)
+        pdf.set_fill_color(235, 235, 235)
+        pdf.set_xy(10, y)
+        pdf.cell(col_desc_w, 6, _pdf_safe("Descripción"), border=1, align="C", fill=True)
+        pdf.cell(col_resp_w, 6, _pdf_safe("Responsable / Límite"), border=1, align="C", fill=True)
+        pdf.cell(col_edo_w, 6, _pdf_safe("Estado"), border=1, align="C", fill=True)
+        y += 6
+        pdf.set_font("Helvetica", "", 9)
+        for p in pendientes:
+            desc_txt = _pdf_safe(p.get("descripcion") or "—")
+            responsable_txt = p.get("responsable") or "—"
+            limite = p.get("fecha_limite")
+            resp_txt = _pdf_safe(f"{responsable_txt} / {limite}" if limite else responsable_txt)
+            estado_txt = _pdf_safe(p.get("estado") or "Pendiente")
+            y = _salto_pagina_si_necesario(y, 8)
+            lineas_desc = pdf.multi_cell(col_desc_w, 5, desc_txt, dry_run=True, output="LINES")
+            alto_fila = max(6, len(lineas_desc) * 5 + 3)
+            pdf.set_xy(10, y)
+            pdf.multi_cell(col_desc_w, 5, desc_txt, border=1)
+            pdf.set_xy(10 + col_desc_w, y)
+            pdf.cell(col_resp_w, alto_fila, resp_txt, border=1)
+            pdf.set_xy(10 + col_desc_w + col_resp_w, y)
+            pdf.cell(col_edo_w, alto_fila, estado_txt, border=1, align="C")
+            y += alto_fila
+    y += 6
+
+    # -- 3) Metas vs. ventas por asesor de ventas -----------------------------
+    y = _salto_pagina_si_necesario(y, 20)
+    y = _titulo_seccion(" 3. METAS VS. VENTAS POR ASESOR DE VENTAS", y)
+    if not metas:
+        pdf.set_font("Helvetica", "I", 9)
+        pdf.set_xy(10, y + 2)
+        pdf.cell(
+            box_w, 6,
+            _pdf_safe("Sin metas/ventas registradas para el mes de esta reunión."),
+        )
+        y += 10
+    else:
+        col_ase_w, col_meta_w, col_venta_w, col_pct_w = 68, 40, 40, 42
+        pdf.set_font("Helvetica", "B", 9)
+        pdf.set_fill_color(235, 235, 235)
+        pdf.set_xy(10, y)
+        pdf.cell(col_ase_w, 6, _pdf_safe("Asesor de ventas"), border=1, align="C", fill=True)
+        pdf.cell(col_meta_w, 6, _pdf_safe("Meta (Q)"), border=1, align="C", fill=True)
+        pdf.cell(col_venta_w, 6, _pdf_safe("Venta actual (Q)"), border=1, align="C", fill=True)
+        pdf.cell(col_pct_w, 6, _pdf_safe("% cumplimiento"), border=1, align="C", fill=True)
+        y += 6
+        pdf.set_font("Helvetica", "", 9)
+        total_meta = total_venta = 0.0
+        for r in sorted(metas, key=lambda r: r.get("asesor_nombre") or ""):
+            meta_val = float(r.get("meta") or 0.0)
+            venta_val = float(r.get("venta_actual") or 0.0)
+            total_meta += meta_val
+            total_venta += venta_val
+            pct_txt = f"{(venta_val / meta_val * 100):.0f}%" if meta_val else "—"
+            y = _salto_pagina_si_necesario(y, 8)
+            pdf.set_xy(10, y)
+            pdf.cell(col_ase_w, 6, _pdf_safe(r.get("asesor_nombre") or "—"), border=1)
+            pdf.cell(col_meta_w, 6, _pdf_safe(f"Q {meta_val:,.2f}"), border=1, align="R")
+            pdf.cell(col_venta_w, 6, _pdf_safe(f"Q {venta_val:,.2f}"), border=1, align="R")
+            pdf.cell(col_pct_w, 6, _pdf_safe(pct_txt), border=1, align="C")
+            y += 6
+        pct_total_txt = f"{(total_venta / total_meta * 100):.0f}%" if total_meta else "—"
+        pdf.set_font("Helvetica", "B", 9)
+        pdf.set_xy(10, y)
+        pdf.cell(col_ase_w, 6, _pdf_safe("TOTAL"), border=1)
+        pdf.cell(col_meta_w, 6, _pdf_safe(f"Q {total_meta:,.2f}"), border=1, align="R")
+        pdf.cell(col_venta_w, 6, _pdf_safe(f"Q {total_venta:,.2f}"), border=1, align="R")
+        pdf.cell(col_pct_w, 6, _pdf_safe(pct_total_txt), border=1, align="C")
+        y += 6
+    y += 8
+
+    # -- Notas generales -------------------------------------------------------
+    if m.get("notas_generales"):
+        y = _salto_pagina_si_necesario(y, 16)
+        pdf.set_font("Helvetica", "B", 10)
+        pdf.set_xy(10, y)
+        pdf.cell(box_w, 6, _pdf_safe("Notas generales:"))
+        y += 6
+        pdf.set_font("Helvetica", "", 10)
+        pdf.set_xy(10, y)
+        pdf.multi_cell(box_w, 5.5, _pdf_safe(m["notas_generales"]))
+        y = pdf.get_y() + 4
+
+    pdf.set_y(max(y, pdf.get_y()) + 4)
+    pdf.set_font("Helvetica", "I", 9)
+    pdf.set_text_color(120, 120, 120)
+    pdf.multi_cell(0, 5, _pdf_safe("Documento generado automáticamente por la Plataforma Comercial - Visión Digital."))
+
+    return bytes(pdf.output())
+
+
 def orden_produccion_pdf_bytes(p: dict, linea: str) -> bytes:
     """Genera el PDF de 'ORDEN DE PRODUCCIÓN No. ____' de una orden de
     Colorado o Galaxy — mismo diseño que el PDF de 'ENVÍO No.' de Logística
