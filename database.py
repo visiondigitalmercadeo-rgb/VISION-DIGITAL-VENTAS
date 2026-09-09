@@ -25,6 +25,8 @@ import secrets
 import smtplib
 import uuid
 from datetime import date, datetime, timedelta, timezone
+from email.mime.application import MIMEApplication
+from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.utils import formataddr
 
@@ -2937,6 +2939,43 @@ def enviar_correo_aviso(destinatarios, asunto, cuerpo) -> bool:
         return False
 
 
+def enviar_correo_aviso_adjunto(destinatarios, asunto, cuerpo, adjunto_bytes=None, adjunto_nombre=None) -> bool:
+    """Igual que enviar_correo_aviso, pero además permite mandar un archivo
+    adjunto (por ejemplo el PDF de una Minuta de Tienda — ver
+    utils.minuta_tienda_pdf_bytes / 28_Minutas_Tiendas.py). Si
+    'adjunto_bytes' es None manda un correo de texto plano normal, sin
+    adjunto. Nunca lanza excepción — mismo comportamiento a prueba de
+    fallos que enviar_correo_aviso: si algo falla, retorna False y el
+    detalle queda solo en el log del servidor."""
+    destinatarios = [d.strip() for d in (destinatarios or []) if d and d.strip()]
+    conf = _smtp_config()
+    if not destinatarios or not conf:
+        return False
+    try:
+        if adjunto_bytes:
+            msg = MIMEMultipart()
+            msg.attach(MIMEText(cuerpo, "plain", "utf-8"))
+            adjunto = MIMEApplication(adjunto_bytes, _subtype="pdf")
+            adjunto.add_header(
+                "Content-Disposition", "attachment", filename=adjunto_nombre or "documento.pdf",
+            )
+            msg.attach(adjunto)
+        else:
+            msg = MIMEText(cuerpo, "plain", "utf-8")
+        msg["Subject"] = asunto
+        msg["From"] = formataddr((EMPRESA_NOMBRE, conf["usuario"]))
+        msg["To"] = ", ".join(destinatarios)
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(conf["usuario"], conf["app_password"])
+            server.sendmail(conf["usuario"], destinatarios, msg.as_string())
+        return True
+    except Exception as e:
+        import traceback
+        print("ERROR AL MANDAR CORREO CON ADJUNTO:", e)
+        traceback.print_exc()
+        return False
+
+
 # ---------------------------------------------------------------------------
 # NPS (Net Promoter Score): encuesta pública de servicio al cliente, con
 # check-in por QR — una por tienda (ver config.NPS_TIENDA_SLUG). La encuesta
@@ -3050,6 +3089,23 @@ def get_temas_predeterminados_minuta() -> list:
 def set_temas_predeterminados_minuta(temas: list):
     get_client().collection("minutas_tiendas_config").document("temas").set({
         "temas": [t.strip() for t in (temas or []) if t and t.strip()],
+        "actualizado_en": datetime.now().isoformat(timespec="seconds"),
+    })
+
+
+def get_minutas_tiendas_correos_aviso() -> list:
+    """Lista de correos que reciben automáticamente el PDF de la minuta
+    (checklist + pendientes + metas vs. ventas) cada vez que se crea una
+    minuta nueva (ver create_minuta_tienda / 28_Minutas_Tiendas.py). Vacía
+    si todavía no se ha guardado ninguno."""
+    snap = get_client().collection("minutas_tiendas_config").document("notificaciones").get()
+    data = _doc_to_dict(snap) if snap.exists else None
+    return (data or {}).get("correos") or []
+
+
+def set_minutas_tiendas_correos_aviso(correos: list):
+    get_client().collection("minutas_tiendas_config").document("notificaciones").set({
+        "correos": [c.strip() for c in (correos or []) if c and c.strip()],
         "actualizado_en": datetime.now().isoformat(timespec="seconds"),
     })
 
