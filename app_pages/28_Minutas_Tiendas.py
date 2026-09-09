@@ -5,7 +5,7 @@ import streamlit as st
 
 import auth
 import database as db
-from config import APP_URL, ESTADOS_PENDIENTE_MINUTA, TICKET_TIENDAS
+from config import APP_URL, ESTADOS_PENDIENTE_MINUTA, PUESTOS_ASESOR_VENTAS, TICKET_TIENDAS
 from utils import download_excel_button, minuta_tienda_pdf_bytes, sidebar_user_box
 
 user = auth.current_user()
@@ -53,6 +53,17 @@ def _pct(venta, meta):
     if not meta:
         return None
     return (venta / meta) * 100
+
+
+_PUESTOS_ASESOR_VENTAS_NORM = {p.strip().lower() for p in PUESTOS_ASESOR_VENTAS}
+
+
+def _es_asesor_ventas(persona):
+    """"personal_tiendas" no tiene un campo 'rol' real (solo 'puesto',
+    texto libre) — se identifica a los asesores de ventas comparando el
+    puesto (sin mayúsculas/acentos) contra config.PUESTOS_ASESOR_VENTAS
+    ('Diseñador' es el puesto que quedó de la carga inicial para ellos)."""
+    return (persona.get("puesto") or "").strip().lower() in _PUESTOS_ASESOR_VENTAS_NORM
 
 
 def _metas_del_mes_de_minuta(tienda, fecha_reunion):
@@ -269,13 +280,13 @@ with tab_metas:
         sub_mes_actual, sub_historial = st.tabs([f"📅 {_etiqueta_mes(mes_actual)} (mes actual)", "📊 Historial"])
 
         with sub_mes_actual:
-            asesores = [
-                p for p in db.list_personal_tiendas(tienda=tienda_metas) if p.get("rol") == "asesor_ventas"
-            ]
+            asesores = [p for p in db.list_personal_tiendas(tienda=tienda_metas) if _es_asesor_ventas(p)]
             if not asesores:
                 st.info(
-                    "Todavía no hay asesores de ventas cargados para esta tienda. Se agregan desde "
-                    "'Administración de usuarios' → '📥 Carga inicial de personal'."
+                    "Todavía no hay asesores de ventas cargados para esta tienda (personal con puesto "
+                    "'Diseñador' o 'Asesor de ventas'). Se agregan desde 'Administración de usuarios' → "
+                    "'📥 Carga inicial de personal', o desde 'Capacitación' → 'Personal por tienda' → "
+                    "'➕ Agregar personal'."
                 )
             else:
                 registros_mes = {
