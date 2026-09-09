@@ -3036,6 +3036,24 @@ def delete_nps_respuestas(tienda=None, desde=None, hasta=None):
 # Tiendas) — no es una colección aparte, así que se actualiza con un
 # lee-modifica-escribe completo del arreglo (ver update_pendiente_minuta).
 # ---------------------------------------------------------------------------
+def get_temas_predeterminados_minuta() -> list:
+    """Lista de temas predeterminados que aparecen como checklist al crear
+    una Minuta de Tienda — el jefe de tienda solo los marca si se tocaron,
+    en vez de escribirlos de cero cada vez. Vacía si todavía no se ha
+    configurado ninguno (ver set_temas_predeterminados_minuta — se edita
+    desde la pestaña ⚙️ dentro de Minutas de Tienda, solo admin/jefe_linea)."""
+    snap = get_client().collection("minutas_tiendas_config").document("temas").get()
+    data = _doc_to_dict(snap) if snap.exists else None
+    return (data or {}).get("temas") or []
+
+
+def set_temas_predeterminados_minuta(temas: list):
+    get_client().collection("minutas_tiendas_config").document("temas").set({
+        "temas": [t.strip() for t in (temas or []) if t and t.strip()],
+        "actualizado_en": datetime.now().isoformat(timespec="seconds"),
+    })
+
+
 def _siguiente_numero_minuta():
     """Numeración corrida (no reinicia por día) — MIN-0001, MIN-0002, ..."""
     rows = [_doc_to_dict(s) for s in get_client().collection("minutas_tiendas").stream()]
@@ -3060,12 +3078,14 @@ def get_minuta_tienda(minuta_id):
     return _doc_to_dict(snap) if snap.exists else None
 
 
-def create_minuta_tienda(creado_por_id, creado_por_nombre, tienda, fecha_reunion, checklist, pendientes):
-    """'checklist' es una lista de {"tema": str, "notas": str, "tratado": bool}.
-    'pendientes' es una lista de {"descripcion": str, "responsable": str,
-    "fecha_limite": str|None} — al crearse, a cada pendiente se le agrega
-    aquí mismo estado="Pendiente" y seguimiento=[] (ver
-    config.ESTADOS_PENDIENTE_MINUTA)."""
+def create_minuta_tienda(creado_por_id, creado_por_nombre, tienda, fecha_reunion, checklist, pendientes, notas_generales=None):
+    """'checklist' es una lista de {"tema": str, "tratado": bool, "extra":
+    bool} — "extra" marca los temas que el jefe agregó a mano porque no
+    estaban en la lista de temas predeterminados (ver
+    get_temas_predeterminados_minuta). 'pendientes' es una lista de
+    {"descripcion": str, "responsable": str, "fecha_limite": str|None} — al
+    crearse, a cada pendiente se le agrega aquí mismo estado="Pendiente" y
+    seguimiento=[] (ver config.ESTADOS_PENDIENTE_MINUTA)."""
     numero = _siguiente_numero_minuta()
     pendientes_completos = [
         {
@@ -3079,6 +3099,7 @@ def create_minuta_tienda(creado_por_id, creado_por_nombre, tienda, fecha_reunion
         "numero": numero, "tienda": tienda, "fecha_reunion": str(fecha_reunion),
         "creado_por_id": creado_por_id, "creado_por_nombre": creado_por_nombre,
         "checklist": checklist, "pendientes": pendientes_completos,
+        "notas_generales": (notas_generales or "").strip() or None,
         "creado_en": datetime.now().isoformat(timespec="seconds"),
     })
     return doc_ref.id
