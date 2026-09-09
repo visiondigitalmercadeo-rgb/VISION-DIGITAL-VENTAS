@@ -367,10 +367,38 @@ def plantilla_catalogo_tecnico_bytes() -> bytes:
     return buffer.getvalue()
 
 
+# Firestore rechaza de golpe (google.api_core.exceptions.InvalidArgument, sin
+# mensaje claro para el usuario) cualquier documento que pese más de 1 MiB
+# (1,048,576 bytes) en total — TODOS sus campos juntos. Cada archivo se
+# guarda como texto base64 dentro del documento, y ese texto pesa ~33% más
+# que el archivo original (4 bytes de base64 por cada 3 bytes reales). Un
+# límite "por archivo" que no toma esto en cuenta (o que no revisa el total
+# cuando hay varios archivos, o varios campos con archivos, en el MISMO
+# documento — ver p. ej. Mant. Tiendas: "fotos" + "cotizacion_pdfs" juntos)
+# puede dejar pasar una subida que, ya codificada, no cabe — y ahí revienta
+# con un error de Firestore feo en vez de avisarle a la persona. Este techo
+# de seguridad se aplica DENTRO de archivo_a_b64/archivos_a_b64_lista para
+# que TODA la plataforma quede protegida sin tener que revisar cada pestaña
+# una por una — dejando margen de sobra para el resto de los campos del
+# documento (fecha, descripción, historial, etc.) y para que quepan dos
+# campos de archivos en el mismo documento sin pasarse.
+LIMITE_B64_SEGURO_POR_LLAMADA = 450_000  # bytes de texto base64 YA codificado
+
+
+def _validar_limite_b64_seguro(bytes_b64_totales):
+    if bytes_b64_totales > LIMITE_B64_SEGURO_POR_LLAMADA:
+        raise ValueError(
+            "Lo que quieres subir pesa demasiado para guardarse junto con el resto de la información "
+            "de este registro (Firestore, la base de datos, tiene un límite duro de tamaño por "
+            "registro). Sube un archivo más pequeño o comprime la imagen/PDF, o si son varios, "
+            "súbelos en tandas más chicas."
+        )
+
+
 def archivo_a_b64(archivo_subido, max_bytes):
     """Convierte un archivo subido con st.file_uploader a (nombre, tipo, base64).
     Retorna (None, None, None) si no hay archivo. Lanza ValueError si excede
-    max_bytes (límite práctico por documento en Firestore)."""
+    max_bytes o el techo de seguridad de Firestore (ver LIMITE_B64_SEGURO_POR_LLAMADA)."""
     if archivo_subido is None:
         return None, None, None
     datos = archivo_subido.getvalue()
@@ -379,14 +407,18 @@ def archivo_a_b64(archivo_subido, max_bytes):
             f"El archivo pesa {len(datos) / 1000:.0f} KB; el máximo permitido es "
             f"{max_bytes / 1000:.0f} KB. Comprime la imagen o el PDF e intenta de nuevo."
         )
-    return archivo_subido.name, archivo_subido.type, base64.b64encode(datos).decode("ascii")
+    b64 = base64.b64encode(datos).decode("ascii")
+    _validar_limite_b64_seguro(len(b64))
+    return archivo_subido.name, archivo_subido.type, b64
 
 
 def archivos_a_b64_lista(archivos_subidos, max_bytes, max_archivos=3):
     """Convierte una lista de archivos subidos con
     st.file_uploader(accept_multiple_files=True) a una lista de
     {"nombre", "tipo", "b64"}. Retorna [] si no hay archivos. Lanza ValueError
-    si se suben más de max_archivos, o si alguno pesa más de max_bytes."""
+    si se suben más de max_archivos, si alguno pesa más de max_bytes, o si el
+    total ya codificado en base64 pasa el techo de seguridad de Firestore
+    (ver LIMITE_B64_SEGURO_POR_LLAMADA)."""
     archivos_subidos = archivos_subidos or []
     if len(archivos_subidos) > max_archivos:
         raise ValueError(
@@ -394,6 +426,7 @@ def archivos_a_b64_lista(archivos_subidos, max_bytes, max_archivos=3):
             "Quita alguno e intenta de nuevo."
         )
     resultado = []
+    total_b64 = 0
     for archivo in archivos_subidos:
         datos = archivo.getvalue()
         if len(datos) > max_bytes:
@@ -401,10 +434,10 @@ def archivos_a_b64_lista(archivos_subidos, max_bytes, max_archivos=3):
                 f"El archivo '{archivo.name}' pesa {len(datos) / 1000:.0f} KB; el máximo permitido "
                 f"por archivo es {max_bytes / 1000:.0f} KB. Comprime la imagen o el PDF e intenta de nuevo."
             )
-        resultado.append({
-            "nombre": archivo.name, "tipo": archivo.type,
-            "b64": base64.b64encode(datos).decode("ascii"),
-        })
+        b64 = base64.b64encode(datos).decode("ascii")
+        total_b64 += len(b64)
+        resultado.append({"nombre": archivo.name, "tipo": archivo.type, "b64": b64})
+    _validar_limite_b64_seguro(total_b64)
     return resultado
 
 
