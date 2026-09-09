@@ -3024,3 +3024,91 @@ def delete_nps_respuestas(tienda=None, desde=None, hasta=None):
     for r in rows:
         client.collection("nps_respuestas").document(r["id"]).delete()
     return len(rows)
+
+
+# ---------------------------------------------------------------------------
+# Minutas de Tienda: el jefe (o sub jefe) de tienda deja constancia de una
+# reunión — un checklist de los temas tratados y una lista de pendientes que
+# quedaron abiertos. El jefe de línea (o admin) le da seguimiento a cada
+# pendiente por separado (cambia su estado y puede ir dejando comentarios de
+# seguimiento) hasta que queda resuelto. Cada pendiente vive como un elemento
+# dentro del arreglo "pendientes" de su minuta (igual que "fotos" en Mant.
+# Tiendas) — no es una colección aparte, así que se actualiza con un
+# lee-modifica-escribe completo del arreglo (ver update_pendiente_minuta).
+# ---------------------------------------------------------------------------
+def _siguiente_numero_minuta():
+    """Numeración corrida (no reinicia por día) — MIN-0001, MIN-0002, ..."""
+    rows = [_doc_to_dict(s) for s in get_client().collection("minutas_tiendas").stream()]
+    numeros = [r.get("numero") for r in rows if isinstance(r.get("numero"), int)]
+    return (max(numeros, default=0)) + 1
+
+
+def list_minutas_tiendas(tienda=None):
+    """Todas las minutas, más nueva primero (por fecha de la reunión y,
+    dentro del mismo día, por hora de creación)."""
+    client = get_client()
+    query = client.collection("minutas_tiendas")
+    if tienda:
+        query = query.where("tienda", "==", tienda)
+    rows = [_doc_to_dict(s) for s in query.stream()]
+    rows.sort(key=lambda r: (r.get("fecha_reunion") or "", r.get("creado_en") or ""), reverse=True)
+    return rows
+
+
+def get_minuta_tienda(minuta_id):
+    snap = get_client().collection("minutas_tiendas").document(minuta_id).get()
+    return _doc_to_dict(snap) if snap.exists else None
+
+
+def create_minuta_tienda(creado_por_id, creado_por_nombre, tienda, fecha_reunion, checklist, pendientes):
+    """'checklist' es una lista de {"tema": str, "notas": str, "tratado": bool}.
+    'pendientes' es una lista de {"descripcion": str, "responsable": str,
+    "fecha_limite": str|None} — al crearse, a cada pendiente se le agrega
+    aquí mismo estado="Pendiente" y seguimiento=[] (ver
+    config.ESTADOS_PENDIENTE_MINUTA)."""
+    numero = _siguiente_numero_minuta()
+    pendientes_completos = [
+        {
+            "descripcion": p["descripcion"], "responsable": p.get("responsable") or "",
+            "fecha_limite": p.get("fecha_limite"), "estado": "Pendiente", "seguimiento": [],
+        }
+        for p in pendientes
+    ]
+    doc_ref = get_client().collection("minutas_tiendas").document()
+    doc_ref.set({
+        "numero": numero, "tienda": tienda, "fecha_reunion": str(fecha_reunion),
+        "creado_por_id": creado_por_id, "creado_por_nombre": creado_por_nombre,
+        "checklist": checklist, "pendientes": pendientes_completos,
+        "creado_en": datetime.now().isoformat(timespec="seconds"),
+    })
+    return doc_ref.id
+
+
+def update_minuta_tienda(minuta_id, **kwargs):
+    if kwargs:
+        get_client().collection("minutas_tiendas").document(minuta_id).update(kwargs)
+
+
+def delete_minuta_tienda(minuta_id):
+    get_client().collection("minutas_tiendas").document(minuta_id).delete()
+
+
+def update_pendiente_minuta(minuta_id, indice_pendiente, estado=None, comentario=None, autor_nombre=None):
+    """Actualiza UN pendiente dentro del arreglo "pendientes" de una minuta
+    — cambia su estado y/o agrega una entrada al historial de seguimiento
+    (comentario + quién lo dejó + cuándo). No hace nada si el índice ya no
+    existe (por ejemplo si alguien más lo eliminó mientras tanto)."""
+    minuta = get_minuta_tienda(minuta_id)
+    if not minuta:
+        return
+    pendientes = minuta.get("pendientes") or []
+    if not (0 <= indice_pendiente < len(pendientes)):
+        return
+    if estado:
+        pendientes[indice_pendiente]["estado"] = estado
+    if comentario and comentario.strip():
+        pendientes[indice_pendiente].setdefault("seguimiento", []).append({
+            "comentario": comentario.strip(), "autor_nombre": autor_nombre or "—",
+            "creado_en": datetime.now().isoformat(timespec="seconds"),
+        })
+    get_client().collection("minutas_tiendas").document(minuta_id).update({"pendientes": pendientes})
