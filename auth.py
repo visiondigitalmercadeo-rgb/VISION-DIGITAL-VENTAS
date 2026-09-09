@@ -1,437 +1,423 @@
-import base64
-from datetime import datetime, timedelta
+from datetime import date
 
+import pandas as pd
 import streamlit as st
-from streamlit_cookies_controller import CookieController
 
+import auth
 import database as db
-from config import EMPRESA_LEMA, EMPRESA_NOMBRE, LOGO_PATH
+from config import ESTADOS_PENDIENTE_MINUTA, TICKET_TIENDAS
+from utils import download_excel_button, sidebar_user_box
 
-# Nombre de la cookie donde se guarda el token de "recuérdame" — para que,
-# una vez que alguien inicia sesión, la plataforma no lo vuelva a sacar hasta
-# que él mismo cierre sesión (ni siquiera si la app se reinicia por un nuevo
-# despliegue, o cierra y vuelve a abrir el navegador).
-_COOKIE_SESION = "vd_sesion"
+user = auth.current_user()
+sidebar_user_box()
+
+st.title("📝 Minutas de Tienda")
+st.caption(
+    "El jefe (o sub jefe) de tienda deja constancia de su reunión: un checklist de los temas que se "
+    "tocaron y los pendientes que quedaron abiertos. El jefe de línea (y los administradores) le dan "
+    "seguimiento a cada pendiente hasta que queda resuelto."
+)
+
+ESCRIBIR_RESPONSABLE_NUEVO = "✍️ Escribir otro nombre"
+MESES_ES = {
+    "01": "Enero", "02": "Febrero", "03": "Marzo", "04": "Abril", "05": "Mayo", "06": "Junio",
+    "07": "Julio", "08": "Agosto", "09": "Septiembre", "10": "Octubre", "11": "Noviembre", "12": "Diciembre",
+}
+
+puede_crear = auth.puede_crear_minuta_tienda()
+puede_seguimiento = auth.puede_gestionar_pendientes_minuta()
+puede_administrar_temas = auth.puede_administrar_temas_minuta()
+puede_gestionar_metas = auth.puede_gestionar_metas_tienda()
+tienda_usuario = auth.current_user_tienda()
 
 
-def _cookies():
-    """Controlador de cookies del navegador — una sola instancia por sesión
-    de Streamlit (se cachea sola en session_state, ver CookieController)."""
-    return CookieController()
+def _opciones_responsable(tienda):
+    personal = db.list_personal_tiendas(tienda=tienda) if tienda else []
+    nombres = [p["nombre"] for p in personal if p.get("nombre")]
+    return [ESCRIBIR_RESPONSABLE_NUEVO] + nombres
 
 
-def _sincronizar_usuario_sesion(user):
-    st.session_state["user"] = {
-        "id": user["id"],
-        "nombre": user["nombre"],
-        "username": user["username"],
-        "rol": user["rol"],
-        "tienda": user.get("tienda"),
-        "paginas_extra": user.get("paginas_extra") or [],
-        "paginas_removidas": user.get("paginas_removidas") or [],
-    }
+def _emoji_estado(estado):
+    return {"Pendiente": "🔴", "En proceso": "🟡", "Resuelto": "🟢"}.get(estado, "⚪")
 
 
-def _logo_centrado(path, width):
-    """st.image() alinea la imagen a la izquierda de su columna aunque el
-    texto de al lado esté centrado — para el logo del login se ve mejor
-    centrarlo de verdad, incrustándolo como <img> dentro de un <div>
-    centrado."""
-    try:
-        with open(path, "rb") as f:
-            b64 = base64.b64encode(f.read()).decode("ascii")
-        st.markdown(
-            f"<div style='text-align:center;'>"
-            f"<img src='data:image/png;base64,{b64}' width='{width}' /></div>",
-            unsafe_allow_html=True,
+def _etiqueta_mes(mes: str) -> str:
+    """'2026-09' -> 'Septiembre 2026'."""
+    if not mes or "-" not in mes:
+        return mes or "—"
+    anio, num_mes = mes.split("-")
+    return f"{MESES_ES.get(num_mes, num_mes)} {anio}"
+
+
+def _pct(venta, meta):
+    if not meta:
+        return None
+    return (venta / meta) * 100
+
+
+tab_pendientes, tab_minutas, tab_metas, tab_nueva = st.tabs(
+    ["📌 Pendientes", "🗒️ Minutas", "🎯 Metas", "➕ Nueva minuta"]
+)
+
+# --------------------------------------------------------------------------
+# Pendientes — vista consolidada de TODOS los pendientes de TODAS las
+# minutas (con el filtro de tienda cuando aplica), para que el jefe de
+# línea/admin les dé seguimiento sin tener que abrir minuta por minuta.
+# --------------------------------------------------------------------------
+with tab_pendientes:
+    if tienda_usuario:
+        minutas_p = db.list_minutas_tiendas(tienda=tienda_usuario)
+        st.caption(f"Mostrando solo la tienda: **{tienda_usuario}**")
+    else:
+        elegido_tienda_p = st.selectbox("Filtrar por tienda", ["Todas"] + TICKET_TIENDAS, key="mn_pend_filtro_tienda")
+        minutas_p = db.list_minutas_tiendas(tienda=None if elegido_tienda_p == "Todas" else elegido_tienda_p)
+
+    mostrar_resueltos = st.checkbox("Mostrar también los pendientes ya resueltos", key="mn_pend_mostrar_resueltos")
+
+    filas_pendientes = []
+    for m in minutas_p:
+        for i, p in enumerate(m.get("pendientes") or []):
+            if not mostrar_resueltos and p.get("estado") == "Resuelto":
+                continue
+            filas_pendientes.append((m, i, p))
+
+    if not filas_pendientes:
+        st.caption("No hay pendientes que mostrar con este filtro.")
+    else:
+        download_excel_button(
+            pd.DataFrame([{
+                "Minuta": f"MIN-{m['numero']:04d}" if isinstance(m.get("numero"), int) else "—",
+                "Tienda": m.get("tienda"), "Fecha reunión": m.get("fecha_reunion"),
+                "Pendiente": p.get("descripcion"), "Responsable": p.get("responsable") or "—",
+                "Fecha límite": p.get("fecha_limite") or "—", "Estado": p.get("estado"),
+            } for m, i, p in filas_pendientes]),
+            "pendientes_minutas_tienda.xlsx", key="mn_pend_descargar_excel",
         )
-    except Exception:
-        st.image(path, width=width)
 
+        orden_estado = {"Pendiente": 0, "En proceso": 1, "Resuelto": 2}
+        filas_pendientes.sort(key=lambda t: (orden_estado.get(t[2].get("estado"), 9), t[2].get("fecha_limite") or ""))
 
-def do_login(username: str, password: str) -> bool:
-    user = db.get_user_by_username(username.strip().lower())
-    if not user or not user["activo"]:
-        return False
-    if not db.check_password(password, user["password_hash"]):
-        return False
-    _sincronizar_usuario_sesion(user)
-    # Guarda un token de "recuérdame" en una cookie del navegador, para que
-    # esta sesión sobreviva un refresh, cerrar y abrir el navegador, o que la
-    # plataforma se reinicie por un nuevo despliegue — hasta que la persona
-    # cierre sesión ella misma. Si la cookie falla por cualquier motivo (ej.
-    # el navegador la bloquea), el inicio de sesión normal sigue funcionando
-    # igual, solo que sin "recordar" para la próxima vez.
-    try:
-        token = db.crear_sesion_recordada(user["id"])
-        _cookies().set(
-            _COOKIE_SESION, token, expires=datetime.now() + timedelta(days=db.SESION_RECORDAR_DIAS),
+        for m, i, p in filas_pendientes:
+            numero_txt = f"MIN-{m['numero']:04d} · " if isinstance(m.get("numero"), int) else ""
+            with st.container(border=True):
+                st.markdown(f"{_emoji_estado(p.get('estado'))} **{p.get('descripcion')}**")
+                st.caption(
+                    f"🏬 {m.get('tienda') or '—'} · 🙋 Responsable: {p.get('responsable') or '—'} · "
+                    f"📅 Límite: {p.get('fecha_limite') or 'sin fecha'} · {numero_txt}reunión del {m.get('fecha_reunion') or '—'}"
+                )
+                seguimiento_previo = p.get("seguimiento") or []
+                if seguimiento_previo:
+                    with st.expander(f"📜 Historial de seguimiento ({len(seguimiento_previo)})"):
+                        for s in seguimiento_previo:
+                            st.caption(f"🕒 {(s.get('creado_en') or '')[:16].replace('T', ' ')} — **{s.get('autor_nombre')}**: {s.get('comentario')}")
+
+                if puede_seguimiento:
+                    with st.form(f"mn_seguimiento_{m['id']}_{i}"):
+                        nuevo_estado = st.selectbox(
+                            "Estado", ESTADOS_PENDIENTE_MINUTA,
+                            index=ESTADOS_PENDIENTE_MINUTA.index(p.get("estado")) if p.get("estado") in ESTADOS_PENDIENTE_MINUTA else 0,
+                            key=f"mn_estado_{m['id']}_{i}",
+                        )
+                        comentario_nuevo = st.text_input(
+                            "Comentario de seguimiento (opcional)", key=f"mn_comentario_{m['id']}_{i}",
+                            placeholder="Ej. Ya se coordinó con el proveedor, entrega la próxima semana.",
+                        )
+                        if st.form_submit_button("💾 Guardar seguimiento", use_container_width=True):
+                            db.update_pendiente_minuta(
+                                m["id"], i, estado=nuevo_estado, comentario=comentario_nuevo,
+                                autor_nombre=user["nombre"],
+                            )
+                            st.success("Seguimiento guardado.")
+                            st.rerun()
+
+# --------------------------------------------------------------------------
+# Minutas — historial de reuniones, con su checklist completo.
+# --------------------------------------------------------------------------
+with tab_minutas:
+    if tienda_usuario:
+        minutas = db.list_minutas_tiendas(tienda=tienda_usuario)
+        st.caption(f"Mostrando solo la tienda: **{tienda_usuario}**")
+    else:
+        elegido_tienda_m = st.selectbox("Filtrar por tienda", ["Todas"] + TICKET_TIENDAS, key="mn_lista_filtro_tienda")
+        minutas = db.list_minutas_tiendas(tienda=None if elegido_tienda_m == "Todas" else elegido_tienda_m)
+
+    if not minutas:
+        st.caption("Todavía no hay minutas registradas.")
+    else:
+        download_excel_button(
+            pd.DataFrame([{
+                "N° Minuta": m.get("numero"), "Tienda": m.get("tienda"), "Fecha reunión": m.get("fecha_reunion"),
+                "Elaborada por": m.get("creado_por_nombre"),
+                "Temas tratados": len(m.get("checklist") or []),
+                "Pendientes": len(m.get("pendientes") or []),
+                "Pendientes resueltos": sum(1 for p in (m.get("pendientes") or []) if p.get("estado") == "Resuelto"),
+            } for m in minutas]),
+            "minutas_tienda.xlsx", key="mn_lista_descargar_excel",
         )
-    except Exception:
-        pass
-    return True
 
-
-def do_logout():
-    try:
-        controller = _cookies()
-        token = controller.get(_COOKIE_SESION)
-        if token:
-            db.eliminar_sesion_recordada(token)
-        controller.remove(_COOKIE_SESION)
-    except Exception:
-        pass
-    st.session_state.pop("user", None)
-
-
-def current_user():
-    return st.session_state.get("user")
-
-
-def require_login():
-    """Muestra el formulario de login si no hay sesión activa. Debe llamarse
-    al inicio de app.py. Devuelve True si hay un usuario autenticado.
-
-    Antes de pedir usuario/contraseña, revisa si ya hay una cookie de
-    "recuérdame" válida en el navegador (de un inicio de sesión anterior) —
-    si la hay, entra directo sin pedir nada, para que la sesión de admin (o
-    cualquier usuario) no se cierre sola nunca, salvo que la persona cierre
-    sesión a propósito."""
-    controller = None
-    try:
-        controller = _cookies()
-    except Exception:
-        controller = None
-
-    if current_user():
-        return True
-
-    if controller is not None:
-        try:
-            token = controller.get(_COOKIE_SESION)
-        except Exception:
-            token = None
-        if token:
-            user = db.usuario_desde_token_sesion(token)
-            if user:
-                _sincronizar_usuario_sesion(user)
-                return True
-
-    _, col, _ = st.columns([1, 1.2, 1])
-    with col:
-        _logo_centrado(LOGO_PATH, 320)
-        st.markdown(
-            f"<h3 style='text-align:center;margin-top:0.5rem;'>{EMPRESA_NOMBRE} · Plataforma Comercial</h3>"
-            f"<p style='text-align:center;color:#52514e;'>{EMPRESA_LEMA} · "
-            "Citas · CRM · Cotizaciones · Reclamos · Ventas · KPIs</p>",
-            unsafe_allow_html=True,
-        )
-        with st.form("login_form"):
-            username = st.text_input("Usuario")
-            password = st.text_input("Contraseña", type="password")
-            submitted = st.form_submit_button("Ingresar", use_container_width=True)
-            if submitted:
-                if do_login(username, password):
-                    st.rerun()
-                else:
-                    st.error("Usuario o contraseña incorrectos, o el usuario está inactivo.")
-        with st.expander("Usuarios de demostración"):
-            st.markdown(
-                "- **admin** / admin123 — Administrador\n"
-                "- **vista** / vista123 — Solo vista\n"
-                "- **juan** / vendedor123 — Vendedor\n"
-                "- **maria** / vendedor123 — Vendedor\n"
-                "- **carlos** / vendedor123 — Vendedor"
+        for m in minutas:
+            mid = m["id"]
+            numero_txt = f"MIN-{m['numero']:04d}" if isinstance(m.get("numero"), int) else "—"
+            puede_editar_esta = puede_seguimiento or (
+                puede_crear and (user["rol"] == "admin" or m.get("creado_por_id") == user["id"])
             )
-    return False
+            with st.expander(f"🗒️ {numero_txt} — {m.get('tienda') or '—'} · {m.get('fecha_reunion') or '—'}"):
+                st.caption(f"Elaborada por: {m.get('creado_por_nombre') or '—'}")
+                if m.get("notas_generales"):
+                    st.caption(f"📝 Notas generales: {m['notas_generales']}")
 
+                checklist = m.get("checklist") or []
+                if checklist:
+                    st.markdown("**Temas del checklist:**")
+                    for item in checklist:
+                        marca = "✅" if item.get("tratado") else "⬜"
+                        etiqueta_extra = " _(agregado, no estaba en la lista)_" if item.get("extra") else ""
+                        st.markdown(f"- {marca} {item.get('tema')}{etiqueta_extra}")
+                else:
+                    st.caption("Sin temas registrados.")
 
-def is_admin():
-    u = current_user()
-    return u is not None and u["rol"] == "admin"
+                pendientes_m = m.get("pendientes") or []
+                if pendientes_m:
+                    st.markdown("**Pendientes:**")
+                    for p in pendientes_m:
+                        st.markdown(
+                            f"- {_emoji_estado(p.get('estado'))} {p.get('descripcion')} "
+                            f"(👤 {p.get('responsable') or '—'}, estado: {p.get('estado')})"
+                        )
+                else:
+                    st.caption("Sin pendientes.")
 
+                if puede_editar_esta:
+                    st.divider()
+                    if st.button("🗑️ Eliminar esta minuta", key=f"mn_eliminar_{mid}"):
+                        db.delete_minuta_tienda(mid)
+                        st.success("Minuta eliminada.")
+                        st.rerun()
 
-def is_vendedor():
-    u = current_user()
-    return u is not None and u["rol"] == "vendedor"
-
-
-def is_vista():
-    u = current_user()
-    return u is not None and u["rol"] == "vista"
-
-
-def is_mercadeo():
-    u = current_user()
-    return u is not None and u["rol"] == "mercadeo"
-
-
-def is_jefe_planta():
-    u = current_user()
-    return u is not None and u["rol"] == "jefe_planta"
-
-
-def is_disenador():
-    u = current_user()
-    return u is not None and u["rol"] == "disenador"
-
-
-def is_disenador_alvaro():
-    u = current_user()
-    return u is not None and u["rol"] == "disenador_alvaro"
-
-
-def is_jefe_logistica():
-    u = current_user()
-    return u is not None and u["rol"] == "jefe_logistica"
-
-
-def is_repartidor():
-    u = current_user()
-    return u is not None and u["rol"] == "repartidor"
-
-
-def is_jefe_capacitacion():
-    u = current_user()
-    return u is not None and u["rol"] == "jefe_capacitacion"
-
-
-def is_asistente_capacitacion():
-    u = current_user()
-    return u is not None and u["rol"] == "asistente_capacitacion"
-
-
-def puede_editar_capacitacion():
-    """Admin, jefe de capacitación y asistente de capacitación tienen el mismo
-    nivel de permiso dentro de la pestaña de Capacitación (crear/editar
-    módulos, submódulos, personal y calificaciones)."""
-    u = current_user()
-    return u is not None and u["rol"] in ("admin", "jefe_capacitacion", "asistente_capacitacion")
-
-
-def is_anfitriona():
-    u = current_user()
-    return u is not None and u["rol"] == "anfitriona"
-
-
-def is_jefe_tienda():
-    u = current_user()
-    return u is not None and u["rol"] == "jefe_tienda"
-
-
-def is_asesor_ventas():
-    u = current_user()
-    return u is not None and u["rol"] == "asesor_ventas"
-
-
-def is_cajero():
-    u = current_user()
-    return u is not None and u["rol"] == "cajero"
-
-
-def is_subjefe_tienda():
-    u = current_user()
-    return u is not None and u["rol"] == "subjefe_tienda"
-
-
-def puede_gestionar_tickets_tienda():
-    """Admin y todos los roles de tienda con usuario (anfitriona, jefe de
-    tienda, sub jefe de tienda, asesor de ventas, cajero) tienen el mismo
-    nivel de permiso dentro del Sistema de Tickets — Tiendas (ver y avanzar
-    los tickets de la fila, incluyendo marcarlos como Facturado), igual que
-    se hizo con capacitación. El resto del personal de tienda (acabados,
-    express) no tiene usuario propio — solo aparece como nombre asignado a
-    su tienda para poder elegir quién elabora un pedido."""
-    u = current_user()
-    return u is not None and u["rol"] in (
-        "admin", "anfitriona", "jefe_tienda", "subjefe_tienda", "asesor_ventas", "cajero",
+# --------------------------------------------------------------------------
+# Metas — meta mensual y venta actual de cada asesor de ventas, con
+# historial mes a mes.
+# --------------------------------------------------------------------------
+with tab_metas:
+    st.caption(
+        "El jefe (o sub jefe) de tienda le pone una meta mensual, en quetzales, a cada asesor de ventas "
+        "de su sucursal y va actualizando su venta del mes. Cada mes queda guardado por separado, así "
+        "se tiene el historial mes a mes."
     )
 
+    if not puede_gestionar_metas:
+        st.info("Solo el jefe de tienda, sub jefe de tienda, jefe de línea y los administradores usan esta sección.")
+    else:
+        if tienda_usuario:
+            tienda_metas = tienda_usuario
+            st.caption(f"Tienda: **{tienda_usuario}**")
+        else:
+            tienda_metas = st.selectbox("Tienda", TICKET_TIENDAS, key="mt_tienda_sel")
 
-def puede_gestionar_mantenimiento():
-    """Admin y jefe de planta pueden registrar máquinas y mantenimientos; el
-    resto de roles que llegan a esta pestaña (vendedor, vista) solo pueden
-    consultar el historial."""
-    u = current_user()
-    return u is not None and u["rol"] in ("admin", "jefe_planta")
+        mes_actual = db.mes_actual()
+        sub_mes_actual, sub_historial = st.tabs([f"📅 {_etiqueta_mes(mes_actual)} (mes actual)", "📊 Historial"])
 
+        with sub_mes_actual:
+            asesores = [
+                p for p in db.list_personal_tiendas(tienda=tienda_metas) if p.get("rol") == "asesor_ventas"
+            ]
+            if not asesores:
+                st.info(
+                    "Todavía no hay asesores de ventas cargados para esta tienda. Se agregan desde "
+                    "'Administración de usuarios' → '📥 Carga inicial de personal'."
+                )
+            else:
+                registros_mes = {
+                    r["asesor_nombre"]: r for r in db.list_metas_tienda(tienda=tienda_metas, mes=mes_actual)
+                }
+                valores_form = {}
+                for asesor in asesores:
+                    nombre = asesor["nombre"]
+                    existente = registros_mes.get(nombre)
+                    with st.container(border=True):
+                        st.markdown(f"**{nombre}**")
+                        c1, c2, c3 = st.columns(3)
+                        meta_val = c1.number_input(
+                            "Meta (Q)", min_value=0.0, step=500.0,
+                            value=float(existente["meta"]) if existente else 0.0,
+                            key=f"mt_meta_{nombre}",
+                        )
+                        venta_val = c2.number_input(
+                            "Venta actual (Q)", min_value=0.0, step=100.0,
+                            value=float(existente["venta_actual"]) if existente else 0.0,
+                            key=f"mt_venta_{nombre}",
+                        )
+                        pct = _pct(venta_val, meta_val)
+                        with c3:
+                            st.markdown("&nbsp;")
+                            if pct is None:
+                                st.caption("Pon una meta para ver el % de cumplimiento.")
+                            else:
+                                st.progress(min(pct / 100, 1.0), text=f"{pct:.0f}% de la meta")
+                        valores_form[nombre] = (meta_val, venta_val)
 
-def puede_gestionar_tecnico():
-    """Quién puede crear, editar y eliminar cotizaciones en el Cotizador
-    Técnico — admin y vendedor, que son quienes cotizan trabajos con
-    clientes. El rol 'vista' solo puede consultar."""
-    u = current_user()
-    return u is not None and u["rol"] in ("admin", "vendedor")
+                if st.button("💾 Guardar metas y ventas del mes", key="mt_guardar", use_container_width=True):
+                    for nombre, (meta_val, venta_val) in valores_form.items():
+                        db.upsert_meta_tienda(
+                            tienda_metas, nombre, mes_actual, meta=meta_val, venta_actual=venta_val,
+                            actualizado_por_id=user["id"],
+                        )
+                    st.success("Metas y ventas del mes actualizadas.")
+                    st.rerun()
 
+        with sub_historial:
+            todos_los_registros = db.list_metas_tienda(tienda=tienda_metas)
+            meses_disponibles = sorted({r["mes"] for r in todos_los_registros if r.get("mes")}, reverse=True)
 
-def puede_administrar_catalogo_tecnico():
-    """Quién puede agregar, editar, desactivar o cargar en bloque las
-    máquinas y tipos de papel del catálogo del Cotizador Técnico — ahí viven
-    los costos reales que usa el cálculo, así que se restringe más que la
-    creación de cotizaciones: solo el administrador."""
-    u = current_user()
-    return u is not None and u["rol"] == "admin"
+            if not meses_disponibles:
+                st.caption("Todavía no hay historial guardado para esta tienda.")
+            else:
+                mes_elegido = st.selectbox(
+                    "Mes", meses_disponibles, format_func=_etiqueta_mes, key="mt_hist_mes",
+                )
+                registros_hist = [r for r in todos_los_registros if r.get("mes") == mes_elegido]
+                registros_hist.sort(key=lambda r: r.get("asesor_nombre") or "")
 
+                df_hist = pd.DataFrame([{
+                    "Asesor": r["asesor_nombre"], "Meta (Q)": r.get("meta") or 0.0,
+                    "Venta actual (Q)": r.get("venta_actual") or 0.0,
+                    "% de la meta": round(_pct(r.get("venta_actual") or 0.0, r.get("meta") or 0.0) or 0.0, 1),
+                } for r in registros_hist])
+                st.dataframe(df_hist, use_container_width=True, hide_index=True)
 
-def puede_configurar_kpis_tienda():
-    """Admin y mercadeo son los únicos que pueden establecer los tiempos meta
-    (KPIs) del Sistema de Tickets — Tiendas; el resto de roles de tienda
-    (asesor, cajero, jefe de tienda) solo pueden verlos."""
-    u = current_user()
-    return u is not None and u["rol"] in ("admin", "mercadeo")
+                total_meta = sum(r.get("meta") or 0.0 for r in registros_hist)
+                total_venta = sum(r.get("venta_actual") or 0.0 for r in registros_hist)
+                pct_total = _pct(total_venta, total_meta)
+                c1, c2, c3 = st.columns(3)
+                c1.metric("Meta total de la tienda", f"Q {total_meta:,.2f}")
+                c2.metric("Venta total de la tienda", f"Q {total_venta:,.2f}")
+                c3.metric("% de cumplimiento", f"{pct_total:.0f}%" if pct_total is not None else "—")
 
+                download_excel_button(
+                    df_hist, f"metas_{tienda_metas}_{mes_elegido}.xlsx", key="mt_hist_descargar_excel",
+                )
 
-def current_user_tienda():
-    """Tienda asignada al usuario en sesión (solo aplica a los roles de
-    tienda: anfitriona, jefe_tienda, asesor_ventas). None para admin u otros
-    roles, que ven todas las tiendas."""
-    u = current_user()
-    return u.get("tienda") if u else None
+# --------------------------------------------------------------------------
+# Nueva minuta
+# --------------------------------------------------------------------------
+with tab_nueva:
+    if puede_administrar_temas:
+        with st.expander("⚙️ Temas predeterminados del checklist"):
+            st.caption(
+                "Esta lista es la misma para todas las tiendas — cada jefe de tienda solo la marca al "
+                "crear su minuta. Escribe un tema por línea."
+            )
+            temas_actuales_admin = db.get_temas_predeterminados_minuta()
+            temas_texto_admin = st.text_area(
+                "Temas predeterminados", value="\n".join(temas_actuales_admin),
+                key="mn_temas_admin_texto", height=200,
+            )
+            if st.button("💾 Guardar temas predeterminados", key="mn_temas_admin_guardar"):
+                nuevos_temas_admin = [t.strip() for t in temas_texto_admin.split("\n") if t.strip()]
+                db.set_temas_predeterminados_minuta(nuevos_temas_admin)
+                st.success("Temas predeterminados actualizados.")
+                st.rerun()
 
+    if not puede_crear:
+        st.info("Solo el jefe de tienda, sub jefe de tienda, jefe de línea y los administradores pueden crear minutas.")
+    else:
+        st.session_state.setdefault("mn_pendientes_borrador", [])
 
-def can_edit():
-    """Admin, vendedor y mercadeo pueden crear/editar (el rol 'mercadeo' solo
-    tiene acceso a la pestaña de Visitas de mercadeo, restringido en app.py);
-    el rol 'vista' es solo lectura. El rol 'jefe_planta' tiene un permiso
-    aparte, más limitado, definido directamente en la página de Reclamos."""
-    u = current_user()
-    return u is not None and u["rol"] in ("admin", "vendedor", "mercadeo")
+        if tienda_usuario:
+            tienda_nueva = tienda_usuario
+            st.caption(f"Tienda: **{tienda_usuario}**")
+        else:
+            tienda_nueva = st.selectbox("Tienda", TICKET_TIENDAS, key="mn_nueva_tienda")
+        fecha_reunion = st.date_input("Fecha de la reunión", value=date.today(), key="mn_nueva_fecha")
 
+        st.divider()
+        st.markdown("#### ✅ Temas tratados en la reunión")
+        temas_predeterminados = db.get_temas_predeterminados_minuta()
+        if not temas_predeterminados:
+            st.caption(
+                "Todavía no hay temas predeterminados configurados"
+                + (" — ábrelo arriba en '⚙️ Temas predeterminados del checklist' para agregarlos."
+                   if puede_administrar_temas else
+                   " — pide a un administrador o al jefe de línea que los configure.")
+            )
+        temas_marcados = {}
+        for idx, tema in enumerate(temas_predeterminados):
+            temas_marcados[tema] = st.checkbox(tema, key=f"mn_tema_pred_{idx}")
 
-def is_jefe_mantenimiento():
-    u = current_user()
-    return u is not None and u["rol"] == "jefe_mantenimiento"
+        agregar_extra = st.checkbox(
+            "➕ Se tocó un tema que no está en la lista", key="mn_tema_extra_toggle",
+        )
+        temas_extra_texto = ""
+        if agregar_extra:
+            temas_extra_texto = st.text_area(
+                "Escribe el/los tema(s) extra (uno por línea)", key="mn_temas_extra_texto",
+            )
 
+        notas_generales = st.text_area("Notas generales de la reunión (opcional)", key="mn_notas_generales")
 
-def puede_crear_mant_tiendas():
-    """Quién puede crear (abrir) solicitudes en el tablero de Mantenimiento
-    de Tiendas — admin, jefe de tienda, sub jefe de tienda y mercadeo tienen
-    acceso total a esta pestaña (crear, editar, mover y eliminar cualquier
-    solicitud); son quienes detectan y reportan qué hay que arreglar en su
-    sucursal (mismo concepto que 'vendedor' en el tablero de Diseño
-    Gráfico). 'jefe_mantenimiento' también puede abrir solicitudes él mismo,
-    además de darles seguimiento moviéndolas por el tablero."""
-    u = current_user()
-    return u is not None and u["rol"] in (
-        "admin", "jefe_tienda", "subjefe_tienda", "mercadeo", "jefe_mantenimiento",
-    )
+        st.divider()
+        st.markdown("#### 📌 Pendientes que quedaron de la reunión")
+        # Widgets sueltos, no un st.form: "Responsable" necesita revelar un
+        # campo de texto en cuanto se elige "Escribir otro nombre", y eso
+        # solo pasa con un rerun inmediato — dentro de un form los widgets
+        # no reaccionan hasta que se presiona el botón de enviar, así que el
+        # campo nuevo aparecería demasiado tarde para poder escribir en él.
+        descripcion_nueva = st.text_input("¿Qué queda pendiente?", key="mn_pend_descripcion")
+        colp1, colp2 = st.columns(2)
+        opciones_resp = _opciones_responsable(tienda_nueva)
+        responsable_sel = colp1.selectbox("Responsable", opciones_resp, key="mn_pend_responsable_sel")
+        if responsable_sel == ESCRIBIR_RESPONSABLE_NUEVO:
+            responsable_texto = colp1.text_input("Nombre del responsable", key="mn_pend_responsable_nuevo")
+        else:
+            responsable_texto = responsable_sel
+        con_fecha = colp2.checkbox("Con fecha límite", key="mn_pend_con_fecha")
+        fecha_limite_nueva = colp2.date_input("Fecha límite", value=date.today(), key="mn_pend_fecha_limite") if con_fecha else None
+        if st.button("➕ Agregar pendiente", key="mn_btn_agregar_pendiente", use_container_width=True):
+            if not descripcion_nueva.strip():
+                st.error("Escribe qué queda pendiente antes de agregarlo.")
+            else:
+                st.session_state["mn_pendientes_borrador"].append({
+                    "descripcion": descripcion_nueva.strip(),
+                    "responsable": (responsable_texto or "").strip(),
+                    "fecha_limite": str(fecha_limite_nueva) if fecha_limite_nueva else None,
+                })
+                for k in ("mn_pend_descripcion", "mn_pend_responsable_nuevo"):
+                    st.session_state.pop(k, None)
+                st.rerun()
 
+        if st.session_state["mn_pendientes_borrador"]:
+            for idx, p in enumerate(st.session_state["mn_pendientes_borrador"]):
+                c1, c2 = st.columns([6, 1])
+                texto_p = f"🔴 {p['descripcion']} (👤 {p.get('responsable') or '—'}"
+                texto_p += f", límite {p['fecha_limite']})" if p.get("fecha_limite") else ")"
+                c1.markdown(texto_p)
+                if c2.button("🗑️", key=f"mn_quitar_pend_{idx}"):
+                    st.session_state["mn_pendientes_borrador"].pop(idx)
+                    st.rerun()
+        else:
+            st.caption("Todavía no has agregado ningún pendiente.")
 
-def puede_mover_mant_tiendas():
-    """Quién mueve las solicitudes por el tablero de Mantenimiento de
-    Tiendas — admin, jefe de tienda, sub jefe de tienda y mercadeo tienen
-    acceso total (igual que puede_crear_mant_tiendas); 'jefe_mantenimiento'
-    es el rol dedicado exclusivamente a darles seguimiento (mismo concepto
-    que 'disenador' en el tablero de Diseño Gráfico)."""
-    u = current_user()
-    return u is not None and u["rol"] in (
-        "admin", "jefe_mantenimiento", "jefe_tienda", "subjefe_tienda", "mercadeo",
-    )
+        st.divider()
+        if st.button("💾 Guardar minuta", key="mn_guardar_minuta", use_container_width=True):
+            checklist_final = [
+                {"tema": tema, "tratado": bool(marcado), "extra": False}
+                for tema, marcado in temas_marcados.items()
+            ]
+            if agregar_extra:
+                for linea in temas_extra_texto.splitlines():
+                    if linea.strip():
+                        checklist_final.append({"tema": linea.strip(), "tratado": True, "extra": True})
 
-
-def puede_subir_cotizacion_mant_tiendas():
-    """Quién puede subir los archivos PDF de cotización dentro de una
-    solicitud de Mantenimiento de Tiendas que está en la columna 'En
-    cotización' — el jefe de planta, que es quien cotiza los trabajos con
-    los proveedores, además de todos los roles que ya tienen acceso total
-    al tablero (ver puede_crear_mant_tiendas)."""
-    u = current_user()
-    return u is not None and u["rol"] in (
-        "admin", "jefe_tienda", "subjefe_tienda", "mercadeo", "jefe_mantenimiento", "jefe_planta",
-    )
-
-
-def puede_editar_drive():
-    """Quién puede editar los números de la pestaña Drive ('Datos generales'
-    y 'Krispy 2') — solo el administrador. Mercadeo, jefe de tienda y sub
-    jefe de tienda también entran a esta pestaña, pero solo para consultar
-    (tabla y gráfica), igual que 'vista' en el resto de la plataforma."""
-    u = current_user()
-    return u is not None and u["rol"] == "admin"
-
-
-def puede_editar_nps():
-    """Quién puede editar la parametrización (texto de las preguntas y
-    opciones de la de opción múltiple) de la encuesta NPS: solo el
-    administrador — mismo criterio que puede_editar_drive. Mercadeo, jefe de
-    tienda y sub jefe de tienda también entran a esta pestaña (mismo grupo
-    que ya entra a Drive), pero solo para consultar los KPIs y descargar los
-    códigos QR, sin poder cambiar las preguntas."""
-    u = current_user()
-    return u is not None and u["rol"] == "admin"
-
-
-def is_cliente_phara():
-    u = current_user()
-    return u is not None and u["rol"] == "cliente_phara"
-
-
-def puede_editar_phara():
-    """Quién puede crear pedidos, editarlos y moverlos por el tablero de la
-    pestaña Phara — todos los que llegan a esta pestaña (admin, o quien
-    tenga acceso extra otorgado desde Administración de usuarios), EXCEPTO
-    el rol 'cliente_phara' (el cliente externo), que solo puede consultar el
-    cronograma y el tablero, sin poder cambiar nada."""
-    u = current_user()
-    return u is not None and u["rol"] != "cliente_phara"
-
-
-def puede_editar_colorado():
-    """Quién puede crear órdenes de producción, moverlas por el tablero y
-    eliminarlas en la pestaña Colorado: TODOS los que tienen acceso a esta
-    pestaña — ya sea porque su rol la incluye por defecto (admin, vendedor,
-    vista, jefe_tienda y subjefe_tienda) o porque se les dio acceso extra a
-    'colorado' desde Administración de usuarios. A diferencia de Phara, aquí
-    no hay ningún rol de solo consulta."""
-    u = current_user()
-    if u is None:
-        return False
-    if u["rol"] in ("admin", "vendedor", "vista", "jefe_tienda", "subjefe_tienda"):
-        return True
-    return "colorado" in (u.get("paginas_extra") or [])
-
-
-def puede_editar_galaxy():
-    """Igual que puede_editar_colorado, pero para la pestaña Galaxy (misma
-    plataforma, línea de producción independiente)."""
-    u = current_user()
-    if u is None:
-        return False
-    if u["rol"] in ("admin", "vendedor", "vista", "jefe_tienda", "subjefe_tienda"):
-        return True
-    return "galaxy" in (u.get("paginas_extra") or [])
-
-
-def puede_autorizar_cotizacion_mant_tiendas():
-    """Solo el administrador puede autorizar la cotización de una solicitud
-    de Mantenimiento de Tiendas — mientras no se autoriza, la tarjeta
-    muestra el semáforo de cotización en rojo; una vez autorizada, en
-    verde."""
-    u = current_user()
-    return u is not None and u["rol"] == "admin"
-
-
-def puede_crear_minuta_tienda():
-    """Quién puede crear una Minuta de Tienda nueva (el checklist de temas
-    tratados + los pendientes que quedan abiertos) — el jefe de tienda y el
-    sub jefe de tienda, que son quienes dirigen la reunión en su sucursal,
-    además de jefe_linea y admin."""
-    u = current_user()
-    return u is not None and u["rol"] in ("admin", "jefe_linea", "jefe_tienda", "subjefe_tienda")
-
-
-def puede_gestionar_pendientes_minuta():
-    """Quién le da seguimiento a los pendientes de TODAS las Minutas de
-    Tienda (cambiar su estado — Pendiente/En proceso/Resuelto — y dejar
-    comentarios de seguimiento) — 'jefe_linea' es el rol dedicado
-    exactamente a esto (pedido explícito de Steven), además de admin."""
-    u = current_user()
-    return u is not None and u["rol"] in ("admin", "jefe_linea")
-
-
-def puede_administrar_temas_minuta():
-    """Quién puede editar la lista de temas predeterminados que aparecen
-    como checklist al crear una Minuta de Tienda — admin y jefe_linea
-    (los jefes de tienda solo los marcan, no los configuran)."""
-    u = current_user()
-    return u is not None and u["rol"] in ("admin", "jefe_linea")
+            db.create_minuta_tienda(
+                user["id"], user["nombre"], tienda_nueva, fecha_reunion,
+                checklist_final, st.session_state["mn_pendientes_borrador"],
+                notas_generales=notas_generales,
+            )
+            st.session_state["mn_pendientes_borrador"] = []
+            for idx in range(len(temas_predeterminados)):
+                st.session_state.pop(f"mn_tema_pred_{idx}", None)
+            st.session_state.pop("mn_tema_extra_toggle", None)
+            st.session_state.pop("mn_temas_extra_texto", None)
+            st.session_state.pop("mn_notas_generales", None)
+            st.success("Minuta guardada.")
+            st.rerun()
