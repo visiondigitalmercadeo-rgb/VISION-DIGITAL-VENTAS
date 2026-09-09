@@ -59,7 +59,7 @@ ROLES = [
     "admin", "vendedor", "vista", "mercadeo", "jefe_planta", "disenador", "disenador_alvaro",
     "jefe_logistica", "repartidor", "jefe_capacitacion", "asistente_capacitacion",
     "anfitriona", "jefe_tienda", "subjefe_tienda", "asesor_ventas", "cajero",
-    "jefe_mantenimiento", "cliente_phara",
+    "jefe_mantenimiento", "jefe_linea", "cliente_phara",
 ]
 ROLES_LABEL = {
     "admin": "Administrador",
@@ -79,6 +79,13 @@ ROLES_LABEL = {
     "asesor_ventas": "Asesor de ventas",
     "cajero": "Cajero",
     "jefe_mantenimiento": "Jefe de Mantenimiento",
+    # Rol nuevo (pedido por Steven al construir Minutas de Tienda): ve y usa
+    # TODA la plataforma igual que un administrador — MENOS "Administración
+    # de usuarios" (crear/eliminar usuarios, cambiar roles y contraseñas),
+    # que sigue siendo exclusiva de 'admin' por ser la más delicada (ver
+    # PAGINAS_BASE_POR_ROL abajo). Es quien le da seguimiento a los
+    # pendientes que dejan las Minutas de Tienda.
+    "jefe_linea": "Jefe de línea",
     "cliente_phara": "Cliente Phara",
 }
 
@@ -139,6 +146,10 @@ PAGINAS_REGISTRO = [
         "title": "Cotizador Técnico", "icon": "🖨️",
     },
     {"key": "mant_tiendas", "path": "app_pages/20_Mant_Tiendas.py", "title": "Mant. Tiendas", "icon": "🏬"},
+    {
+        "key": "minutas_tiendas", "path": "app_pages/28_Minutas_Tiendas.py",
+        "title": "Minutas de Tienda", "icon": "📝",
+    },
     {"key": "drive", "path": "app_pages/21_Drive.py", "title": "Drive", "icon": "📁"},
     {"key": "phara", "path": "app_pages/22_Phara.py", "title": "Phara", "icon": "📦"},
     {"key": "documentos", "path": "app_pages/23_Documentos.py", "title": "Documentos", "icon": "📄"},
@@ -175,9 +186,9 @@ _PAGINAS_BASE_COMUN = [
 ]
 PAGINAS_BASE_POR_ROL = {
     # admin, vendedor y vista comparten el mismo paquete amplio de pestañas;
-    # admin además tiene Administración de usuarios, Drive, Phara y NPS
-    # (exclusivas de administrador).
-    "admin": _PAGINAS_BASE_COMUN + ["administracion", "drive", "phara", "nps"],
+    # admin además tiene Administración de usuarios, Drive, Phara, NPS y
+    # Minutas de Tienda (exclusivas de administrador).
+    "admin": _PAGINAS_BASE_COMUN + ["administracion", "drive", "phara", "nps", "minutas_tiendas"],
     "vendedor": _PAGINAS_BASE_COMUN,
     "vista": _PAGINAS_BASE_COMUN,
     # Visitas de mercadeo y, además, Tickets — Tiendas (solo para configurar
@@ -195,15 +206,19 @@ PAGINAS_BASE_POR_ROL = {
     "jefe_capacitacion": ["capacitacion"],
     "asistente_capacitacion": ["capacitacion"],
     # Tickets — Tiendas (solo su tienda), control total de Mant. Tiendas (su
-    # sucursal), Drive (solo consulta), y Colorado/Galaxy para dar
-    # seguimiento a órdenes de producción.
-    "jefe_tienda": ["tickets_tienda", "mant_tiendas", "drive", "colorado", "galaxy"],
-    "subjefe_tienda": ["tickets_tienda", "mant_tiendas", "drive", "colorado", "galaxy"],
+    # sucursal), Minutas de Tienda (elabora la minuta y sus pendientes),
+    # Drive (solo consulta), y Colorado/Galaxy para dar seguimiento a
+    # órdenes de producción.
+    "jefe_tienda": ["tickets_tienda", "mant_tiendas", "minutas_tiendas", "drive", "colorado", "galaxy"],
+    "subjefe_tienda": ["tickets_tienda", "mant_tiendas", "minutas_tiendas", "drive", "colorado", "galaxy"],
     # Solo Tickets — Tiendas, y solo ven la tienda asignada a su usuario.
     "anfitriona": ["tickets_tienda"],
     "asesor_ventas": ["tickets_tienda"],
     "cajero": ["tickets_tienda"],
     "jefe_mantenimiento": ["mant_tiendas"],
+    # Jefe de línea: acceso a TODA la plataforma igual que admin, menos
+    # "Administración de usuarios" (ver nota junto a ROLES_LABEL arriba).
+    "jefe_linea": _PAGINAS_BASE_COMUN + ["drive", "phara", "nps", "minutas_tiendas"],
     # Cliente externo: solo consulta en Phara.
     "cliente_phara": ["phara"],
 }
@@ -546,12 +561,33 @@ MANT_TIENDA_SIGUIENTE_ESTADO = {
     "En cotización": "En proceso",
     "En proceso": "Finalizado",
 }
-MANT_TIENDAS_FOTO_MAX_BYTES = 900_000  # ~900 KB por foto — mismo límite práctico que Diseño/Capacitación
-MANT_TIENDAS_FOTOS_MAX = 5
+# Bajado de 900 KB/5 fotos (9-sep-2026): una solicitud puede tener FOTOS y
+# PDFs de cotización juntos en el MISMO documento de Firestore — con 900 KB
+# por archivo, dos o tres fotos (o una foto + una cotización) ya
+# codificadas en base64 se pasaban del límite de tamaño de Firestore (1 MiB
+# por documento) y la solicitud no se podía guardar (crash "InvalidArgument"
+# en vez de un aviso claro — esto es justo lo que le pasó a lcrespin). Ver
+# utils.archivos_a_b64_lista / LIMITE_B64_SEGURO_POR_LLAMADA para el techo
+# de seguridad que además protege esto (y el resto de la plataforma) en
+# código. Si en el futuro se necesitan fotos/PDFs más pesados o en mayor
+# cantidad, la solución de fondo es subirlos a Firebase Storage en vez de
+# guardarlos dentro del documento — la plataforma ya tiene ese mecanismo
+# listo (ver database.py, sección "Firebase Storage"), solo falta
+# conectarlo aquí y configurar el bucket.
+MANT_TIENDAS_FOTO_MAX_BYTES = 100_000  # ~100 KB por foto
+MANT_TIENDAS_FOTOS_MAX = 3
 # Cotización: PDFs que sube el jefe de planta mientras la solicitud está en
 # la columna "En cotización" — solo el admin puede autorizarla.
-MANT_TIENDAS_COTIZACION_MAX_BYTES = 900_000  # ~900 KB por PDF — mismo límite práctico que el resto
-MANT_TIENDAS_COTIZACION_MAX_ARCHIVOS = 3
+MANT_TIENDAS_COTIZACION_MAX_BYTES = 150_000  # ~150 KB por PDF (misma razón que MANT_TIENDAS_FOTO_MAX_BYTES)
+MANT_TIENDAS_COTIZACION_MAX_ARCHIVOS = 2
+
+# ---------------------------------------------------------------------------
+# Minutas de Tienda: el jefe (o sub jefe) de tienda deja constancia de los
+# temas tratados en su reunión (checklist) y de los pendientes que quedaron
+# abiertos. El jefe de línea (o admin) les da seguimiento hasta que se
+# resuelven — ver database.py, sección "Minutas de Tienda".
+# ---------------------------------------------------------------------------
+ESTADOS_PENDIENTE_MINUTA = ["Pendiente", "En proceso", "Resuelto"]
 
 # ---------------------------------------------------------------------------
 # Cotizador Técnico: ficha de cotización con cálculo automático de pliegos,
