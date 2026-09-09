@@ -409,3 +409,21 @@ def puede_autorizar_cotizacion_mant_tiendas():
     verde."""
     u = current_user()
     return u is not None and u["rol"] == "admin"
+
+
+def puede_crear_minuta_tienda():
+    """Quién puede crear una Minuta de Tienda nueva (el checklist de temas
+    tratados + los pendientes que quedan abiertos) — el jefe de tienda y el
+    sub jefe de tienda, que son quienes dirigen la reunión en su sucursal,
+    además de jefe_linea y admin."""
+    u = current_user()
+    return u is not None and u["rol"] in ("admin", "jefe_linea", "jefe_tienda", "subjefe_tienda")
+
+
+def puede_gestionar_pendientes_minuta():
+    """Quién le da seguimiento a los pendientes de TODAS las Minutas de
+    Tienda (cambiar su estado — Pendiente/En proceso/Resuelto — y dejar
+    comentarios de seguimiento) — 'jefe_linea' es el rol dedicado
+    exactamente a esto (pedido explícito de Steven), además de admin."""
+    u = current_user()
+    return u is not None and u["rol"] in ("admin", "jefe_linea")
