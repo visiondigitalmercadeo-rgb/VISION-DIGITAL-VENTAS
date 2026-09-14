@@ -1827,6 +1827,12 @@ def nps_reporte_pdf_bytes(
             return
         pdf.set_x(10)
         pdf.set_font("Helvetica", "", 9)
+        # franja_titulo() deja el color de relleno del PDF en azul oscuro (es
+        # el de su propia franja) y nunca lo regresa a blanco -- si no se
+        # resetea aquí, las FILAS del cuadro (no solo el encabezado) heredan
+        # ese azul de fondo con letra blanca, ilegible.
+        pdf.set_fill_color(255, 255, 255)
+        pdf.set_text_color(0, 0, 0)
         with pdf.table(
             col_widths=anchos,
             headings_style=encabezado_azul,
