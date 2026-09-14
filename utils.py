@@ -1642,6 +1642,7 @@ def nps_reporte_pdf_bytes(
     nps_pregunta_texto: str, nps_conteo: dict, nps_total: int, nps_score,
     serv_pregunta_texto: str, serv_conteo: dict, serv_total: int, serv_score,
     opcion_pregunta_texto: str | None, opcion_conteo: dict,
+    detalles_otro: list,
     comentarios: list,
     contactos: list,
 ) -> bytes:
@@ -1804,28 +1805,65 @@ def nps_reporte_pdf_bytes(
     if pdf.get_y() > 220:
         pdf.add_page()
 
-    # -- Comentarios y contactos: solo el CONTEO, como resumen ejecutivo -------
-    # (a propósito no se listan los comentarios/contactos uno por uno -- son
-    # texto libre que escribe el cliente final y no se puede controlar, así
-    # que el detalle se consulta en la plataforma: NPS -> KPIs. Esto además
-    # mantiene el PDF corto y realmente "ejecutivo", no un volcado de datos.)
-    franja_titulo("Comentarios y contactos de seguimiento")
-    tabla(
-        ["Indicador", "Cantidad"],
-        [
-            ["Comentarios de clientes en el período", len(comentarios)],
-            ["Contactos dejados para dar seguimiento", len(contactos)],
-        ],
-        [140, 50],
+    # -- Listados de texto libre (Otro / Comentarios) ----------------------------
+    # Mismo texto_libre_seguro() de arriba para evitar el crash de fpdf2 con
+    # palabras largas sin espacios (URLs, rachas de caracteres, etc.) que un
+    # cliente pudo haber escrito en la encuesta.
+    def seccion_listado(titulo, items, campo_cuerpo, texto_vacio):
+        franja_titulo(f"{titulo} ({len(items)})")
+        if not items:
+            pdf.set_x(10)
+            pdf.set_font("Helvetica", "I", 10)
+            pdf.set_text_color(*GRIS_TEXTO)
+            pdf.cell(0, 6, _pdf_safe(texto_vacio), new_x="LMARGIN", new_y="NEXT")
+            pdf.set_text_color(0, 0, 0)
+            pdf.ln(3)
+            return
+        for item in items:
+            pdf.set_x(10)
+            pdf.set_font("Helvetica", "B", 9.5)
+            pdf.set_text_color(*AZUL_OSCURO)
+            pdf.cell(
+                0, 6, texto_libre_seguro(f"{item.get('Fecha') or '—'} · {item.get('Tienda') or '—'}"),
+                new_x="LMARGIN", new_y="NEXT",
+            )
+            pdf.set_x(10)
+            pdf.set_font("Helvetica", "", 10)
+            pdf.set_text_color(0, 0, 0)
+            pdf.multi_cell(0, 5.5, texto_libre_seguro(item.get(campo_cuerpo) or "—"))
+            pdf.set_draw_color(220, 220, 220)
+            pdf.line(10, pdf.get_y() + 1, 200, pdf.get_y() + 1)
+            pdf.ln(3)
+            if pdf.get_y() > 245:
+                pdf.add_page()
+
+    seccion_listado(
+        "Respuestas 'Otro'", detalles_otro, "¿Cuál?",
+        "No hay respuestas 'Otro' en este período.",
     )
+
+    if pdf.get_y() > 220:
+        pdf.add_page()
+
+    seccion_listado(
+        "Comentarios de clientes", comentarios, "Comentario",
+        "No hay comentarios en este período.",
+    )
+
+    if pdf.get_y() > 220:
+        pdf.add_page()
+
+    # -- Contactos: solo el conteo -- (son datos de contacto, no comentarios;
+    # el detalle se consulta en la plataforma: NPS -> KPIs).
+    franja_titulo(f"Contactos para dar seguimiento ({len(contactos)})")
     pdf.set_x(10)
     pdf.set_font("Helvetica", "I", 9)
     pdf.set_text_color(*GRIS_TEXTO)
     pdf.multi_cell(
         0, 5,
         _pdf_safe(
-            "El detalle de cada comentario y contacto (para dar seguimiento) se consulta en la "
-            "plataforma, en NPS -> pestaña KPIs, con el mismo filtro de tienda y fechas."
+            "El detalle de cada contacto se consulta en la plataforma, en NPS -> pestaña KPIs, "
+            "con el mismo filtro de tienda y fechas."
         ),
     )
     pdf.set_text_color(0, 0, 0)
