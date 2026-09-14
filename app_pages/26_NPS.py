@@ -186,6 +186,7 @@ with tab_kpis:
         )
 
     pregunta_opcion = next((p for p in preguntas if p["tipo"] == "opcion"), None)
+    conteo_opcion = {}
     if pregunta_opcion:
         st.divider()
         st.markdown(f"###### 📣 {pregunta_opcion['texto']}")
@@ -221,6 +222,7 @@ with tab_kpis:
                     st.dataframe(pd.DataFrame(detalles_otro_lista), use_container_width=True, hide_index=True)
 
     pregunta_texto = next((p for p in preguntas if p["tipo"] == "texto"), None)
+    comentarios = []
     if pregunta_texto:
         st.divider()
         st.markdown(f"###### 💬 Comentarios — {pregunta_texto['texto']}")
@@ -286,6 +288,73 @@ with tab_kpis:
         st.caption("Nadie ha dejado sus datos de contacto en este período.")
     else:
         st.dataframe(pd.DataFrame(contactos), use_container_width=True, hide_index=True)
+
+    # -----------------------------------------------------------------------
+    # Reporte ejecutivo en PDF — mismo período/filtro que arriba (Tienda /
+    # Desde / Hasta), listo para imprimir o mandar a Gerencia / Junta
+    # Directiva. Mismo estilo de informe ejecutivo que ya se usa en el
+    # Dashboard del Sistema de Tickets (franjas azul oscuro + tablas).
+    # -----------------------------------------------------------------------
+    st.divider()
+    st.markdown("###### 📄 Reporte ejecutivo")
+    st.caption(
+        "Genera un PDF con el resumen de NPS y satisfacción del período y la tienda que tengas "
+        "seleccionados arriba, listo para compartir con Gerencia o Junta Directiva."
+    )
+
+    resumen_tiendas_pdf = []
+    for t_resumen in NPS_TIENDAS:
+        info_t = _calificacion_tienda_promedio(t_resumen)
+        resumen_tiendas_pdf.append({
+            "tienda": t_resumen,
+            "promedio": info_t["promedio"] if info_t else None,
+            "categoria_label": info_t["carita"]["label"] if info_t else "Sin respuestas",
+            "total": info_t["total"] if info_t else 0,
+        })
+
+    nps_conteo_pdf, nps_total_pdf = (
+        _breakdown_carita(respuestas, "recomendaria") if "recomendaria" in preguntas_por_id else ({}, 0)
+    )
+    nps_score_pdf = (
+        round((nps_conteo_pdf.get("promotor", 0) - nps_conteo_pdf.get("detractor", 0)) / nps_total_pdf * 100)
+        if nps_total_pdf else None
+    )
+    serv_conteo_pdf, serv_total_pdf = (
+        _breakdown_carita(respuestas, "servicio") if "servicio" in preguntas_por_id else ({}, 0)
+    )
+    serv_score_pdf = (
+        round((serv_conteo_pdf.get("promotor", 0) - serv_conteo_pdf.get("detractor", 0)) / serv_total_pdf * 100)
+        if serv_total_pdf else None
+    )
+
+    periodo_texto_pdf = f"{desde.strftime('%d/%m/%Y')} – {hasta.strftime('%d/%m/%Y')}"
+    filtro_texto_pdf = f"Tienda: {tienda_sel}"
+
+    try:
+        from utils import nps_reporte_pdf_bytes
+        pdf_bytes_nps = nps_reporte_pdf_bytes(
+            periodo_texto=periodo_texto_pdf,
+            filtro_texto=filtro_texto_pdf,
+            resumen_tiendas=resumen_tiendas_pdf,
+            nps_pregunta_texto=preguntas_por_id.get("recomendaria", {}).get("texto", "¿Nos recomendarías?"),
+            nps_conteo=nps_conteo_pdf, nps_total=nps_total_pdf, nps_score=nps_score_pdf,
+            serv_pregunta_texto=preguntas_por_id.get("servicio", {}).get("texto", "¿Cómo estuvo el servicio?"),
+            serv_conteo=serv_conteo_pdf, serv_total=serv_total_pdf, serv_score=serv_score_pdf,
+            opcion_pregunta_texto=pregunta_opcion["texto"] if pregunta_opcion else None,
+            opcion_conteo=conteo_opcion,
+            comentarios=comentarios,
+            contactos=contactos,
+        )
+        st.download_button(
+            "📄 Descargar reporte ejecutivo (PDF)",
+            data=pdf_bytes_nps,
+            file_name=f"Reporte_NPS_{tienda_sel.replace(' ', '_')}_{desde}_{hasta}.pdf",
+            mime="application/pdf",
+            use_container_width=True,
+            key="nps_descargar_pdf_ejecutivo",
+        )
+    except Exception as e:
+        st.error(f"No se pudo generar el PDF: {e}")
 
 # ---------------------------------------------------------------------------
 # Código QR — uno por tienda, mismo concepto que Tickets — Tiendas.
