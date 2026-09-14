@@ -187,6 +187,7 @@ with tab_kpis:
 
     pregunta_opcion = next((p for p in preguntas if p["tipo"] == "opcion"), None)
     conteo_opcion = {}
+    detalles_otro_lista = []
     if pregunta_opcion:
         st.divider()
         st.markdown(f"###### 📣 {pregunta_opcion['texto']}")
@@ -342,6 +343,7 @@ with tab_kpis:
             serv_conteo=serv_conteo_pdf, serv_total=serv_total_pdf, serv_score=serv_score_pdf,
             opcion_pregunta_texto=pregunta_opcion["texto"] if pregunta_opcion else None,
             opcion_conteo=conteo_opcion,
+            detalles_otro=detalles_otro_lista,
             comentarios=comentarios,
             contactos=contactos,
         )
