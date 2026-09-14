@@ -1805,11 +1805,17 @@ def nps_reporte_pdf_bytes(
     if pdf.get_y() > 220:
         pdf.add_page()
 
-    # -- Listados de texto libre (Otro / Comentarios) ----------------------------
-    # Mismo texto_libre_seguro() de arriba para evitar el crash de fpdf2 con
-    # palabras largas sin espacios (URLs, rachas de caracteres, etc.) que un
-    # cliente pudo haber escrito en la encuesta.
-    def seccion_listado(titulo, items, campo_cuerpo, texto_vacio):
+    # -- Listados en formato de cuadro (tabla real, no párrafos) -----------------
+    # Usa la API de tablas de fpdf2 (con ajuste de línea automático dentro de
+    # cada celda), en vez de multi_cell a mano -- se ve compacto como un
+    # cuadro de Excel y, de paso, fpdf2 maneja solo el salto de línea largo.
+    # texto_libre_seguro() se deja como blindaje extra por si una sola
+    # "palabra" (sin espacios) fuera más larga que la celda.
+    from fpdf.fonts import FontFace
+    encabezado_azul = FontFace(emphasis="BOLD", color=(255, 255, 255), fill_color=AZUL_OSCURO)
+
+    def cuadro_libre(titulo, items, campos, anchos, texto_vacio):
+        """campos: lista de (encabezado_columna, llave_del_dict)."""
         franja_titulo(f"{titulo} ({len(items)})")
         if not items:
             pdf.set_x(10)
@@ -1817,57 +1823,51 @@ def nps_reporte_pdf_bytes(
             pdf.set_text_color(*GRIS_TEXTO)
             pdf.cell(0, 6, _pdf_safe(texto_vacio), new_x="LMARGIN", new_y="NEXT")
             pdf.set_text_color(0, 0, 0)
-            pdf.ln(3)
+            pdf.ln(4)
             return
-        for item in items:
-            pdf.set_x(10)
-            pdf.set_font("Helvetica", "B", 9.5)
-            pdf.set_text_color(*AZUL_OSCURO)
-            pdf.cell(
-                0, 6, texto_libre_seguro(f"{item.get('Fecha') or '—'} · {item.get('Tienda') or '—'}"),
-                new_x="LMARGIN", new_y="NEXT",
-            )
-            pdf.set_x(10)
-            pdf.set_font("Helvetica", "", 10)
-            pdf.set_text_color(0, 0, 0)
-            pdf.multi_cell(0, 5.5, texto_libre_seguro(item.get(campo_cuerpo) or "—"))
-            pdf.set_draw_color(220, 220, 220)
-            pdf.line(10, pdf.get_y() + 1, 200, pdf.get_y() + 1)
-            pdf.ln(3)
-            if pdf.get_y() > 245:
-                pdf.add_page()
+        pdf.set_x(10)
+        pdf.set_font("Helvetica", "", 9)
+        with pdf.table(
+            col_widths=anchos,
+            headings_style=encabezado_azul,
+            text_align=tuple("LEFT" for _ in campos),
+            line_height=5,
+        ) as tabla_fpdf:
+            fila = tabla_fpdf.row()
+            for encabezado, _clave in campos:
+                fila.cell(_pdf_safe(encabezado))
+            for item in items:
+                fila = tabla_fpdf.row()
+                for _encabezado, clave in campos:
+                    fila.cell(texto_libre_seguro(item.get(clave) or "—"))
+        pdf.ln(4)
 
-    seccion_listado(
-        "Respuestas 'Otro'", detalles_otro, "¿Cuál?",
+    cuadro_libre(
+        "Respuestas 'Otro'", detalles_otro,
+        [("Fecha", "Fecha"), ("Respuesta", "¿Cuál?")],
+        [40, 150],
         "No hay respuestas 'Otro' en este período.",
     )
 
     if pdf.get_y() > 220:
         pdf.add_page()
 
-    seccion_listado(
-        "Comentarios de clientes", comentarios, "Comentario",
+    cuadro_libre(
+        "Comentarios de mejora", comentarios,
+        [("Fecha", "Fecha"), ("Comentario", "Comentario")],
+        [40, 150],
         "No hay comentarios en este período.",
     )
 
     if pdf.get_y() > 220:
         pdf.add_page()
 
-    # -- Contactos: solo el conteo -- (son datos de contacto, no comentarios;
-    # el detalle se consulta en la plataforma: NPS -> KPIs).
-    franja_titulo(f"Contactos para dar seguimiento ({len(contactos)})")
-    pdf.set_x(10)
-    pdf.set_font("Helvetica", "I", 9)
-    pdf.set_text_color(*GRIS_TEXTO)
-    pdf.multi_cell(
-        0, 5,
-        _pdf_safe(
-            "El detalle de cada contacto se consulta en la plataforma, en NPS -> pestaña KPIs, "
-            "con el mismo filtro de tienda y fechas."
-        ),
+    cuadro_libre(
+        "Contactos para dar seguimiento", contactos,
+        [("Fecha", "Fecha"), ("Nombre", "Nombre"), ("Teléfono", "Teléfono"), ("Comentario", "Comentario")],
+        [30, 35, 30, 95],
+        "Nadie ha dejado sus datos de contacto en este período.",
     )
-    pdf.set_text_color(0, 0, 0)
-    pdf.ln(2)
 
     pdf.set_x(10)
     pdf.set_font("Helvetica", "I", 8)
