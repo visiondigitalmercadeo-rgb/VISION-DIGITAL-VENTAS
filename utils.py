@@ -1626,3 +1626,220 @@ def diploma_pdf_bytes(persona_nombre: str, tienda: str, modulo_nombre: str, fech
     pdf.cell(80, 5, _pdf_safe(FIRMA_STEVEN_PUESTO), align="C")
 
     return bytes(pdf.output())
+
+
+# ---------------------------------------------------------------------------
+# Reporte ejecutivo de NPS (PDF) — ver app_pages/26_NPS.py, botón "📄
+# Descargar reporte ejecutivo (PDF)" al final de la pestaña "📊 KPIs". Mismo
+# estilo de informe gerencial (franjas azul oscuro + tablas) que ya se usa
+# para el Dashboard del Sistema de Tickets, para que ambos reportes se vean
+# consistentes si algún día se comparten juntos.
+# ---------------------------------------------------------------------------
+def nps_reporte_pdf_bytes(
+    periodo_texto: str,
+    filtro_texto: str,
+    resumen_tiendas: list,
+    nps_pregunta_texto: str, nps_conteo: dict, nps_total: int, nps_score,
+    serv_pregunta_texto: str, serv_conteo: dict, serv_total: int, serv_score,
+    opcion_pregunta_texto: str | None, opcion_conteo: dict,
+    comentarios: list,
+    contactos: list,
+) -> bytes:
+    """Genera el reporte ejecutivo de NPS / satisfacción del cliente como PDF,
+    listo para imprimir o adjuntar en un correo a Gerencia / Junta Directiva."""
+    from datetime import datetime as _dt
+
+    AZUL_OSCURO = (20, 36, 60)
+    GRIS_CLARO = (242, 242, 242)
+    GRIS_TEXTO = (90, 90, 90)
+
+    pdf = FPDF(format="Letter")
+    pdf.add_page()
+    pdf.set_auto_page_break(auto=True, margin=15)
+
+    # -- Encabezado -----------------------------------------------------------
+    TEXTO_X = 10
+    try:
+        pdf.image(LOGO_PATH, x=10, y=9, w=30)
+        TEXTO_X = 44
+    except Exception:
+        pass
+    pdf.set_xy(TEXTO_X, 10)
+    pdf.set_font("Helvetica", "B", 15)
+    pdf.set_text_color(*AZUL_OSCURO)
+    pdf.cell(0, 7, _pdf_safe("Informe Ejecutivo — NPS y Satisfacción del Cliente"), new_x="LMARGIN", new_y="NEXT")
+    pdf.set_x(TEXTO_X)
+    pdf.set_font("Helvetica", "", 11)
+    pdf.set_text_color(*GRIS_TEXTO)
+    pdf.cell(0, 6, _pdf_safe(f"{EMPRESA_NOMBRE} · Periodo: {periodo_texto}"), new_x="LMARGIN", new_y="NEXT")
+    pdf.set_x(TEXTO_X)
+    pdf.set_font("Helvetica", "I", 9)
+    pdf.cell(0, 5, _pdf_safe(f"Filtro: {filtro_texto}"), new_x="LMARGIN", new_y="NEXT")
+
+    pdf.set_y(32)
+    pdf.set_draw_color(*AZUL_OSCURO)
+    pdf.set_line_width(0.6)
+    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+    pdf.ln(6)
+
+    def franja_titulo(texto):
+        pdf.set_fill_color(*AZUL_OSCURO)
+        pdf.set_text_color(255, 255, 255)
+        pdf.set_font("Helvetica", "B", 11)
+        pdf.cell(0, 8, _pdf_safe(f"  {texto}"), fill=True, new_x="LMARGIN", new_y="NEXT")
+        pdf.set_text_color(0, 0, 0)
+        pdf.ln(1)
+
+    def tabla(encabezados, filas, anchos):
+        pdf.set_font("Helvetica", "B", 9.5)
+        pdf.set_fill_color(*GRIS_CLARO)
+        for texto, ancho in zip(encabezados, anchos):
+            pdf.cell(ancho, 7, _pdf_safe(texto), border=1, align="C", fill=True)
+        pdf.ln()
+        pdf.set_font("Helvetica", "", 9.5)
+        for fila_datos in filas:
+            for valor, ancho in zip(fila_datos, anchos):
+                pdf.cell(ancho, 7, _pdf_safe(valor), border=1, align="C")
+            pdf.ln()
+        pdf.ln(4)
+
+    def pct(valor, total):
+        return f"{(valor / total * 100):.1f}%" if total else "0.0%"
+
+    # -- Calificación promedio por tienda (histórico, no cambia con el filtro) -
+    franja_titulo("Calificación promedio por tienda (histórico general)")
+    tabla(
+        ["Tienda", "Promedio (de 3.0)", "Categoría", "Respuestas"],
+        [
+            [
+                r["tienda"],
+                f"{r['promedio']:.1f}" if r["promedio"] is not None else "—",
+                r["categoria_label"],
+                r["total"],
+            ]
+            for r in resumen_tiendas
+        ],
+        [65, 45, 45, 35],
+    )
+
+    # -- NPS --------------------------------------------------------------------
+    franja_titulo(_pdf_safe(f"NPS — {nps_pregunta_texto}"))
+    if nps_total:
+        tabla(
+            ["Total respuestas", "Detractores", "Neutros", "Promotores", "Score NPS"],
+            [[
+                nps_total,
+                f"{nps_conteo.get('detractor', 0)} ({pct(nps_conteo.get('detractor', 0), nps_total)})",
+                f"{nps_conteo.get('neutro', 0)} ({pct(nps_conteo.get('neutro', 0), nps_total)})",
+                f"{nps_conteo.get('promotor', 0)} ({pct(nps_conteo.get('promotor', 0), nps_total)})",
+                nps_score,
+            ]],
+            [38, 40, 38, 40, 34],
+        )
+    else:
+        pdf.set_font("Helvetica", "I", 10)
+        pdf.set_text_color(*GRIS_TEXTO)
+        pdf.cell(0, 6, _pdf_safe("No hay respuestas todavía para este filtro."), new_x="LMARGIN", new_y="NEXT")
+        pdf.set_text_color(0, 0, 0)
+        pdf.ln(3)
+
+    # -- Satisfacción del servicio ----------------------------------------------
+    franja_titulo(_pdf_safe(f"Satisfacción del servicio — {serv_pregunta_texto}"))
+    if serv_total:
+        tabla(
+            ["Total respuestas", "Detractores", "Neutros", "Promotores", "Índice"],
+            [[
+                serv_total,
+                f"{serv_conteo.get('detractor', 0)} ({pct(serv_conteo.get('detractor', 0), serv_total)})",
+                f"{serv_conteo.get('neutro', 0)} ({pct(serv_conteo.get('neutro', 0), serv_total)})",
+                f"{serv_conteo.get('promotor', 0)} ({pct(serv_conteo.get('promotor', 0), serv_total)})",
+                serv_score,
+            ]],
+            [38, 40, 38, 40, 34],
+        )
+    else:
+        pdf.set_font("Helvetica", "I", 10)
+        pdf.set_text_color(*GRIS_TEXTO)
+        pdf.cell(0, 6, _pdf_safe("No hay respuestas todavía para este filtro."), new_x="LMARGIN", new_y="NEXT")
+        pdf.set_text_color(0, 0, 0)
+        pdf.ln(3)
+
+    # -- Pregunta de opción múltiple ---------------------------------------------
+    if opcion_pregunta_texto:
+        franja_titulo(_pdf_safe(opcion_pregunta_texto))
+        if opcion_conteo:
+            tabla(
+                ["Opción", "Respuestas"],
+                [[op, n] for op, n in opcion_conteo.items()],
+                [140, 50],
+            )
+        else:
+            pdf.set_font("Helvetica", "I", 10)
+            pdf.set_text_color(*GRIS_TEXTO)
+            pdf.cell(0, 6, _pdf_safe("No hay respuestas todavía para este filtro."), new_x="LMARGIN", new_y="NEXT")
+            pdf.set_text_color(0, 0, 0)
+            pdf.ln(3)
+
+    if pdf.get_y() > 220:
+        pdf.add_page()
+
+    # -- Comentarios --------------------------------------------------------------
+    franja_titulo(f"Comentarios de clientes ({len(comentarios)})")
+    if not comentarios:
+        pdf.set_font("Helvetica", "I", 10)
+        pdf.set_text_color(*GRIS_TEXTO)
+        pdf.cell(0, 6, _pdf_safe("No hay comentarios en este período."), new_x="LMARGIN", new_y="NEXT")
+        pdf.set_text_color(0, 0, 0)
+        pdf.ln(3)
+    else:
+        for c in comentarios:
+            pdf.set_font("Helvetica", "B", 9.5)
+            pdf.set_text_color(*AZUL_OSCURO)
+            pdf.cell(0, 6, _pdf_safe(f"{c.get('Fecha') or '—'} · {c.get('Tienda') or '—'}"), new_x="LMARGIN", new_y="NEXT")
+            pdf.set_font("Helvetica", "", 10)
+            pdf.set_text_color(0, 0, 0)
+            pdf.multi_cell(0, 5.5, _pdf_safe(c.get("Comentario") or "—"))
+            pdf.set_draw_color(220, 220, 220)
+            pdf.line(10, pdf.get_y() + 1, 200, pdf.get_y() + 1)
+            pdf.ln(3)
+
+    if pdf.get_y() > 220:
+        pdf.add_page()
+
+    # -- Contactos para dar seguimiento -------------------------------------------
+    franja_titulo(f"Contactos para dar seguimiento ({len(contactos)})")
+    if not contactos:
+        pdf.set_font("Helvetica", "I", 10)
+        pdf.set_text_color(*GRIS_TEXTO)
+        pdf.cell(0, 6, _pdf_safe("Nadie ha dejado sus datos de contacto en este período."), new_x="LMARGIN", new_y="NEXT")
+        pdf.set_text_color(0, 0, 0)
+        pdf.ln(3)
+    else:
+        for ct in contactos:
+            pdf.set_font("Helvetica", "B", 9.5)
+            pdf.set_text_color(*AZUL_OSCURO)
+            encabezado_contacto = (
+                f"{ct.get('Fecha') or '—'} · {ct.get('Tienda') or '—'} · "
+                f"{ct.get('Nombre') or 'Sin nombre'} · {ct.get('Teléfono') or 'Sin teléfono'}"
+            )
+            pdf.multi_cell(0, 6, _pdf_safe(encabezado_contacto))
+            comentario_contacto = ct.get("Comentario")
+            if comentario_contacto and comentario_contacto != "—":
+                pdf.set_font("Helvetica", "", 10)
+                pdf.set_text_color(0, 0, 0)
+                pdf.multi_cell(0, 5.5, _pdf_safe(comentario_contacto))
+            pdf.set_draw_color(220, 220, 220)
+            pdf.line(10, pdf.get_y() + 1, 200, pdf.get_y() + 1)
+            pdf.ln(3)
+
+    pdf.set_font("Helvetica", "I", 8)
+    pdf.set_text_color(140, 140, 140)
+    pdf.multi_cell(
+        0, 5,
+        _pdf_safe(
+            f"Informe generado automáticamente por la Plataforma Comercial — {EMPRESA_NOMBRE} — "
+            f"{_dt.now().strftime('%d/%m/%Y %H:%M')}."
+        ),
+    )
+
+    return bytes(pdf.output())
